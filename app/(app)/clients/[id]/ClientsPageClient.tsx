@@ -125,6 +125,38 @@ function ProjectDetailPanel({ data, portalEnabled, onNavigate, onBack }: { data:
           <span>{formatDate(project.target_completion)}</span>
         </div>
 
+        {/* Sampling P&L */}
+        {products.some((p) => p.sample_fee_usd != null || p.sample_cost_usd != null) && (() => {
+          const totalFee = products.reduce((s, p) => s + (p.sample_fee_usd ?? 0), 0);
+          const totalCost = products.reduce((s, p) => s + (p.sample_cost_usd ?? 0), 0);
+          const margin = totalFee - totalCost;
+          const marginPct = totalFee > 0 ? (margin / totalFee) * 100 : null;
+          return (
+            <div className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-window)]">
+              <div className="px-3 py-2 panel-border-b border-b border-[var(--sa-border)] flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">Sampling P&L</span>
+                {marginPct != null && (
+                  <span className={cn("text-[10px] font-semibold", margin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]")}>
+                    {margin >= 0 ? "▲" : "▼"} {Math.abs(marginPct).toFixed(0)}% margin
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-3 divide-x divide-[var(--sa-border)]">
+                {[
+                  { label: "Fees charged", value: totalFee > 0 ? `$${totalFee.toFixed(2)}` : "—", color: "text-[var(--sa-text-primary)]" },
+                  { label: "Internal costs", value: totalCost > 0 ? `$${totalCost.toFixed(2)}` : "—", color: "text-[var(--sa-text-primary)]" },
+                  { label: "Net margin", value: `${margin >= 0 ? "+" : ""}$${margin.toFixed(2)}`, color: margin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]" },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="px-3 py-2.5">
+                    <p className="text-[9px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{label}</p>
+                    <p className={cn("mt-0.5 font-mono text-[13px] font-semibold", color)}>{value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Products list preview */}
         {products.length > 0 && (
           <div className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-window)]">

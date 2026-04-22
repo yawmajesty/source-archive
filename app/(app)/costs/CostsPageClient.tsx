@@ -34,91 +34,217 @@ const CATEGORY_COLORS: Record<string, string> = {
   other:      "bg-gray-100 text-gray-600 dark:bg-gray-500/20 dark:text-gray-400",
 };
 
-function PLView({ costs, projects, clients }: { costs: Cost[]; projects: Project[]; clients: Client[] }) {
+const STAGE_COLORS: Record<string, string> = {
+  brief: "bg-gray-400", sourcing: "bg-blue-500", sampling: "bg-amber-500",
+  approved: "bg-green-600", production: "bg-purple-600", qc: "bg-orange-500", shipped: "bg-emerald-600",
+};
+
+function ProductDrillDown({ products }: { products: Product[] }) {
+  if (!products.length) return <p className="text-[12px] text-[var(--sa-text-tertiary)] py-2">No products in this collection.</p>;
+  return (
+    <div className="rounded-xl border border-[var(--sa-border)] overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-[11px]">
+          <thead>
+            <tr className="bg-[var(--sa-window)] border-b border-[var(--sa-border)]">
+              {["Product", "Stage", "Target", "Quoted", "Margin", "Sample fee", "Sample cost", "Sample P&L"].map((h) => (
+                <th key={h} className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-[var(--sa-text-tertiary)] whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {products.map((p, i) => {
+              const unitMargin = p.quoted_cost_usd != null ? p.quoted_cost_usd - p.target_cost_usd : null;
+              const marginPct = unitMargin != null && p.target_cost_usd > 0 ? (unitMargin / p.target_cost_usd) * 100 : null;
+              const sampleFee = p.sample_fee_usd ?? 0;
+              const sampleCost = p.sample_cost_usd ?? 0;
+              const sampleMargin = (p.sample_fee_usd != null || p.sample_cost_usd != null) ? sampleFee - sampleCost : null;
+              return (
+                <tr key={p.id} className={cn("border-b border-[var(--sa-border)] last:border-0", i % 2 === 1 ? "bg-[var(--sa-bg)]/40" : "bg-[var(--sa-window)]")}>
+                  <td className="px-3 py-2 font-medium text-[var(--sa-text-primary)] max-w-[180px] truncate">{p.name}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className={cn("inline-block h-1.5 w-1.5 rounded-full", STAGE_COLORS[p.stage] ?? "bg-gray-400")} />
+                      <span className="capitalize text-[var(--sa-text-secondary)]">{p.stage}</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[var(--sa-text-secondary)]">${p.target_cost_usd.toFixed(2)}</td>
+                  <td className="px-3 py-2 font-mono text-[var(--sa-text-secondary)]">{p.quoted_cost_usd != null ? `$${p.quoted_cost_usd.toFixed(2)}` : "—"}</td>
+                  <td className={cn("px-3 py-2 font-mono", marginPct == null ? "text-[var(--sa-text-tertiary)]" : marginPct >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]")}>
+                    {marginPct != null ? `${marginPct >= 0 ? "+" : ""}${marginPct.toFixed(1)}%` : "—"}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[var(--sa-text-secondary)]">{sampleFee > 0 ? `$${sampleFee.toFixed(2)}` : "—"}</td>
+                  <td className="px-3 py-2 font-mono text-[var(--sa-text-secondary)]">{sampleCost > 0 ? `$${sampleCost.toFixed(2)}` : "—"}</td>
+                  <td className={cn("px-3 py-2 font-mono font-semibold", sampleMargin == null ? "text-[var(--sa-text-tertiary)]" : sampleMargin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]")}>
+                    {sampleMargin != null ? `${sampleMargin >= 0 ? "+" : ""}$${sampleMargin.toFixed(2)}` : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          {products.length > 1 && (() => {
+            const totalSampleFees = products.reduce((s, p) => s + (p.sample_fee_usd ?? 0), 0);
+            const totalSampleCosts = products.reduce((s, p) => s + (p.sample_cost_usd ?? 0), 0);
+            const totalSampleMargin = totalSampleFees - totalSampleCosts;
+            const hasSampling = products.some(p => p.sample_fee_usd != null || p.sample_cost_usd != null);
+            if (!hasSampling) return null;
+            return (
+              <tfoot className="border-t-2 border-[var(--sa-border-strong)] bg-[var(--sa-bg)]">
+                <tr>
+                  <td colSpan={5} className="px-3 py-2 text-[11px] font-semibold text-[var(--sa-text-secondary)]">Sampling totals</td>
+                  <td className="px-3 py-2 font-mono text-[11px] font-semibold text-[var(--sa-text-primary)]">${totalSampleFees.toFixed(2)}</td>
+                  <td className="px-3 py-2 font-mono text-[11px] font-semibold text-[var(--sa-text-primary)]">${totalSampleCosts.toFixed(2)}</td>
+                  <td className={cn("px-3 py-2 font-mono text-[11px] font-bold", totalSampleMargin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]")}>
+                    {totalSampleMargin >= 0 ? "+" : ""}${totalSampleMargin.toFixed(2)}
+                  </td>
+                </tr>
+              </tfoot>
+            );
+          })()}
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function PLView({ costs, projects, clients, products }: { costs: Cost[]; projects: Project[]; clients: Client[]; products: Product[] }) {
+  const [selectedProjId, setSelectedProjId] = useState<string | null>(null);
   const gbp = (v: number) => `£${v.toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  const usd = (v: number, sign = false) => `${sign && v > 0 ? "+" : ""}$${Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}${sign && v < 0 ? " loss" : ""}`;
 
   const byProject = projects.map((proj) => {
     const pc = costs.filter((c) => c.project_id === proj.id);
-    const revenue   = pc.filter((c) => c.direction === "in").reduce((s, c) => s + c.amount_gbp, 0);
-    const cogs      = pc.filter((c) => c.direction === "out" && c.cost_type === "cogs").reduce((s, c) => s + c.amount_gbp, 0);
-    const operating = pc.filter((c) => c.direction === "out" && c.cost_type === "operating").reduce((s, c) => s + c.amount_gbp, 0);
-    const gross     = revenue - cogs;
-    const net       = gross - operating;
-    const margin    = revenue > 0 ? (gross / revenue) * 100 : null;
+    const pp = products.filter((p) => p.project_id === proj.id);
+    const revenue    = pc.filter((c) => c.direction === "in").reduce((s, c) => s + c.amount_gbp, 0);
+    const cogs       = pc.filter((c) => c.direction === "out" && c.cost_type === "cogs").reduce((s, c) => s + c.amount_gbp, 0);
+    const operating  = pc.filter((c) => c.direction === "out" && c.cost_type === "operating").reduce((s, c) => s + c.amount_gbp, 0);
+    const gross      = revenue - cogs;
+    const net        = gross - operating;
+    const margin     = revenue > 0 ? (gross / revenue) * 100 : null;
+    const sampleFees  = pp.reduce((s, p) => s + (p.sample_fee_usd ?? 0), 0);
+    const sampleCosts = pp.reduce((s, p) => s + (p.sample_cost_usd ?? 0), 0);
+    const sampleMargin = sampleFees - sampleCosts;
     const clientName = clients.find((c) => c.id === proj.client_id)?.name ?? "";
-    return { proj, clientName, revenue, cogs, operating, gross, net, margin };
-  }).filter((r) => r.revenue + r.cogs + r.operating > 0);
+    return { proj, clientName, revenue, cogs, operating, gross, net, margin, sampleFees, sampleCosts, sampleMargin, products: pp };
+  }).filter((r) => r.revenue + r.cogs + r.operating + r.sampleFees + r.sampleCosts > 0);
 
   const totals = byProject.reduce((acc, r) => ({
     revenue: acc.revenue + r.revenue, cogs: acc.cogs + r.cogs,
     operating: acc.operating + r.operating, gross: acc.gross + r.gross, net: acc.net + r.net,
-  }), { revenue: 0, cogs: 0, operating: 0, gross: 0, net: 0 });
+    sampleFees: acc.sampleFees + r.sampleFees, sampleCosts: acc.sampleCosts + r.sampleCosts,
+    sampleMargin: acc.sampleMargin + r.sampleMargin,
+  }), { revenue: 0, cogs: 0, operating: 0, gross: 0, net: 0, sampleFees: 0, sampleCosts: 0, sampleMargin: 0 });
 
-  const TH = ({ c }: { c: string }) => (
-    <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-[var(--sa-text-tertiary)] whitespace-nowrap">{c}</th>
+  const TH = ({ c, right }: { c: string; right?: boolean }) => (
+    <th className={cn("px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--sa-text-tertiary)] whitespace-nowrap", right ? "text-right" : "text-left")}>{c}</th>
   );
-  const TD = ({ v, bold, pos }: { v: string; bold?: boolean; pos?: boolean }) => (
-    <td className={cn("px-4 py-3 font-mono text-[12px] text-right whitespace-nowrap", bold ? "font-semibold text-[var(--sa-text-primary)]" : "text-[var(--sa-text-secondary)]", pos && parseFloat(v.replace(/[^-\d.]/g, "")) < 0 ? "text-[var(--sa-danger)]" : pos ? "text-[var(--sa-success)]" : "")}>{v}</td>
-  );
+  const TD = ({ v, bold, pos }: { v: string; bold?: boolean; pos?: boolean }) => {
+    const val = parseFloat(v.replace(/[^-\d.]/g, ""));
+    return (
+      <td className={cn("px-3 py-3 font-mono text-[12px] text-right whitespace-nowrap",
+        bold ? "font-semibold text-[var(--sa-text-primary)]" : "text-[var(--sa-text-secondary)]",
+        pos && (val < 0 ? "text-[var(--sa-danger)]" : "text-[var(--sa-success)]")
+      )}>{v}</td>
+    );
+  };
 
   return (
-    <div className="px-6 pb-6 flex flex-col gap-5">
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-4">
+    <div className="px-6 pb-6 flex flex-col gap-5 overflow-y-auto">
+      {/* Summary cards — 8 across */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4">
         {[
-          { label: "Revenue",   value: gbp(totals.revenue),   sub: "Agency fees in" },
-          { label: "COGS",      value: gbp(totals.cogs),       sub: "Billable production costs" },
-          { label: "Gross profit", value: gbp(totals.gross),   sub: totals.revenue > 0 ? `${((totals.gross/totals.revenue)*100).toFixed(0)}% margin` : "—" },
-          { label: "Operating", value: gbp(totals.operating),  sub: "Internal overhead" },
-          { label: "Net profit",value: gbp(totals.net),        sub: "After all costs" },
-        ].map(({ label, value, sub }) => (
-          <div key={label} className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] p-4">
-            <p className="text-[10px] uppercase tracking-wider text-[var(--sa-text-tertiary)]">{label}</p>
-            <p className={cn("mt-1 font-mono text-[18px] font-semibold", (label === "Gross profit" || label === "Net profit") && totals.net < 0 ? "text-[var(--sa-danger)]" : "text-[var(--sa-text-primary)]")}>{value}</p>
-            <p className="text-[10px] text-[var(--sa-text-tertiary)] mt-0.5">{sub}</p>
-          </div>
-        ))}
+          { label: "Revenue",      value: gbp(totals.revenue),      sub: "Agency fees in",            pos: false },
+          { label: "COGS",         value: gbp(totals.cogs),         sub: "Billable production costs",  pos: false },
+          { label: "Gross profit", value: gbp(totals.gross),        sub: totals.revenue > 0 ? `${((totals.gross/totals.revenue)*100).toFixed(0)}% margin` : "—", pos: true },
+          { label: "Operating",    value: gbp(totals.operating),    sub: "Internal overhead",          pos: false },
+          { label: "Net profit",   value: gbp(totals.net),          sub: "After all costs",            pos: true },
+          { label: "Sample fees",  value: usd(totals.sampleFees),   sub: "Charged to clients (USD)",   pos: false },
+          { label: "Sample costs", value: usd(totals.sampleCosts),  sub: "Internal sample spend (USD)", pos: false },
+          { label: "Sample P&L",   value: usd(totals.sampleMargin, true), sub: totals.sampleFees > 0 ? `${((totals.sampleMargin/totals.sampleFees)*100).toFixed(0)}% margin` : "—", pos: true },
+        ].map(({ label, value, sub, pos }) => {
+          const val = parseFloat(value.replace(/[^-\d.]/g, ""));
+          return (
+            <div key={label} className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] p-4">
+              <p className="text-[10px] uppercase tracking-wider text-[var(--sa-text-tertiary)]">{label}</p>
+              <p className={cn("mt-1 font-mono text-[16px] font-semibold", pos ? (val < 0 ? "text-[var(--sa-danger)]" : "text-[var(--sa-success)]") : "text-[var(--sa-text-primary)]")}>{value}</p>
+              <p className="text-[10px] text-[var(--sa-text-tertiary)] mt-0.5">{sub}</p>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Per-project table */}
+      {/* Per-collection table with drill-down */}
       <div className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-window)]">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">By Collection</span>
+          <span className="text-[10px] text-[var(--sa-text-tertiary)]">Click a row to drill down into products</span>
+        </div>
         <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
-          <thead className="bg-[var(--sa-bg)] border-b border-[var(--sa-border)]">
-            <tr>
-              <TH c="Project" /><TH c="Client" /><TH c="Revenue" /><TH c="COGS" /><TH c="Gross profit" /><TH c="Gross margin" /><TH c="Operating" /><TH c="Net profit" />
-            </tr>
-          </thead>
-          <tbody>
-            {byProject.map(({ proj, clientName, revenue, cogs, gross, operating, net, margin }, i) => (
-              <tr key={proj.id} className={cn("border-b border-[var(--sa-border)]", i % 2 === 1 ? "bg-[var(--sa-bg)]/50" : "")}>
-                <td className="px-4 py-3 text-[12px] font-medium text-[var(--sa-text-primary)]">{proj.name}</td>
-                <td className="px-4 py-3 text-[12px] text-[var(--sa-text-secondary)]">{clientName}</td>
-                <TD v={gbp(revenue)} />
-                <TD v={gbp(cogs)} />
-                <TD v={gbp(gross)} pos bold />
-                <td className={cn("px-4 py-3 font-mono text-[12px] text-right", margin !== null && margin < 0 ? "text-[var(--sa-danger)]" : "text-[var(--sa-success)]")}>
-                  {margin !== null ? `${margin.toFixed(0)}%` : "—"}
-                </td>
-                <TD v={gbp(operating)} />
-                <TD v={gbp(net)} pos bold />
+          <table className="w-full border-collapse">
+            <thead className="bg-[var(--sa-bg)] border-b border-[var(--sa-border)]">
+              <tr>
+                <TH c="" /><TH c="Collection" /><TH c="Client" />
+                <TH c="Revenue" right /><TH c="COGS" right /><TH c="Gross" right /><TH c="GM%" right />
+                <TH c="Sample P&L" right /><TH c="Operating" right /><TH c="Net" right />
               </tr>
+            </thead>
+            {byProject.map(({ proj, clientName, revenue, cogs, gross, operating, net, margin, sampleMargin, products: projProducts }, i) => (
+              <tbody key={proj.id}>
+                <tr
+                  onClick={() => setSelectedProjId(selectedProjId === proj.id ? null : proj.id)}
+                  className={cn("border-b border-[var(--sa-border)] cursor-pointer transition-colors",
+                    selectedProjId === proj.id ? "bg-[var(--sa-selected)]" : i % 2 === 1 ? "bg-[var(--sa-bg)]/50 hover:bg-[var(--sa-hover)]" : "hover:bg-[var(--sa-hover)]"
+                  )}
+                >
+                  <td className="px-3 py-3">
+                    <motion.div animate={{ rotate: selectedProjId === proj.id ? 90 : 0 }} transition={{ duration: 0.15 }}>
+                      <ChevronRight size={13} className="text-[var(--sa-text-tertiary)]" />
+                    </motion.div>
+                  </td>
+                  <td className="px-3 py-3 text-[12px] font-medium text-[var(--sa-text-primary)] whitespace-nowrap">{proj.name}</td>
+                  <td className="px-3 py-3 text-[12px] text-[var(--sa-text-secondary)] whitespace-nowrap">{clientName}</td>
+                  <TD v={gbp(revenue)} />
+                  <TD v={gbp(cogs)} />
+                  <TD v={gbp(gross)} pos />
+                  <td className={cn("px-3 py-3 font-mono text-[12px] text-right", margin !== null && margin < 0 ? "text-[var(--sa-danger)]" : "text-[var(--sa-success)]")}>
+                    {margin !== null ? `${margin.toFixed(0)}%` : "—"}
+                  </td>
+                  <td className={cn("px-3 py-3 font-mono text-[12px] text-right font-semibold",
+                    sampleMargin === 0 && projProducts.every(p => p.sample_fee_usd == null && p.sample_cost_usd == null)
+                      ? "text-[var(--sa-text-tertiary)]"
+                      : sampleMargin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]"
+                  )}>
+                    {projProducts.some(p => p.sample_fee_usd != null || p.sample_cost_usd != null) ? usd(sampleMargin, true) : "—"}
+                  </td>
+                  <TD v={gbp(operating)} />
+                  <TD v={gbp(net)} pos bold />
+                </tr>
+                {selectedProjId === proj.id && (
+                  <tr>
+                    <td colSpan={10} className="bg-[var(--sa-bg)] px-4 py-3 border-b border-[var(--sa-border)]">
+                      <ProductDrillDown products={projProducts} />
+                    </td>
+                  </tr>
+                )}
+              </tbody>
             ))}
-          </tbody>
-          <tfoot className="bg-[var(--sa-bg)] border-t-2 border-[var(--sa-border-strong)]">
-            <tr>
-              <td colSpan={2} className="px-4 py-3 text-[12px] font-semibold text-[var(--sa-text-secondary)]">Total</td>
-              <TD v={gbp(totals.revenue)} bold />
-              <TD v={gbp(totals.cogs)} bold />
-              <TD v={gbp(totals.gross)} pos bold />
-              <td className={cn("px-4 py-3 font-mono text-[12px] text-right font-semibold", totals.revenue > 0 && (totals.gross/totals.revenue)*100 < 0 ? "text-[var(--sa-danger)]" : "text-[var(--sa-success)]")}>
-                {totals.revenue > 0 ? `${((totals.gross/totals.revenue)*100).toFixed(0)}%` : "—"}
-              </td>
-              <TD v={gbp(totals.operating)} bold />
-              <TD v={gbp(totals.net)} pos bold />
-            </tr>
-          </tfoot>
-        </table>
+            <tfoot className="bg-[var(--sa-bg)] border-t-2 border-[var(--sa-border-strong)]">
+              <tr>
+                <td colSpan={3} className="px-4 py-3 text-[12px] font-semibold text-[var(--sa-text-secondary)]">Total</td>
+                <TD v={gbp(totals.revenue)} bold />
+                <TD v={gbp(totals.cogs)} bold />
+                <TD v={gbp(totals.gross)} pos bold />
+                <td className={cn("px-3 py-3 font-mono text-[12px] text-right font-semibold", totals.revenue > 0 && (totals.gross/totals.revenue) < 0 ? "text-[var(--sa-danger)]" : "text-[var(--sa-success)]")}>
+                  {totals.revenue > 0 ? `${((totals.gross/totals.revenue)*100).toFixed(0)}%` : "—"}
+                </td>
+                <td className={cn("px-3 py-3 font-mono text-[12px] text-right font-bold", totals.sampleMargin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]")}>
+                  {usd(totals.sampleMargin, true)}
+                </td>
+                <TD v={gbp(totals.operating)} bold />
+                <TD v={gbp(totals.net)} pos bold />
+              </tr>
+            </tfoot>
+          </table>
         </div>
       </div>
     </div>
@@ -199,7 +325,7 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
         </button>
       </div>
 
-      {view === "pl" && <PLView costs={costs} projects={projects} clients={clients} />}
+      {view === "pl" && <PLView costs={costs} projects={projects} clients={clients} products={products} />}
 
       <div className={cn("flex-1 overflow-y-auto", view === "pl" && "hidden")}>
         {/* Summary cards */}

@@ -1090,51 +1090,77 @@ export function ProductDetailClient({
             <DocumentsSection productId={product.id} initialDocs={localDocs} />
           </CollapsibleSection>
 
-          {/* Profit calculation */}
-          {product.quoted_cost_usd != null && (
-            <CollapsibleSection title="Profit Calculation">
+          {/* Profit & Sampling P&L */}
+          {(product.quoted_cost_usd != null || product.sample_fee_usd != null || product.sample_cost_usd != null) && (
+            <CollapsibleSection title="Profit & Sampling P&L">
               {(() => {
-                const unitMargin = product.quoted_cost_usd - product.target_cost_usd;
-                const marginPct = (unitMargin / product.target_cost_usd) * 100;
+                const hasProd = product.quoted_cost_usd != null;
+                const hasSampling = product.sample_fee_usd != null || product.sample_cost_usd != null;
+                const unitMargin = hasProd ? product.quoted_cost_usd! - product.target_cost_usd : null;
+                const marginPct = unitMargin != null && product.target_cost_usd > 0 ? (unitMargin / product.target_cost_usd) * 100 : null;
                 const qty = product.order_qty ?? product.moq;
-                const totalMargin = unitMargin * qty;
-                const isProfit = unitMargin >= 0;
+                const totalMargin = unitMargin != null ? unitMargin * qty : null;
+                const isProfit = unitMargin != null ? unitMargin >= 0 : null;
+                const sampleFee = product.sample_fee_usd ?? 0;
+                const sampleCost = product.sample_cost_usd ?? 0;
+                const sampleMargin = sampleFee - sampleCost;
+                const sampleMarginPct = sampleFee > 0 ? (sampleMargin / sampleFee) * 100 : null;
+
                 return (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                      {[
-                        { label: "Target cost", value: `$${product.target_cost_usd.toFixed(2)}`, neutral: true },
-                        { label: "Quoted / sell", value: `$${product.quoted_cost_usd.toFixed(2)}`, neutral: true },
-                        {
-                          label: "Unit margin",
-                          value: `${unitMargin >= 0 ? "+" : ""}$${unitMargin.toFixed(2)}`,
-                          positive: isProfit,
-                        },
-                        {
-                          label: `Total (×${qty.toLocaleString()})`,
-                          value: `${totalMargin >= 0 ? "+" : ""}$${totalMargin.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
-                          positive: isProfit,
-                        },
-                      ].map(({ label, value, neutral, positive }) => (
-                        <div key={label} className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-bg)] p-3">
-                          <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{label}</p>
-                          <p className={cn(
-                            "mt-0.5 font-mono text-[15px] font-semibold",
-                            neutral ? "text-[var(--sa-text-primary)]"
-                            : positive ? "text-[var(--sa-success)]"
-                            : "text-[var(--sa-danger)]"
-                          )}>{value}</p>
+                  <div className="space-y-4">
+                    {hasProd && (
+                      <div className="space-y-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sa-text-tertiary)]">Production Margin</p>
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                          {[
+                            { label: "Target cost", value: `$${product.target_cost_usd.toFixed(2)}`, neutral: true },
+                            { label: "Quoted / sell", value: `$${product.quoted_cost_usd!.toFixed(2)}`, neutral: true },
+                            { label: "Unit margin", value: `${unitMargin! >= 0 ? "+" : ""}$${unitMargin!.toFixed(2)}`, positive: isProfit! },
+                            { label: `Total (×${qty.toLocaleString()})`, value: `${totalMargin! >= 0 ? "+" : ""}$${totalMargin!.toLocaleString("en-US", { maximumFractionDigits: 0 })}`, positive: isProfit! },
+                          ].map(({ label, value, neutral, positive }) => (
+                            <div key={label} className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-bg)] p-3">
+                              <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{label}</p>
+                              <p className={cn("mt-0.5 font-mono text-[15px] font-semibold", neutral ? "text-[var(--sa-text-primary)]" : positive ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]")}>{value}</p>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-2 rounded-lg bg-[var(--sa-hover)] px-3 py-2">
-                      {isProfit
-                        ? <TrendingUp size={13} className="text-[var(--sa-success)] shrink-0" />
-                        : <TrendingDown size={13} className="text-[var(--sa-danger)] shrink-0" />}
-                      <span className={cn("text-[13px] font-semibold", isProfit ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]")}>
-                        {isProfit ? "In profit" : "Below target"} · {Math.abs(marginPct).toFixed(1)}% margin
-                      </span>
-                    </div>
+                        <div className="flex items-center gap-2 rounded-lg bg-[var(--sa-hover)] px-3 py-2">
+                          {isProfit ? <TrendingUp size={13} className="text-[var(--sa-success)] shrink-0" /> : <TrendingDown size={13} className="text-[var(--sa-danger)] shrink-0" />}
+                          <span className={cn("text-[13px] font-semibold", isProfit ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]")}>
+                            {isProfit ? "In profit" : "Below target"} · {marginPct != null ? `${Math.abs(marginPct).toFixed(1)}% margin` : "—"}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {hasSampling && (
+                      <div className="space-y-3">
+                        {hasProd && <div className="border-t border-[var(--sa-border)]" />}
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sa-text-tertiary)]">Sampling P&L</p>
+                        <div className="grid grid-cols-3 gap-3">
+                          {[
+                            { label: "Fee charged", value: sampleFee > 0 ? `$${sampleFee.toFixed(2)}` : "—", neutral: true },
+                            { label: "Internal cost", value: sampleCost > 0 ? `$${sampleCost.toFixed(2)}` : "—", neutral: true },
+                            { label: "Sample margin", value: `${sampleMargin >= 0 ? "+" : ""}$${sampleMargin.toFixed(2)}`, positive: sampleMargin >= 0 },
+                          ].map(({ label, value, neutral, positive }) => (
+                            <div key={label} className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-bg)] p-3">
+                              <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{label}</p>
+                              <p className={cn("mt-0.5 font-mono text-[15px] font-semibold", neutral ? "text-[var(--sa-text-primary)]" : positive ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]")}>{value}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-2 rounded-lg bg-[var(--sa-hover)] px-3 py-2">
+                          {sampleMargin >= 0 ? <TrendingUp size={13} className="text-[var(--sa-success)] shrink-0" /> : <TrendingDown size={13} className="text-[var(--sa-danger)] shrink-0" />}
+                          <span className={cn("text-[13px] font-semibold", sampleMargin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]")}>
+                            {sampleMargin >= 0 ? "Sampling profitable" : "Sampling at a loss"}
+                            {sampleMarginPct != null ? ` · ${Math.abs(sampleMarginPct).toFixed(1)}% margin` : ""}
+                          </span>
+                          {(sampleFee === 0 && sampleCost > 0) && (
+                            <span className="ml-auto text-[11px] text-[var(--sa-text-tertiary)]">No fee set — unrecovered cost</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}

@@ -251,6 +251,35 @@ function ProductPreview({ product, factory, onOpen }: { product: Product; factor
           </div>
         )}
 
+        {(product.sample_fee_usd != null || product.sample_cost_usd != null) && (() => {
+          const fee = product.sample_fee_usd ?? 0;
+          const cost = product.sample_cost_usd ?? 0;
+          const margin = fee - cost;
+          const marginPct = fee > 0 ? (margin / fee) * 100 : null;
+          return (
+            <div className="rounded-xl border border-[var(--sa-border)] p-4 bg-[var(--sa-window)]">
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">Sampling P&L</p>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: "Fee charged", value: fee > 0 ? `$${fee.toFixed(2)}` : "—", neutral: true },
+                  { label: "Internal cost", value: cost > 0 ? `$${cost.toFixed(2)}` : "—", neutral: true },
+                  { label: "Margin", value: `${margin >= 0 ? "+" : ""}$${margin.toFixed(2)}`, pos: margin >= 0 },
+                ].map(({ label, value, neutral, pos }) => (
+                  <div key={label} className="rounded-lg border border-[var(--sa-border)] p-2.5 bg-[var(--sa-bg)]">
+                    <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{label}</p>
+                    <p className={cn("mt-0.5 font-mono text-[13px] font-semibold", neutral ? "text-[var(--sa-text-primary)]" : pos ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]")}>{value}</p>
+                  </div>
+                ))}
+              </div>
+              {marginPct != null && (
+                <p className={cn("mt-2 text-[11px] font-medium", marginPct >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]")}>
+                  {marginPct >= 0 ? "▲" : "▼"} {Math.abs(marginPct).toFixed(1)}% sample margin
+                </p>
+              )}
+            </div>
+          );
+        })()}
+
         {product.colorways.length > 0 && (
           <div className="rounded-xl border border-[var(--sa-border)] p-4 bg-[var(--sa-window)]">
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">Colorways</p>
