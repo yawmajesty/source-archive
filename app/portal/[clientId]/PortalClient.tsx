@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown } from "lucide-react";
+import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import type { Client, Contract, PortalFile } from "@/lib/data";
 import type { Stage } from "@/lib/mock-data";
 import type { PortalProject, PortalProduct } from "./page";
@@ -176,15 +177,61 @@ function StatsRow({ projects, files }: { projects: PortalProject[]; files: Porta
 
 // ── ProductGrid ──────────────────────────────────────────────
 // ── Product detail drawer ────────────────────────────────────
-function ProductDetailDrawer({ product, files, onClose }: {
+function ProductDetailDrawer({ product, files, client, onClose }: {
   product: PortalProduct;
   files: PortalFile[];
+  client: Client;
   onClose: () => void;
 }) {
   const productFiles = files.filter((f) => f.project_id !== null);
   const sorted = [...product.milestones].sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
-  const clientUpdates = product.updates.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const [updates, setUpdates] = useState(product.updates.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+  const [images, setImages] = useState<string[]>(product.images ?? []);
+  const [feedback, setFeedback] = useState("");
+  const [sendingFeedback, setSendingFeedback] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const now = new Date();
+
+  async function submitFeedback() {
+    if (!feedback.trim()) return;
+    setSendingFeedback(true);
+    const newUpdate = {
+      id: "upd-" + Date.now(),
+      product_id: product.id,
+      author: client.name,
+      author_initials: client.logo_initial ?? client.name[0].toUpperCase(),
+      text: feedback.trim(),
+      visible_to_client: true,
+      created_at: new Date().toISOString(),
+    };
+    await supabase.from("updates").insert(newUpdate);
+    setUpdates((prev) => [newUpdate, ...prev]);
+    setFeedback("");
+    setSendingFeedback(false);
+  }
+
+  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    setUploadingPhoto(true);
+    const newUrls: string[] = [];
+    for (const file of files) {
+      const path = `${product.id}/client-${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage.from("product-media").upload(path, file);
+      if (!error) {
+        const { data } = supabase.storage.from("product-media").getPublicUrl(path);
+        newUrls.push(data.publicUrl);
+      }
+    }
+    if (newUrls.length) {
+      const updated = [...images, ...newUrls];
+      await supabase.from("products").update({ images: updated }).eq("id", product.id);
+      setImages(updated);
+    }
+    setUploadingPhoto(false);
+    if (fileRef.current) fileRef.current.value = "";
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" }}>
@@ -222,21 +269,36 @@ function ProductDetailDrawer({ product, files, onClose }: {
             </div>
           </div>
 
-          {/* Images / media placeholders */}
+          {/* Images / media */}
           <div className="px-6 py-4 border-b border-[#F0F0F0]">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#AEAEB2] mb-3">Design & photos</p>
-            <div className="grid grid-cols-3 gap-2">
-              {["Design reference", "Fabric detail", "Sample photo"].map((label) => (
-                <div key={label} className="aspect-square rounded-xl bg-[#F7F7F7] flex flex-col items-center justify-center gap-1.5 border border-dashed border-[#D1D1D6]">
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" opacity={0.3}>
-                    <rect x="1" y="1" width="18" height="18" rx="3" stroke="#1D1D1F" strokeWidth="1.5"/>
-                    <circle cx="6.5" cy="6.5" r="1.5" fill="#1D1D1F"/>
-                    <path d="M1 13l5-5 4 4 3-3 5 5" stroke="#1D1D1F" strokeWidth="1.5" strokeLinecap="round"/>
-                  </svg>
-                  <p className="text-[9px] text-[#AEAEB2] text-center leading-tight">{label}</p>
-                </div>
-              ))}
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#AEAEB2]">Photos</p>
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={uploadingPhoto}
+                className="flex items-center gap-1 text-[11px] text-[#1A1A2E] border border-[#E0E0E0] rounded-lg px-2.5 py-1 hover:bg-[#F5F5F7] transition-colors disabled:opacity-50"
+              >
+                <Upload size={11} /> {uploadingPhoto ? "Uploading…" : "Add photo"}
+              </button>
+              <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoUpload} />
             </div>
+            {images.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2">
+                {images.map((url) => (
+                  <div key={url} className="aspect-square rounded-xl overflow-hidden bg-[#F7F7F7] border border-[#E0E0E0]">
+                    <img src={url} alt="" className="h-full w-full object-cover" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-[#D1D1D6] bg-[#F7F7F7] py-6"
+              >
+                <Upload size={18} strokeWidth={1.5} className="text-[#AEAEB2]" />
+                <p className="text-[11px] text-[#AEAEB2]">Upload photos for this product</p>
+              </button>
+            )}
           </div>
 
           {/* Product info */}
@@ -312,16 +374,36 @@ function ProductDetailDrawer({ product, files, onClose }: {
             </div>
           )}
 
-          {/* Updates */}
-          {clientUpdates.length > 0 && (
-            <div className="px-6 py-4">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#AEAEB2] mb-3">Updates</p>
+          {/* Feedback & updates */}
+          <div className="px-6 py-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#AEAEB2] mb-3">Updates & Feedback</p>
+            {/* Leave feedback */}
+            <div className="flex gap-2 mb-4">
+              <input
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submitFeedback()}
+                placeholder="Leave feedback or a comment…"
+                className="flex-1 rounded-xl border border-[#E0E0E0] bg-[#F7F7F7] px-3 py-2 text-[12px] text-[#1D1D1F] placeholder:text-[#AEAEB2] outline-none focus:border-[#1A1A2E] transition-colors"
+              />
+              <button
+                onClick={submitFeedback}
+                disabled={!feedback.trim() || sendingFeedback}
+                className="flex items-center justify-center h-9 w-9 rounded-xl bg-[#1A1A2E] text-white hover:opacity-90 disabled:opacity-30 transition-opacity shrink-0"
+              >
+                <Send size={13} />
+              </button>
+            </div>
+            {updates.length > 0 ? (
               <div className="flex flex-col gap-3">
-                {clientUpdates.map((u) => {
+                {updates.map((u) => {
                   const isRecent = (now.getTime() - new Date(u.created_at).getTime()) < 48 * 3600000;
+                  const isClientMessage = u.author === client.name;
                   return (
                     <div key={u.id} className="flex items-start gap-2.5">
-                      <div className="mt-1.5 h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: isRecent ? "#1D9E75" : "#D3D1C7" }} />
+                      <div className={`mt-1 h-5 w-5 shrink-0 rounded-full flex items-center justify-center text-[8px] font-bold text-white ${isClientMessage ? "bg-[#C8963C]" : "bg-[#1A1A2E]"}`}>
+                        {u.author_initials}
+                      </div>
                       <div>
                         <p className="text-[12px] text-[#1D1D1F] leading-relaxed">{u.text}</p>
                         <p className="mt-0.5 text-[11px] text-[#8E8E93]">{u.author} · {relativeTime(u.created_at)}</p>
@@ -330,8 +412,10 @@ function ProductDetailDrawer({ product, files, onClose }: {
                   );
                 })}
               </div>
-            </div>
-          )}
+            ) : (
+              <p className="text-[12px] text-[#AEAEB2] text-center py-4">No updates yet. Be the first to leave feedback.</p>
+            )}
+          </div>
         </div>
 
         {/* Sample approval CTA */}
@@ -761,6 +845,7 @@ export function PortalClient({ client, locked, projects, contracts, files }: Pro
           <ProductDetailDrawer
             product={selectedProduct}
             files={files}
+            client={client}
             onClose={() => setSelectedProduct(null)}
           />
         )}

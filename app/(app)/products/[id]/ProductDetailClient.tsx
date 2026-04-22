@@ -258,6 +258,144 @@ function CollapsibleSection({
   );
 }
 
+function QuickAddTask({ projectId, productId, onClose }: { projectId: string; productId: string; onClose: () => void }) {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const titleRef = useRef<HTMLInputElement>(null);
+  const dueDateRef = useRef<HTMLInputElement>(null);
+  const assignedRef = useRef<HTMLInputElement>(null);
+
+  const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] placeholder:text-[var(--sa-text-tertiary)] outline-none focus:border-[var(--sa-accent)] transition-colors";
+
+  async function handleSave() {
+    const title = titleRef.current?.value.trim();
+    if (!title) { setError("Title is required"); return; }
+    setSaving(true);
+    const assigned = assignedRef.current?.value.trim() || "Unassigned";
+    const initials = assigned.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
+    const { error: err } = await supabase.from("tasks").insert({
+      id: "task-" + Date.now(),
+      project_id: projectId,
+      product_id: productId,
+      title,
+      status: "todo",
+      assigned_to: assigned,
+      assigned_initials: initials,
+      due_date: dueDateRef.current?.value || null,
+      notes: "",
+    });
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    router.refresh();
+    onClose();
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.96 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.96 }}
+      className="relative z-10 w-full max-w-sm rounded-2xl bg-[var(--sa-window)] border border-[var(--sa-border)] shadow-2xl"
+    >
+      <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--sa-border)]">
+        <h2 className="text-[14px] font-semibold text-[var(--sa-text-primary)]">Add Task</h2>
+        <button onClick={onClose} className="rounded-lg p-1 hover:bg-[var(--sa-hover)]"><X size={15} className="text-[var(--sa-text-tertiary)]" /></button>
+      </div>
+      <div className="px-5 py-4 space-y-3">
+        <div><label className="block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">Title *</label>
+          <input ref={titleRef} autoFocus className={inputCls} placeholder="e.g. Book freight forwarder" /></div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">Due date</label>
+            <input ref={dueDateRef} type="date" className={inputCls} /></div>
+          <div><label className="block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">Assigned to</label>
+            <input ref={assignedRef} className={inputCls} placeholder="Your name" /></div>
+        </div>
+        {error && <p className="text-[12px] text-red-500">{error}</p>}
+      </div>
+      <div className="flex gap-2 px-5 py-4 border-t border-[var(--sa-border)]">
+        <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--sa-border)] py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors">Cancel</button>
+        <button onClick={handleSave} disabled={saving} className="flex-1 rounded-lg bg-[var(--sa-accent)] py-2 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-60 transition-opacity">
+          {saving ? "Saving…" : "Add Task"}
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+function PricingCard({ product, onSaved }: { product: Product; onSaved: (p: Partial<Product>) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [target, setTarget] = useState(String(product.target_cost_usd));
+  const [quoted, setQuoted] = useState(product.quoted_cost_usd != null ? String(product.quoted_cost_usd) : "");
+  const [currency, setCurrency] = useState<"USD" | "GBP" | "EUR" | "CNY">((product.quoted_cost_currency as any) ?? "USD");
+
+  async function handleSave() {
+    setSaving(true);
+    const updates: Partial<Product> = {
+      target_cost_usd: parseFloat(target) || 0,
+      quoted_cost_usd: quoted ? parseFloat(quoted) : null,
+      quoted_cost_currency: currency,
+    };
+    await supabase.from("products").update(updates).eq("id", product.id);
+    onSaved(updates);
+    setSaving(false);
+    setEditing(false);
+  }
+
+  const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-2.5 py-1.5 text-[12px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors font-mono";
+
+  return (
+    <section className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-bg)]">
+      <div className="flex items-center justify-between px-4 py-3 panel-border-b">
+        <span className="text-[12px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">Pricing</span>
+        {!editing ? (
+          <button onClick={() => setEditing(true)} className="text-[11px] text-[var(--sa-accent)] hover:opacity-70 transition-opacity">Edit</button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button onClick={() => setEditing(false)} className="text-[11px] text-[var(--sa-text-tertiary)] hover:opacity-70">Cancel</button>
+            <button onClick={handleSave} disabled={saving} className="text-[11px] font-medium text-[var(--sa-accent)] hover:opacity-70 disabled:opacity-50 transition-opacity">
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="px-4 py-3 space-y-3">
+        {editing ? (
+          <>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] mb-1">Target cost (USD)</p>
+              <input className={inputCls} type="number" step="0.01" value={target} onChange={(e) => setTarget(e.target.value)} />
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] mb-1">Quoted cost</p>
+              <input className={inputCls} type="number" step="0.01" value={quoted} onChange={(e) => setQuoted(e.target.value)} placeholder="TBD" />
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] mb-1">Currency</p>
+              <select className={inputCls} value={currency} onChange={(e) => setCurrency(e.target.value as any)}>
+                {["USD", "GBP", "EUR", "CNY"].map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: "Target", value: `$${product.target_cost_usd.toFixed(2)}` },
+              { label: "Quoted", value: product.quoted_cost_usd != null ? `${product.quoted_cost_currency} ${product.quoted_cost_usd.toFixed(2)}` : "—" },
+            ].map(({ label, value }) => (
+              <div key={label} className="rounded-lg bg-[var(--sa-window)] border border-[var(--sa-border)] p-2.5">
+                <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{label}</p>
+                <p className="mt-0.5 font-mono text-[14px] font-semibold text-[var(--sa-text-primary)]">{value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function SampleCard({ sample }: { sample: Sample }) {
   const trafficStatus =
     sample.status === "approved"
@@ -340,6 +478,7 @@ export function ProductDetailClient({
   const [deleting, setDeleting] = useState(false);
   const [localUpdates, setLocalUpdates] = useState(updates);
   const [newUpdate, setNewUpdate] = useState("");
+  const [showAddTask, setShowAddTask] = useState(false);
 
   async function handleDelete() {
     setDeleting(true);
@@ -639,6 +778,9 @@ export function ProductDetailClient({
         {/* Right column (30%) — sticky */}
         <div className="flex-[3] min-w-64 max-w-80 overflow-y-auto border-l border-[var(--sa-border)] px-4 py-5 space-y-4 bg-[var(--sa-window)]">
 
+          {/* Pricing */}
+          <PricingCard product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
+
           {/* Milestones */}
           <section className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-bg)]">
             <div className="flex items-center justify-between px-4 py-3 panel-border-b">
@@ -695,6 +837,19 @@ export function ProductDetailClient({
             </div>
           </section>
 
+          {/* Quick add task */}
+          <section className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-bg)]">
+            <div className="flex items-center justify-between px-4 py-3 panel-border-b">
+              <span className="text-[12px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">Tasks</span>
+              <button onClick={() => setShowAddTask(true)} className="flex items-center gap-1 text-[11px] text-[var(--sa-accent)] hover:opacity-70 transition-opacity">
+                <Plus size={11} strokeWidth={2.5} /> Add
+              </button>
+            </div>
+            <p className="px-4 py-3 text-[12px] text-[var(--sa-text-tertiary)]">
+              Tasks linked to this product appear on the Task board.
+            </p>
+          </section>
+
           {/* Notes */}
           {product.notes && (
             <div className="rounded-xl border border-[var(--sa-border)] p-4 bg-[var(--sa-bg)]">
@@ -706,6 +861,17 @@ export function ProductDetailClient({
       </div>
 
       <AnimatePresence>
+        {showAddTask && project && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setShowAddTask(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+            <QuickAddTask
+              projectId={project.id}
+              productId={product.id}
+              onClose={() => setShowAddTask(false)}
+            />
+          </div>
+        )}
         {showEdit && (
           <EditProductDrawer
             product={product}

@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { getTasks, getProjects, getClients, getProducts } from "@/lib/data";
 import { TasksClient } from "./TasksClient";
 

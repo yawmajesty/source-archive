@@ -97,8 +97,8 @@ export function ProductRow({ product, factory, selected, onClick, onDoubleClick 
           )}
         >
           {product.quoted_cost_usd != null
-            ? `$${product.quoted_cost_usd.toFixed(0)}`
-            : `~$${product.target_cost_usd.toFixed(0)}`}
+            ? `$${product.quoted_cost_usd.toFixed(2)}`
+            : `~$${product.target_cost_usd.toFixed(2)}`}
         </span>
       </div>
     </ContextMenu>

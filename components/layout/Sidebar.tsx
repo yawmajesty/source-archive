@@ -6,8 +6,7 @@ import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Package, DollarSign, Factory, CheckSquare,
-  Users, Inbox, Folder, FolderOpen, Settings, AlertCircle,
-  Clock, Menu, X,
+  Users, Inbox, Folder, FolderOpen, Settings, Menu, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DarkModeToggle } from "@/components/shared/DarkModeToggle";
@@ -130,17 +129,6 @@ function SidebarContent({
           </motion.div>
         </div>
 
-        <div className="mb-1 mt-3">
-          <div className="px-2.5 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--sa-text-tertiary)]">
-            Views
-          </div>
-          <motion.div variants={staggerContainer} initial="hidden" animate="show">
-            <NavItem href="/views/needs-attention" label="Needs Attention" icon={AlertCircle}
-              isActive={isActive("/views/needs-attention")} badge={overdueMilestones} onClick={onNavClick} />
-            <NavItem href="/views/awaiting-approval" label="Awaiting Approval" icon={Clock}
-              isActive={isActive("/views/awaiting-approval")} badge={pendingApprovals} onClick={onNavClick} />
-          </motion.div>
-        </div>
       </div>
 
       {/* Footer */}

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { motion } from "framer-motion";
-import { CheckCircle2, Circle, Clock, AlertCircle, Loader2 } from "lucide-react";
+import { useState, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import { CheckCircle2, Circle, Clock, AlertCircle, Loader2, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
 import type { Task, Project, Client, Product } from "@/lib/data";
 
 interface Props {
@@ -112,8 +114,128 @@ function TaskRow({
   );
 }
 
+function AddTaskModal({ projects, products, onClose, defaultProjectId, defaultProductId }: {
+  projects: Project[];
+  products: Product[];
+  onClose: () => void;
+  defaultProjectId?: string;
+  defaultProductId?: string;
+}) {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const titleRef = useRef<HTMLInputElement>(null);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
+  const dueDateRef = useRef<HTMLInputElement>(null);
+  const assignedRef = useRef<HTMLInputElement>(null);
+  const [status, setStatus] = useState<Task["status"]>("todo");
+  const [projectId, setProjectId] = useState(defaultProjectId ?? projects[0]?.id ?? "");
+  const [productId, setProductId] = useState(defaultProductId ?? "");
+
+  const projectProducts = products.filter((p) => p.project_id === projectId);
+
+  const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] placeholder:text-[var(--sa-text-tertiary)] outline-none focus:border-[var(--sa-accent)] transition-colors";
+  const labelCls = "block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1";
+
+  async function handleSave() {
+    const title = titleRef.current?.value.trim();
+    if (!title) { setError("Title is required"); return; }
+    if (!projectId) { setError("Collection is required"); return; }
+    setSaving(true);
+    setError("");
+    const assigned = assignedRef.current?.value.trim() || "Unassigned";
+    const initials = assigned.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+    const { error: err } = await supabase.from("tasks").insert({
+      id: "task-" + Date.now(),
+      project_id: projectId,
+      product_id: productId || null,
+      title,
+      status,
+      assigned_to: assigned,
+      assigned_initials: initials,
+      due_date: dueDateRef.current?.value || null,
+      notes: notesRef.current?.value.trim() || "",
+    });
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    router.refresh();
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        className="relative z-10 w-full max-w-md rounded-2xl bg-[var(--sa-window)] border border-[var(--sa-border)] shadow-2xl"
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--sa-border)]">
+          <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)]">Add Task</h2>
+          <button onClick={onClose} className="rounded-lg p-1 hover:bg-[var(--sa-hover)]"><X size={16} className="text-[var(--sa-text-tertiary)]" /></button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <div>
+            <label className={labelCls}>Title *</label>
+            <input ref={titleRef} autoFocus className={inputCls} placeholder="e.g. Send sample to client" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Collection *</label>
+              <select className={inputCls} value={projectId} onChange={(e) => { setProjectId(e.target.value); setProductId(""); }}>
+                <option value="">— Select —</option>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Product (optional)</label>
+              <select className={inputCls} value={productId} onChange={(e) => setProductId(e.target.value)}>
+                <option value="">— None —</option>
+                {projectProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Status</label>
+              <select className={inputCls} value={status} onChange={(e) => setStatus(e.target.value as Task["status"])}>
+                <option value="todo">To Do</option>
+                <option value="in_progress">In Progress</option>
+                <option value="waiting_client">Waiting: Client</option>
+                <option value="waiting_factory">Waiting: Factory</option>
+                <option value="done">Done</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Due date</label>
+              <input ref={dueDateRef} type="date" className={inputCls} />
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>Assigned to</label>
+            <input ref={assignedRef} className={inputCls} placeholder="Your name" />
+          </div>
+          <div>
+            <label className={labelCls}>Notes</label>
+            <textarea ref={notesRef} className={inputCls + " resize-none"} rows={2} placeholder="Optional notes…" />
+          </div>
+          {error && <p className="text-[12px] text-red-500">{error}</p>}
+        </div>
+        <div className="flex gap-2 px-5 py-4 border-t border-[var(--sa-border)]">
+          <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--sa-border)] py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors">Cancel</button>
+          <button onClick={handleSave} disabled={saving} className="flex-1 rounded-lg bg-[var(--sa-accent)] py-2 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-60 transition-opacity">
+            {saving ? "Saving…" : "Add Task"}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 export function TasksClient({ tasks, projects, clients, products }: Props) {
   const [view, setView] = useState<View>("all");
+  const [showAdd, setShowAdd] = useState(false);
 
   const now = new Date();
   const weekEnd = new Date(now.getTime() + 7 * 86400000);
@@ -182,6 +304,12 @@ export function TasksClient({ tasks, projects, clients, products }: Props) {
             {totalOpen} open · {totalOverdue > 0 && <span className="text-[var(--sa-danger)]">{totalOverdue} overdue</span>}
           </p>
         </div>
+        <button
+          onClick={() => setShowAdd(true)}
+          className="flex items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-3 py-1.5 text-[12px] font-medium text-white hover:opacity-90 transition-opacity"
+        >
+          <Plus size={13} strokeWidth={2.5} /> Add Task
+        </button>
       </div>
 
       {/* View tabs */}
@@ -223,6 +351,16 @@ export function TasksClient({ tasks, projects, clients, products }: Props) {
         <span className="hidden md:block w-24 shrink-0 text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">Assigned</span>
         <span className="w-16 shrink-0 text-right text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">Due</span>
       </div>
+
+      <AnimatePresence>
+        {showAdd && (
+          <AddTaskModal
+            projects={projects}
+            products={products}
+            onClose={() => setShowAdd(false)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* List */}
       <div className="flex-1 overflow-y-auto bg-[var(--sa-window)]">
