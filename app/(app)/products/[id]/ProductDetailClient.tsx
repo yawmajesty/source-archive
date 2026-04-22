@@ -189,7 +189,7 @@ function MediaSection({ productId, initialImages }: { productId: string; initial
               <img src={url} alt="" className="h-full w-full object-cover" />
               <button
                 onClick={() => removeImage(url)}
-                className="absolute top-1.5 right-1.5 hidden group-hover:flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-red-500 transition-colors"
+                className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-white hover:bg-red-500 transition-colors opacity-0 group-hover:opacity-100"
               >
                 <Trash2 size={11} />
               </button>

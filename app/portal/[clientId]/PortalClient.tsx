@@ -280,6 +280,12 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
     if (fileRef.current) fileRef.current.value = "";
   }
 
+  async function handleDeletePhoto(url: string) {
+    const updated = images.filter((u) => u !== url);
+    await supabase.from("products").update({ images: updated }).eq("id", product.id);
+    setImages(updated);
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" }}>
       {/* Backdrop */}
@@ -334,9 +340,19 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
             {photoError && <p className="mt-2 text-[11px] text-red-500">Upload failed: {photoError}</p>}
             {images.length > 0 ? (
               <div className="grid grid-cols-3 gap-2">
-                {images.map((url) => (
-                  <div key={url} className="aspect-square rounded-xl overflow-hidden" style={{ background: "var(--portal-surface-raised)", border: "1px solid var(--portal-border)" }}>
+                {images.map((url, i) => (
+                  <div key={url} className="group relative aspect-square rounded-xl overflow-hidden" style={{ background: "var(--portal-surface-raised)", border: "1px solid var(--portal-border)" }}>
                     <img src={url} alt="" className="h-full w-full object-cover" />
+                    {i === 0 && (
+                      <span className="absolute bottom-1 left-1 rounded-md px-1.5 py-0.5 text-[9px] font-semibold text-white" style={{ background: "rgba(0,0,0,0.55)" }}>Preview</span>
+                    )}
+                    <button
+                      onClick={() => handleDeletePhoto(url)}
+                      className="absolute top-1 right-1 hidden group-hover:flex h-6 w-6 items-center justify-center rounded-full text-white transition-colors"
+                      style={{ background: "rgba(0,0,0,0.55)" }}
+                    >
+                      ✕
+                    </button>
                   </div>
                 ))}
               </div>
@@ -486,19 +502,26 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
 }
 
 function ProductCard({ product, onClick }: { product: PortalProduct; onClick: () => void }) {
+  const previewImg = product.images?.[0];
   return (
     <button
       onClick={onClick}
       className="text-left rounded-xl overflow-hidden hover:shadow-sm transition-all cursor-pointer"
       style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}
     >
-      <div className="h-20 flex items-center justify-center" style={{ background: "var(--portal-surface-raised)" }}>
-        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" opacity={0.25}>
-          <rect x="6" y="3" width="20" height="26" rx="2" stroke="currentColor" strokeWidth="1.5"/>
-          <line x1="10" y1="10" x2="22" y2="10" stroke="currentColor" strokeWidth="1.5"/>
-          <line x1="10" y1="15" x2="22" y2="15" stroke="currentColor" strokeWidth="1.5"/>
-          <line x1="10" y1="20" x2="17" y2="20" stroke="currentColor" strokeWidth="1.5"/>
-        </svg>
+      <div className="h-28 overflow-hidden" style={{ background: "var(--portal-surface-raised)" }}>
+        {previewImg ? (
+          <img src={previewImg} alt={product.name} className="h-full w-full object-cover" />
+        ) : (
+          <div className="h-full flex items-center justify-center">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" opacity={0.25}>
+              <rect x="6" y="3" width="20" height="26" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+              <line x1="10" y1="10" x2="22" y2="10" stroke="currentColor" strokeWidth="1.5"/>
+              <line x1="10" y1="15" x2="22" y2="15" stroke="currentColor" strokeWidth="1.5"/>
+              <line x1="10" y1="20" x2="17" y2="20" stroke="currentColor" strokeWidth="1.5"/>
+            </svg>
+          </div>
+        )}
       </div>
       <div className="p-3 flex flex-col gap-2">
         <p className="text-[12px] font-medium truncate" style={{ color: "var(--portal-text-primary)" }}>{product.name}</p>
