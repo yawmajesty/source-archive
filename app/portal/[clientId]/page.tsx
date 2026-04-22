@@ -19,6 +19,8 @@ export interface PortalProduct {
   quoted_cost_usd: number | null;
   colorways: string[];
   images: string[];
+  sample_fee_usd: number | null;
+  expected_sample_date: string | null;
   milestones: { id: string; title: string; due_date: string; completed_at: string | null }[];
   updates: { id: string; author: string; author_initials: string; text: string; created_at: string }[];
 }
@@ -67,6 +69,8 @@ export default async function PortalPage({ params }: Props) {
             quoted_cost_usd: product.quoted_cost_usd,
             colorways: product.colorways,
             images: (product as any).images ?? [],
+            sample_fee_usd: (product as any).sample_fee_usd ?? null,
+            expected_sample_date: (product as any).expected_sample_date ?? null,
             milestones: milestones.map((m) => ({
               id: m.id,
               title: m.title,

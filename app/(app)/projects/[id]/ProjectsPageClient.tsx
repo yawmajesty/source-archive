@@ -297,6 +297,99 @@ function ProductPreview({ product, factory, onOpen }: { product: Product; factor
   );
 }
 
+function SamplingInvoiceView({ productsWithFactory, projectName }: { productsWithFactory: ProductWithFactory[]; projectName: string }) {
+  const items = productsWithFactory.filter(
+    ({ product: p }) => p.sample_fee_usd != null || p.sample_cost_usd != null
+  );
+  const totalFee  = items.reduce((s, { product: p }) => s + (p.sample_fee_usd  ?? 0), 0);
+  const totalCost = items.reduce((s, { product: p }) => s + (p.sample_cost_usd ?? 0), 0);
+  const totalMargin = totalFee - totalCost;
+
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-2 py-20 text-center px-6">
+        <p className="text-[13px] font-medium text-[var(--sa-text-secondary)]">No sampling costs yet</p>
+        <p className="text-[12px] text-[var(--sa-text-tertiary)]">Add sample fees and costs in each product's detail page.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-window)]">
+        {/* Invoice header */}
+        <div className="flex items-start justify-between px-5 py-4 bg-[var(--sa-bg)] border-b border-[var(--sa-border)]">
+          <div>
+            <p className="text-[13px] font-semibold text-[var(--sa-text-primary)]">Sampling Invoice</p>
+            <p className="text-[11px] text-[var(--sa-text-tertiary)] mt-0.5">{projectName} · {items.length} product{items.length !== 1 ? "s" : ""}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[9px] uppercase tracking-wider text-[var(--sa-text-tertiary)]">Total fee (client)</p>
+            <p className="font-mono text-[20px] font-bold text-[var(--sa-text-primary)] mt-0.5">${totalFee.toFixed(2)}</p>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[12px]">
+            <thead className="bg-[var(--sa-bg)] border-b border-[var(--sa-border)]">
+              <tr>
+                {["#", "Product", "Stage", "Sample date", "Fee (client)", "Cost (internal)", "Margin"].map((h) => (
+                  <th key={h} className="px-3 py-2 text-left text-[9px] font-semibold uppercase tracking-wide text-[var(--sa-text-tertiary)] whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(({ product: p }, i) => {
+                const fee    = p.sample_fee_usd  ?? 0;
+                const cost   = p.sample_cost_usd ?? 0;
+                const margin = fee - cost;
+                const hasFee = p.sample_fee_usd != null;
+                const hasCost = p.sample_cost_usd != null;
+                return (
+                  <tr key={p.id} className={cn("border-b border-[var(--sa-border)] last:border-0 hover:bg-[var(--sa-hover)] transition-colors", i % 2 === 1 && "bg-[var(--sa-bg)]/40")}>
+                    <td className="px-3 py-2.5 text-[var(--sa-text-tertiary)]">{i + 1}</td>
+                    <td className="px-3 py-2.5 font-medium text-[var(--sa-text-primary)] max-w-[160px]">
+                      <p className="truncate">{p.name}</p>
+                      <p className="text-[10px] text-[var(--sa-text-tertiary)] mt-0.5">{p.category}</p>
+                    </td>
+                    <td className="px-3 py-2.5 capitalize text-[var(--sa-text-secondary)] whitespace-nowrap">{p.stage}</td>
+                    <td className="px-3 py-2.5 text-[var(--sa-text-secondary)] whitespace-nowrap">
+                      {(p as any).expected_sample_date
+                        ? new Date((p as any).expected_sample_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+                        : "—"}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-primary)] whitespace-nowrap">{hasFee ? `$${fee.toFixed(2)}` : "—"}</td>
+                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-secondary)] whitespace-nowrap">{hasCost ? `$${cost.toFixed(2)}` : "—"}</td>
+                    <td className={cn("px-3 py-2.5 font-mono font-semibold whitespace-nowrap",
+                      !hasFee && !hasCost ? "text-[var(--sa-text-tertiary)]"
+                      : margin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]"
+                    )}>
+                      {hasFee || hasCost ? `${margin >= 0 ? "+" : ""}$${margin.toFixed(2)}` : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot className="border-t-2 border-[var(--sa-border-strong)] bg-[var(--sa-bg)]">
+              <tr>
+                <td colSpan={4} className="px-3 py-3 text-[11px] font-semibold text-[var(--sa-text-secondary)]">Collection total</td>
+                <td className="px-3 py-3 font-mono text-[13px] font-bold text-[var(--sa-text-primary)]">${totalFee.toFixed(2)}</td>
+                <td className="px-3 py-3 font-mono text-[13px] font-bold text-[var(--sa-text-primary)]">${totalCost.toFixed(2)}</td>
+                <td className={cn("px-3 py-3 font-mono text-[13px] font-bold",
+                  totalMargin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]"
+                )}>
+                  {totalFee > 0 || totalCost > 0 ? `${totalMargin >= 0 ? "+" : ""}$${totalMargin.toFixed(2)}` : "—"}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ProjectsPageClient({ project, client, productsWithFactory, factories }: Props) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -305,6 +398,7 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [showAddProduct, setShowAddProduct] = useState(false);
+  const [panel2Tab, setPanel2Tab] = useState<"products" | "sampling">("products");
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -354,48 +448,71 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
                 <ChevronRight size={11} className="shrink-0" />
                 <span className="text-[var(--sa-text-primary)] font-medium truncate">{project.name}</span>
               </div>
-              <button
-                onClick={() => setShowAddProduct(true)}
-                className="flex shrink-0 items-center gap-1 rounded-lg bg-[var(--sa-accent)] px-2.5 py-1.5 text-[11px] font-medium text-white hover:opacity-90 transition-opacity"
-              >
-                <Plus size={12} /> Add
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-0.5 rounded-lg bg-[var(--sa-bg)] p-0.5 border border-[var(--sa-border)]">
+                  {(["products", "sampling"] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setPanel2Tab(t)}
+                      className={cn("rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors capitalize", panel2Tab === t ? "bg-[var(--sa-window)] text-[var(--sa-text-primary)] shadow-sm" : "text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-secondary)]")}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                {panel2Tab === "products" && (
+                  <button
+                    onClick={() => setShowAddProduct(true)}
+                    className="flex items-center gap-1 rounded-lg bg-[var(--sa-accent)] px-2.5 py-1.5 text-[11px] font-medium text-white hover:opacity-90 transition-opacity"
+                  >
+                    <Plus size={12} /> Add
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Sort bar — collection breadcrumb already shown in header */}
-            <div className="flex items-center gap-1 px-3 py-1.5 panel-border-b bg-[var(--sa-window)]">
-              <span className="text-[10px] text-[var(--sa-text-tertiary)] mr-1">Sort:</span>
-              <SortBtn k="name" label="Name" />
-              <SortBtn k="stage" label="Stage" />
-              <SortBtn k="cost" label="Cost" />
-            </div>
+            {panel2Tab === "products" && (
+              <>
+                {/* Sort bar */}
+                <div className="flex items-center gap-1 px-3 py-1.5 panel-border-b bg-[var(--sa-window)]">
+                  <span className="text-[10px] text-[var(--sa-text-tertiary)] mr-1">Sort:</span>
+                  <SortBtn k="name" label="Name" />
+                  <SortBtn k="stage" label="Stage" />
+                  <SortBtn k="cost" label="Cost" />
+                </div>
 
-            {/* Column headers */}
-            <div className="flex items-center gap-3 px-3 py-1 panel-border-b bg-[var(--sa-window)] border-b border-[var(--sa-border)]">
-              <div className="h-6 w-6 shrink-0" />
-              <span className="flex-1 text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">Product</span>
-              <span className="hidden w-32 shrink-0 text-right text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] xl:block">Factory</span>
-              <span className="w-16 shrink-0 text-right text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">Cost</span>
-              <span className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">Stage</span>
-            </div>
+                {/* Column headers */}
+                <div className="flex items-center gap-3 px-3 py-1 panel-border-b bg-[var(--sa-window)] border-b border-[var(--sa-border)]">
+                  <div className="h-6 w-6 shrink-0" />
+                  <span className="flex-1 text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">Product</span>
+                  <span className="hidden w-32 shrink-0 text-right text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] xl:block">Factory</span>
+                  <span className="w-16 shrink-0 text-right text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">Cost</span>
+                  <span className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">Stage</span>
+                </div>
 
-            {/* Rows */}
-            <div className="flex-1 overflow-y-auto">
-              {sorted.length === 0 ? (
-                <EmptyState title="No products yet" description="Add products to this collection." />
-              ) : (
-                sorted.map(({ product, factory }) => (
-                  <ProductRow
-                    key={product.id}
-                    product={product}
-                    factory={factory}
-                    selected={product.id === selectedId}
-                    onClick={() => setSelectedId(product.id)}
-                    onDoubleClick={() => openProduct(product.id)}
-                  />
-                ))
-              )}
-            </div>
+                {/* Rows */}
+                <div className="flex-1 overflow-y-auto">
+                  {sorted.length === 0 ? (
+                    <EmptyState title="No products yet" description="Add products to this collection." />
+                  ) : (
+                    sorted.map(({ product, factory }) => (
+                      <ProductRow
+                        key={product.id}
+                        product={product}
+                        factory={factory}
+                        selected={product.id === selectedId}
+                        onClick={() => setSelectedId(product.id)}
+                        onDoubleClick={() => openProduct(product.id)}
+                      />
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+
+            {panel2Tab === "sampling" && (
+              <SamplingInvoiceView productsWithFactory={sorted} projectName={project.name} />
+            )}
           </div>
         </ResizablePanel>
 

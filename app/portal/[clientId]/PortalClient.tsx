@@ -822,6 +822,102 @@ function FilesSection({ files }: { files: PortalFile[] }) {
   );
 }
 
+// ── SamplingInvoice ──────────────────────────────────────────
+function SamplingInvoice({ projects, client }: { projects: PortalProject[]; client: Client }) {
+  const date = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+
+  const byProject = projects
+    .map((proj) => ({
+      ...proj,
+      products: proj.products.filter((p) => p.sample_fee_usd != null && p.sample_fee_usd > 0),
+    }))
+    .filter((p) => p.products.length > 0);
+
+  const grandTotal = byProject.flatMap((p) => p.products).reduce((s, p) => s + (p.sample_fee_usd ?? 0), 0);
+
+  return (
+    <div className="mt-8">
+      <p className="text-[13px] font-medium mb-4" style={{ color: "var(--portal-text-primary)" }}>Sampling charges</p>
+      {grandTotal === 0 ? (
+        <div className="rounded-xl p-8 text-center" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
+          <p className="text-[13px]" style={{ color: "var(--portal-text-secondary)" }}>No sampling charges to show yet</p>
+        </div>
+      ) : (
+        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
+          {/* Invoice header */}
+          <div className="flex items-start justify-between px-6 py-5" style={{ borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
+            <div>
+              <p className="text-[15px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Sampling Summary</p>
+              <p className="text-[12px] mt-0.5" style={{ color: "var(--portal-text-secondary)" }}>{client.name} · As of {date}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[9px] uppercase tracking-wider" style={{ color: "var(--portal-text-muted)" }}>Total</p>
+              <p className="font-mono text-[22px] font-bold mt-0.5" style={{ color: "var(--portal-text-primary)" }}>${grandTotal.toFixed(2)}</p>
+            </div>
+          </div>
+
+          {/* Per-collection groups */}
+          {byProject.map((proj) => {
+            const projTotal = proj.products.reduce((s, p) => s + (p.sample_fee_usd ?? 0), 0);
+            return (
+              <div key={proj.id} style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
+                {/* Collection header */}
+                <div className="flex items-center justify-between px-6 py-2.5" style={{ background: "var(--portal-row-alt)", borderBottom: "1px solid var(--portal-border-subtle)" }}>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--portal-text-secondary)" }}>{proj.name}</span>
+                  <span className="font-mono text-[12px] font-semibold" style={{ color: "var(--portal-text-secondary)" }}>${projTotal.toFixed(2)}</span>
+                </div>
+
+                {/* Column headers */}
+                <div className="grid px-6 py-1.5" style={{ gridTemplateColumns: "2rem 1fr auto auto", gap: "0.75rem", borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
+                  {["#", "Product", "Date", "Amount"].map((h) => (
+                    <span key={h} className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: "var(--portal-text-muted)" }}>{h}</span>
+                  ))}
+                </div>
+
+                {/* Product rows */}
+                {proj.products.map((p, i) => (
+                  <div
+                    key={p.id}
+                    className="grid px-6 py-3 items-center"
+                    style={{
+                      gridTemplateColumns: "2rem 1fr auto auto",
+                      gap: "0.75rem",
+                      borderBottom: i < proj.products.length - 1 ? "1px solid var(--portal-border-subtle)" : undefined,
+                      background: i % 2 === 0 ? "transparent" : "var(--portal-row-alt)",
+                    }}
+                  >
+                    <span className="text-[11px] text-right" style={{ color: "var(--portal-text-muted)" }}>{i + 1}</span>
+                    <div className="min-w-0">
+                      <p className="text-[12px] font-medium truncate" style={{ color: "var(--portal-text-primary)" }}>{p.name}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[10px]" style={{ color: "var(--portal-text-secondary)" }}>{p.category}</span>
+                        <span style={{ color: "var(--portal-border)" }}>·</span>
+                        <StagePill stage={p.stage} />
+                      </div>
+                    </div>
+                    <span className="text-[11px] whitespace-nowrap" style={{ color: "var(--portal-text-secondary)" }}>
+                      {p.expected_sample_date ? formatDate(p.expected_sample_date) : "—"}
+                    </span>
+                    <span className="font-mono text-[13px] font-semibold whitespace-nowrap" style={{ color: "var(--portal-text-primary)" }}>
+                      ${p.sample_fee_usd!.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          {/* Grand total footer */}
+          <div className="flex items-center justify-between px-6 py-4" style={{ borderTop: "2px solid var(--portal-border)" }}>
+            <span className="text-[13px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Total sampling charges</span>
+            <span className="font-mono text-[16px] font-bold" style={{ color: "var(--portal-text-primary)" }}>${grandTotal.toFixed(2)}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── ContractsList ────────────────────────────────────────────
 function ContractsList({ contracts }: { contracts: Contract[] }) {
   if (contracts.length === 0) {
@@ -896,6 +992,7 @@ export function PortalClient({ client, locked, projects, contracts, files }: Pro
         {tab === "projects" && (
           <motion.div key="projects" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
             <ProjectsTable projects={projects} client={client} />
+            <SamplingInvoice projects={projects} client={client} />
           </motion.div>
         )}
 
