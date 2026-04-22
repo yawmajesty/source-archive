@@ -15,6 +15,7 @@ import { UpdateItem } from "@/components/shared/UpdateItem";
 import { TrafficDot } from "@/components/shared/TrafficLight";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { uploadFile } from "@/lib/storage";
 import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem } from "@/lib/mock-data";
 
 const STAGES: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
@@ -149,20 +150,20 @@ function EditProductDrawer({
 function MediaSection({ productId, initialImages }: { productId: string; initialImages: string[] }) {
   const [images, setImages] = useState<string[]>(initialImages ?? []);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
     setUploading(true);
+    setUploadError(null);
     const newUrls: string[] = [];
     for (const file of files) {
       const path = `${productId}/${Date.now()}-${file.name}`;
-      const { error } = await supabase.storage.from("product-media").upload(path, file);
-      if (!error) {
-        const { data } = supabase.storage.from("product-media").getPublicUrl(path);
-        newUrls.push(data.publicUrl);
-      }
+      const { url, error } = await uploadFile("product-media", path, file);
+      if (error) { setUploadError(error); }
+      else if (url) { newUrls.push(url); }
     }
     if (newUrls.length) {
       const updated = [...images, ...newUrls];
@@ -210,6 +211,7 @@ function MediaSection({ productId, initialImages }: { productId: string; initial
       >
         <Upload size={12} /> {uploading ? "Uploading…" : "Upload images / video"}
       </button>
+      {uploadError && <p className="mt-2 text-[11px] text-[var(--sa-danger)]">Upload failed: {uploadError}</p>}
     </div>
   );
 }
@@ -595,11 +597,9 @@ function AddSampleModal({
     const newUrls: string[] = [];
     for (const file of files) {
       const path = `${productId}/samples/${Date.now()}-${file.name}`;
-      const { error: uploadErr } = await supabase.storage.from("product-media").upload(path, file);
-      if (!uploadErr) {
-        const { data } = supabase.storage.from("product-media").getPublicUrl(path);
-        newUrls.push(data.publicUrl);
-      }
+      const { url, error: uploadErr } = await uploadFile("product-media", path, file);
+      if (uploadErr) { setError(uploadErr); }
+      else if (url) { newUrls.push(url); }
     }
     setImages((prev) => [...prev, ...newUrls]);
     setUploading(false);
@@ -690,22 +690,24 @@ function AddSampleModal({
 function DocumentsSection({ productId, initialDocs }: { productId: string; initialDocs: DocumentItem[] }) {
   const [docs, setDocs] = useState<DocumentItem[]>(initialDocs ?? []);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
     setUploading(true);
+    setUploadError(null);
     const newDocs: DocumentItem[] = [];
     for (const file of files) {
       const path = `${productId}/documents/${Date.now()}-${file.name}`;
-      const { error } = await supabase.storage.from("product-media").upload(path, file);
-      if (!error) {
-        const { data } = supabase.storage.from("product-media").getPublicUrl(path);
+      const { url, error } = await uploadFile("product-media", path, file);
+      if (error) { setUploadError(error); }
+      else if (url) {
         newDocs.push({
           id: "doc-" + Date.now(),
           filename: file.name,
-          url: data.publicUrl,
+          url,
           size_kb: Math.round(file.size / 1024),
           uploaded_at: new Date().toISOString(),
           visible_to_client: true,
@@ -764,6 +766,7 @@ function DocumentsSection({ productId, initialDocs }: { productId: string; initi
         className="flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors disabled:opacity-60">
         <Upload size={12} /> {uploading ? "Uploading…" : "Upload document"}
       </button>
+      {uploadError && <p className="mt-2 text-[11px] text-[var(--sa-danger)]">Upload failed: {uploadError}</p>}
     </div>
   );
 }

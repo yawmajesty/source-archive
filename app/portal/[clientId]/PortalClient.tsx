@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { uploadFile } from "@/lib/storage";
 import type { Client, Contract, PortalFile } from "@/lib/data";
 import type { Stage } from "@/lib/mock-data";
 import type { PortalProject, PortalProduct } from "./page";
@@ -236,6 +237,7 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
   const [feedback, setFeedback] = useState("");
   const [sendingFeedback, setSendingFeedback] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const now = new Date();
 
@@ -261,14 +263,13 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
     setUploadingPhoto(true);
+    setPhotoError(null);
     const newUrls: string[] = [];
     for (const file of files) {
       const path = `${product.id}/client-${Date.now()}-${file.name}`;
-      const { error } = await supabase.storage.from("product-media").upload(path, file);
-      if (!error) {
-        const { data } = supabase.storage.from("product-media").getPublicUrl(path);
-        newUrls.push(data.publicUrl);
-      }
+      const { url, error } = await uploadFile("product-media", path, file);
+      if (error) { setPhotoError(error); }
+      else if (url) { newUrls.push(url); }
     }
     if (newUrls.length) {
       const updated = [...images, ...newUrls];
@@ -330,6 +331,7 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
               </button>
               <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoUpload} />
             </div>
+            {photoError && <p className="mt-2 text-[11px] text-red-500">Upload failed: {photoError}</p>}
             {images.length > 0 ? (
               <div className="grid grid-cols-3 gap-2">
                 {images.map((url) => (
