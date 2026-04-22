@@ -112,6 +112,14 @@ export interface Product {
   bom: BomItem[];
   notes: string;
   created_at: string;
+  // sampling fields
+  sample_fee_usd?: number | null;
+  sample_cost_usd?: number | null;
+  expected_sample_date?: string | null;
+  // jsonb columns (added via migration)
+  bom_data?: BomItem[] | null;
+  documents?: DocumentItem[] | null;
+  images?: string[] | null;
 }
 
 export interface BomItem {
@@ -153,6 +161,15 @@ export interface Document {
   size_kb: number;
   visible_to_client: boolean;
   uploaded_at: string;
+}
+
+export interface DocumentItem {
+  id: string;
+  filename: string;
+  url: string;
+  size_kb: number;
+  uploaded_at: string;
+  visible_to_client: boolean;
 }
 
 export interface Cost {

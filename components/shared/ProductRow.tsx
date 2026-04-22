@@ -3,9 +3,27 @@
 import { Package, Shirt, Home, Sofa, FlameKindling } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { StatusBadge } from "./StatusBadge";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
-import type { Product, Factory } from "@/lib/mock-data";
+import type { Product, Factory, Stage } from "@/lib/mock-data";
+
+const STAGE_DOT_COLORS: Record<Stage, string> = {
+  brief: "bg-gray-400",
+  sourcing: "bg-blue-500",
+  sampling: "bg-amber-500",
+  approved: "bg-green-600",
+  production: "bg-purple-600",
+  qc: "bg-orange-500",
+  shipped: "bg-emerald-600",
+};
+
+function StageDot({ stage }: { stage: Stage }) {
+  return (
+    <span
+      title={stage.charAt(0).toUpperCase() + stage.slice(1)}
+      className={cn("inline-block h-2 w-2 shrink-0 rounded-full", STAGE_DOT_COLORS[stage])}
+    />
+  );
+}
 
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
   Tableware: Home,
@@ -81,8 +99,8 @@ export function ProductRow({ product, factory, selected, onClick, onDoubleClick 
           {product.name}
         </span>
 
-        {/* Stage badge */}
-        <StatusBadge stage={product.stage} />
+        {/* Stage dot */}
+        <StageDot stage={product.stage} />
 
         {/* Factory */}
         <span className="hidden w-32 shrink-0 truncate text-right text-[11px] text-[var(--sa-text-tertiary)] xl:block">

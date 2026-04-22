@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, ChevronDown, ChevronRight, Package,
   CheckCircle, Plus, Upload, Edit2, X, Trash2, Image as ImageIcon,
+  FileText, TrendingUp, TrendingDown, DollarSign, Video,
 } from "lucide-react";
 import { StageTrack } from "@/components/shared/StageTrack";
 import { StatusBadge, SampleStatusBadge } from "@/components/shared/StatusBadge";
@@ -14,7 +15,7 @@ import { UpdateItem } from "@/components/shared/UpdateItem";
 import { TrafficDot } from "@/components/shared/TrafficLight";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
-import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage } from "@/lib/mock-data";
+import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem } from "@/lib/mock-data";
 
 const STAGES: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
 const CURRENCIES = ["USD", "GBP", "EUR", "CNY"];
@@ -329,6 +330,10 @@ function PricingCard({ product, onSaved }: { product: Product; onSaved: (p: Part
   const [target, setTarget] = useState(String(product.target_cost_usd));
   const [quoted, setQuoted] = useState(product.quoted_cost_usd != null ? String(product.quoted_cost_usd) : "");
   const [currency, setCurrency] = useState<"USD" | "GBP" | "EUR" | "CNY">((product.quoted_cost_currency as any) ?? "USD");
+  const [orderQty, setOrderQty] = useState(product.order_qty != null ? String(product.order_qty) : "");
+  const [sampleFee, setSampleFee] = useState(product.sample_fee_usd != null ? String(product.sample_fee_usd) : "");
+  const [sampleCost, setSampleCost] = useState(product.sample_cost_usd != null ? String(product.sample_cost_usd) : "");
+  const [sampleDate, setSampleDate] = useState(product.expected_sample_date ?? "");
 
   async function handleSave() {
     setSaving(true);
@@ -336,6 +341,10 @@ function PricingCard({ product, onSaved }: { product: Product; onSaved: (p: Part
       target_cost_usd: parseFloat(target) || 0,
       quoted_cost_usd: quoted ? parseFloat(quoted) : null,
       quoted_cost_currency: currency,
+      order_qty: orderQty ? parseInt(orderQty) : null,
+      sample_fee_usd: sampleFee ? parseFloat(sampleFee) : null,
+      sample_cost_usd: sampleCost ? parseFloat(sampleCost) : null,
+      expected_sample_date: sampleDate || null,
     };
     await supabase.from("products").update(updates).eq("id", product.id);
     onSaved(updates);
@@ -344,6 +353,7 @@ function PricingCard({ product, onSaved }: { product: Product; onSaved: (p: Part
   }
 
   const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-2.5 py-1.5 text-[12px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors font-mono";
+  const labelCls = "text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] mb-1";
 
   return (
     <section className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-bg)]">
@@ -363,32 +373,63 @@ function PricingCard({ product, onSaved }: { product: Product; onSaved: (p: Part
       <div className="px-4 py-3 space-y-3">
         {editing ? (
           <>
-            <div>
-              <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] mb-1">Target cost (USD)</p>
-              <input className={inputCls} type="number" step="0.01" value={target} onChange={(e) => setTarget(e.target.value)} />
+            <div className="grid grid-cols-2 gap-2">
+              <div><p className={labelCls}>Target cost (USD)</p>
+                <input className={inputCls} type="number" step="0.01" value={target} onChange={(e) => setTarget(e.target.value)} /></div>
+              <div><p className={labelCls}>Quoted cost</p>
+                <input className={inputCls} type="number" step="0.01" value={quoted} onChange={(e) => setQuoted(e.target.value)} placeholder="TBD" /></div>
             </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] mb-1">Quoted cost</p>
-              <input className={inputCls} type="number" step="0.01" value={quoted} onChange={(e) => setQuoted(e.target.value)} placeholder="TBD" />
+            <div className="grid grid-cols-2 gap-2">
+              <div><p className={labelCls}>Currency</p>
+                <select className={inputCls} value={currency} onChange={(e) => setCurrency(e.target.value as any)}>
+                  {["USD", "GBP", "EUR", "CNY"].map((c) => <option key={c} value={c}>{c}</option>)}
+                </select></div>
+              <div><p className={labelCls}>Order qty</p>
+                <input className={inputCls} type="number" value={orderQty} onChange={(e) => setOrderQty(e.target.value)} placeholder="TBD" /></div>
             </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] mb-1">Currency</p>
-              <select className={inputCls} value={currency} onChange={(e) => setCurrency(e.target.value as any)}>
-                {["USD", "GBP", "EUR", "CNY"].map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
+            <div className="border-t border-[var(--sa-border)] pt-3">
+              <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Sampling</p>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <div><p className={labelCls}>Sample fee (client)</p>
+                  <input className={inputCls} type="number" step="0.01" value={sampleFee} onChange={(e) => setSampleFee(e.target.value)} placeholder="0.00" /></div>
+                <div><p className={labelCls}>Sample cost (internal)</p>
+                  <input className={inputCls} type="number" step="0.01" value={sampleCost} onChange={(e) => setSampleCost(e.target.value)} placeholder="0.00" /></div>
+              </div>
+              <div><p className={labelCls}>Expected sample date</p>
+                <input className={inputCls} type="date" value={sampleDate} onChange={(e) => setSampleDate(e.target.value)} /></div>
             </div>
           </>
         ) : (
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { label: "Target", value: `$${product.target_cost_usd.toFixed(2)}` },
-              { label: "Quoted", value: product.quoted_cost_usd != null ? `${product.quoted_cost_currency} ${product.quoted_cost_usd.toFixed(2)}` : "—" },
-            ].map(({ label, value }) => (
-              <div key={label} className="rounded-lg bg-[var(--sa-window)] border border-[var(--sa-border)] p-2.5">
-                <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{label}</p>
-                <p className="mt-0.5 font-mono text-[14px] font-semibold text-[var(--sa-text-primary)]">{value}</p>
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: "Target", value: `$${product.target_cost_usd.toFixed(2)}` },
+                { label: "Quoted", value: product.quoted_cost_usd != null ? `${product.quoted_cost_currency} ${product.quoted_cost_usd.toFixed(2)}` : "—" },
+                { label: "Order qty", value: product.order_qty?.toLocaleString() ?? "—" },
+                { label: "Sample fee", value: product.sample_fee_usd != null ? `$${product.sample_fee_usd.toFixed(2)}` : "—" },
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-lg bg-[var(--sa-window)] border border-[var(--sa-border)] p-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{label}</p>
+                  <p className="mt-0.5 font-mono text-[13px] font-semibold text-[var(--sa-text-primary)]">{value}</p>
+                </div>
+              ))}
+            </div>
+            {(product.sample_cost_usd != null || product.expected_sample_date) && (
+              <div className="rounded-lg bg-[var(--sa-hover)] border border-[var(--sa-border)] px-3 py-2 space-y-1">
+                {product.sample_cost_usd != null && (
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-[var(--sa-text-tertiary)]">Sample cost (internal)</span>
+                    <span className="font-mono text-[var(--sa-text-secondary)]">${product.sample_cost_usd.toFixed(2)}</span>
+                  </div>
+                )}
+                {product.expected_sample_date && (
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-[var(--sa-text-tertiary)]">Expected sample</span>
+                    <span className="text-[var(--sa-text-secondary)]">{formatDate(product.expected_sample_date)}</span>
+                  </div>
+                )}
               </div>
-            ))}
+            )}
           </div>
         )}
       </div>
@@ -459,6 +500,274 @@ function SampleCard({ sample }: { sample: Sample }) {
   );
 }
 
+function AddMaterialModal({
+  productId, existingBom, onClose, onSaved,
+}: {
+  productId: string;
+  existingBom: BomItem[];
+  onClose: () => void;
+  onSaved: (bom: BomItem[]) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({ material: "", supplier: "", unit_cost_usd: "", notes: "" });
+  const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors";
+
+  async function handleSave() {
+    if (!form.material.trim()) { setError("Material name is required"); return; }
+    setSaving(true);
+    const newItem: BomItem = {
+      id: "bom-" + Date.now(),
+      material: form.material.trim(),
+      supplier: form.supplier.trim(),
+      unit_cost_usd: parseFloat(form.unit_cost_usd) || 0,
+      notes: form.notes.trim(),
+    };
+    const updated = [...existingBom, newItem];
+    const { error: err } = await supabase.from("products").update({ bom_data: updated }).eq("id", productId);
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    onSaved(updated);
+    onClose();
+  }
+
+  return (
+    <>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose} className="fixed inset-0 z-40 bg-black/30" />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      >
+        <div className="relative z-10 w-full max-w-md rounded-2xl bg-[var(--sa-window)] border border-[var(--sa-border)] shadow-2xl">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--sa-border)]">
+            <h2 className="text-[14px] font-semibold text-[var(--sa-text-primary)]">Add Material</h2>
+            <button onClick={onClose} className="rounded-lg p-1 hover:bg-[var(--sa-hover)]"><X size={15} className="text-[var(--sa-text-tertiary)]" /></button>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            <div><label className="block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">Material *</label>
+              <input className={inputCls} value={form.material} onChange={(e) => setForm((f) => ({ ...f, material: e.target.value }))} autoFocus /></div>
+            <div><label className="block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">Supplier</label>
+              <input className={inputCls} value={form.supplier} onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))} /></div>
+            <div><label className="block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">Unit cost (USD)</label>
+              <input className={inputCls} type="number" step="0.01" value={form.unit_cost_usd} onChange={(e) => setForm((f) => ({ ...f, unit_cost_usd: e.target.value }))} placeholder="0.00" /></div>
+            <div><label className="block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">Notes</label>
+              <input className={inputCls} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} /></div>
+            {error && <p className="text-[12px] text-red-500">{error}</p>}
+          </div>
+          <div className="flex gap-2 px-5 py-4 border-t border-[var(--sa-border)]">
+            <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--sa-border)] py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]">Cancel</button>
+            <button onClick={handleSave} disabled={saving} className="flex-1 rounded-lg bg-[var(--sa-accent)] py-2 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-60">
+              {saving ? "Saving…" : "Add Material"}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
+function AddSampleModal({
+  productId, nextRound, onClose, onSaved,
+}: {
+  productId: string;
+  nextRound: number;
+  onClose: () => void;
+  onSaved: (sample: Sample) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [images, setImages] = useState<string[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [form, setForm] = useState({
+    courier: "",
+    tracking_number: "",
+    sent_date: new Date().toISOString().slice(0, 10),
+    feedback: "",
+  });
+  const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors";
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    setUploading(true);
+    const newUrls: string[] = [];
+    for (const file of files) {
+      const path = `${productId}/samples/${Date.now()}-${file.name}`;
+      const { error: uploadErr } = await supabase.storage.from("product-media").upload(path, file);
+      if (!uploadErr) {
+        const { data } = supabase.storage.from("product-media").getPublicUrl(path);
+        newUrls.push(data.publicUrl);
+      }
+    }
+    setImages((prev) => [...prev, ...newUrls]);
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    const newSample: any = {
+      id: "sample-" + Date.now(),
+      product_id: productId,
+      round: nextRound,
+      status: "sent",
+      courier: form.courier.trim(),
+      tracking_number: form.tracking_number.trim(),
+      sent_date: form.sent_date,
+      received_date: null,
+      feedback: form.feedback.trim(),
+      approved_at: null,
+      images,
+    };
+    const { error: err } = await supabase.from("samples").insert(newSample);
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    onSaved(newSample as Sample);
+    onClose();
+  }
+
+  return (
+    <>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose} className="fixed inset-0 z-40 bg-black/30" />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      >
+        <div className="relative z-10 w-full max-w-md rounded-2xl bg-[var(--sa-window)] border border-[var(--sa-border)] shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--sa-border)]">
+            <h2 className="text-[14px] font-semibold text-[var(--sa-text-primary)]">Add Sample — Round {nextRound}</h2>
+            <button onClick={onClose} className="rounded-lg p-1 hover:bg-[var(--sa-hover)]"><X size={15} className="text-[var(--sa-text-tertiary)]" /></button>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">Courier</label>
+                <input className={inputCls} value={form.courier} onChange={(e) => setForm((f) => ({ ...f, courier: e.target.value }))} placeholder="e.g. DHL Express" /></div>
+              <div><label className="block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">Tracking #</label>
+                <input className={inputCls} value={form.tracking_number} onChange={(e) => setForm((f) => ({ ...f, tracking_number: e.target.value }))} /></div>
+            </div>
+            <div><label className="block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">Sent date</label>
+              <input className={inputCls} type="date" value={form.sent_date} onChange={(e) => setForm((f) => ({ ...f, sent_date: e.target.value }))} /></div>
+            <div><label className="block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">Notes / feedback</label>
+              <textarea className={inputCls + " resize-none"} rows={3} value={form.feedback} onChange={(e) => setForm((f) => ({ ...f, feedback: e.target.value }))} /></div>
+            <div>
+              <label className="block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Photos / Video</label>
+              {images.length > 0 && (
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {images.map((url, i) => (
+                    <div key={i} className="group relative aspect-square rounded-lg overflow-hidden border border-[var(--sa-border)]">
+                      <img src={url} alt="" className="h-full w-full object-cover" />
+                      <button onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
+                        className="absolute top-1 right-1 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white">
+                        <X size={10} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <input ref={fileRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleUpload} />
+              <button onClick={() => fileRef.current?.click()} disabled={uploading}
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] disabled:opacity-60">
+                <Upload size={12} /> {uploading ? "Uploading…" : "Upload photos/video"}
+              </button>
+            </div>
+            {error && <p className="text-[12px] text-red-500">{error}</p>}
+          </div>
+          <div className="flex gap-2 px-5 py-4 border-t border-[var(--sa-border)]">
+            <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--sa-border)] py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]">Cancel</button>
+            <button onClick={handleSave} disabled={saving} className="flex-1 rounded-lg bg-[var(--sa-accent)] py-2 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-60">
+              {saving ? "Saving…" : "Add Sample"}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
+function DocumentsSection({ productId, initialDocs }: { productId: string; initialDocs: DocumentItem[] }) {
+  const [docs, setDocs] = useState<DocumentItem[]>(initialDocs ?? []);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    setUploading(true);
+    const newDocs: DocumentItem[] = [];
+    for (const file of files) {
+      const path = `${productId}/documents/${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage.from("product-media").upload(path, file);
+      if (!error) {
+        const { data } = supabase.storage.from("product-media").getPublicUrl(path);
+        newDocs.push({
+          id: "doc-" + Date.now(),
+          filename: file.name,
+          url: data.publicUrl,
+          size_kb: Math.round(file.size / 1024),
+          uploaded_at: new Date().toISOString(),
+          visible_to_client: true,
+        });
+      }
+    }
+    if (newDocs.length) {
+      const updated = [...docs, ...newDocs];
+      await supabase.from("products").update({ documents: updated }).eq("id", productId);
+      setDocs(updated);
+    }
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function removeDoc(id: string) {
+    const updated = docs.filter((d) => d.id !== id);
+    await supabase.from("products").update({ documents: updated }).eq("id", productId);
+    setDocs(updated);
+  }
+
+  function formatSize(kb: number) {
+    return kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`;
+  }
+
+  return (
+    <div className="space-y-2">
+      {docs.length > 0 && (
+        <div className="space-y-1">
+          {docs.map((doc) => (
+            <div key={doc.id} className="flex items-center gap-3 rounded-lg border border-[var(--sa-border)] px-3 py-2 hover:bg-[var(--sa-hover)] group transition-colors">
+              <FileText size={14} className="shrink-0 text-[var(--sa-text-tertiary)]" />
+              <div className="flex-1 min-w-0">
+                <a href={doc.url} target="_blank" rel="noreferrer" className="text-[13px] text-[var(--sa-text-primary)] truncate block hover:text-[var(--sa-accent)] transition-colors">
+                  {doc.filename}
+                </a>
+                <p className="text-[11px] text-[var(--sa-text-tertiary)]">{formatSize(doc.size_kb)} · {new Date(doc.uploaded_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+              </div>
+              <span className="text-[10px] text-[var(--sa-text-tertiary)] shrink-0">{doc.visible_to_client ? "Client visible" : "Internal"}</span>
+              <button onClick={() => removeDoc(doc.id)}
+                className="hidden group-hover:flex h-6 w-6 items-center justify-center rounded-md hover:bg-red-50 hover:text-[var(--sa-danger)] transition-colors text-[var(--sa-text-tertiary)]">
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {docs.length === 0 && (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--sa-border)] py-6">
+          <FileText size={20} className="text-[var(--sa-text-tertiary)]" strokeWidth={1.5} />
+          <p className="text-[12px] text-[var(--sa-text-tertiary)]">No documents yet</p>
+        </div>
+      )}
+      <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,image/*" multiple className="hidden" onChange={handleUpload} />
+      <button onClick={() => fileRef.current?.click()} disabled={uploading}
+        className="flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors disabled:opacity-60">
+        <Upload size={12} /> {uploading ? "Uploading…" : "Upload document"}
+      </button>
+    </div>
+  );
+}
+
 export function ProductDetailClient({
   product: initialProduct,
   factory: initialFactory,
@@ -479,6 +788,11 @@ export function ProductDetailClient({
   const [localUpdates, setLocalUpdates] = useState(updates);
   const [newUpdate, setNewUpdate] = useState("");
   const [showAddTask, setShowAddTask] = useState(false);
+  const [localSamples, setLocalSamples] = useState(samples);
+  const [showAddSample, setShowAddSample] = useState(false);
+  const [localBom, setLocalBom] = useState<BomItem[]>(() => (product as any).bom_data ?? product.bom ?? []);
+  const [showAddMaterial, setShowAddMaterial] = useState(false);
+  const [localDocs, setLocalDocs] = useState<DocumentItem[]>(() => (product as any).documents ?? []);
 
   async function handleDelete() {
     setDeleting(true);
@@ -636,8 +950,8 @@ export function ProductDetailClient({
                       ? "text-[var(--sa-text-tertiary)]"
                       : variancePct != null && Math.abs(variancePct) > 5
                       ? variancePct > 0
-                        ? "text-[var(--sa-danger)]"
-                        : "text-[var(--sa-success)]"
+                        ? "text-[var(--sa-success)]"
+                        : "text-[var(--sa-danger)]"
                       : "text-[var(--sa-text-primary)]"
                   )}
                 >
@@ -649,9 +963,9 @@ export function ProductDetailClient({
                   className={cn(
                     "rounded-full px-2 py-0.5 text-[11px] font-medium",
                     variancePct > 5
-                      ? "bg-red-50 text-[var(--sa-danger)] dark:bg-red-500/15"
-                      : variancePct < -5
                       ? "bg-green-50 text-[var(--sa-success)] dark:bg-green-500/15"
+                      : variancePct < -5
+                      ? "bg-red-50 text-[var(--sa-danger)] dark:bg-red-500/15"
                       : "bg-[var(--sa-hover)] text-[var(--sa-text-secondary)]"
                   )}
                 >
@@ -668,7 +982,7 @@ export function ProductDetailClient({
 
           {/* BOM */}
           <CollapsibleSection title="Bill of Materials">
-            {(product.bom ?? []).length === 0 ? (
+            {localBom.length === 0 ? (
               <p className="text-[13px] text-[var(--sa-text-tertiary)]">No materials added yet.</p>
             ) : (
               <table className="w-full text-[12px]">
@@ -682,7 +996,7 @@ export function ProductDetailClient({
                   </tr>
                 </thead>
                 <tbody>
-                  {(product.bom ?? []).map((item) => (
+                  {localBom.map((item) => (
                     <tr key={item.id} className="border-b border-[var(--sa-border)] last:border-0">
                       <td className="py-2 pr-4 font-medium text-[var(--sa-text-primary)]">{item.material}</td>
                       <td className="py-2 pr-4 text-[var(--sa-text-secondary)]">{item.supplier}</td>
@@ -693,7 +1007,7 @@ export function ProductDetailClient({
                 </tbody>
               </table>
             )}
-            <button className="mt-3 flex items-center gap-1.5 text-[12px] text-[var(--sa-accent)] hover:opacity-80 transition-opacity">
+            <button onClick={() => setShowAddMaterial(true)} className="mt-3 flex items-center gap-1.5 text-[12px] text-[var(--sa-accent)] hover:opacity-80 transition-opacity">
               <Plus size={12} strokeWidth={2.5} /> Add material
             </button>
           </CollapsibleSection>
@@ -715,14 +1029,17 @@ export function ProductDetailClient({
           )}
 
           {/* Samples */}
-          <CollapsibleSection title={`Samples (${samples.length})`}>
-            {samples.length === 0 ? (
+          <CollapsibleSection title={`Samples (${localSamples.length})`}>
+            {localSamples.length === 0 ? (
               <p className="text-[13px] text-[var(--sa-text-tertiary)]">No samples yet.</p>
             ) : (
               <div className="space-y-3">
-                {samples.map((s) => <SampleCard key={s.id} sample={s} />)}
+                {localSamples.map((s) => <SampleCard key={s.id} sample={s} />)}
               </div>
             )}
+            <button onClick={() => setShowAddSample(true)} className="mt-3 flex items-center gap-1.5 text-[12px] text-[var(--sa-accent)] hover:opacity-80 transition-opacity">
+              <Plus size={12} strokeWidth={2.5} /> Add sample
+            </button>
           </CollapsibleSection>
 
           {/* Costs */}
@@ -766,13 +1083,60 @@ export function ProductDetailClient({
           )}
 
           {/* Documents */}
-          <CollapsibleSection title="Documents">
-            <div className="rounded-xl border-2 border-dashed border-[var(--sa-border-strong)] p-6 text-center">
-              <Upload size={20} className="mx-auto mb-2 text-[var(--sa-text-tertiary)]" strokeWidth={1.5} />
-              <p className="text-[13px] text-[var(--sa-text-secondary)]">Drop files here to upload</p>
-              <p className="text-[11px] text-[var(--sa-text-tertiary)]">PDF, images, spreadsheets</p>
-            </div>
+          <CollapsibleSection title="Documents (Tech packs, Specs)">
+            <DocumentsSection productId={product.id} initialDocs={localDocs} />
           </CollapsibleSection>
+
+          {/* Profit calculation */}
+          {product.quoted_cost_usd != null && (
+            <CollapsibleSection title="Profit Calculation">
+              {(() => {
+                const unitMargin = product.quoted_cost_usd - product.target_cost_usd;
+                const marginPct = (unitMargin / product.target_cost_usd) * 100;
+                const qty = product.order_qty ?? product.moq;
+                const totalMargin = unitMargin * qty;
+                const isProfit = unitMargin >= 0;
+                return (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      {[
+                        { label: "Target cost", value: `$${product.target_cost_usd.toFixed(2)}`, neutral: true },
+                        { label: "Quoted / sell", value: `$${product.quoted_cost_usd.toFixed(2)}`, neutral: true },
+                        {
+                          label: "Unit margin",
+                          value: `${unitMargin >= 0 ? "+" : ""}$${unitMargin.toFixed(2)}`,
+                          positive: isProfit,
+                        },
+                        {
+                          label: `Total (×${qty.toLocaleString()})`,
+                          value: `${totalMargin >= 0 ? "+" : ""}$${totalMargin.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
+                          positive: isProfit,
+                        },
+                      ].map(({ label, value, neutral, positive }) => (
+                        <div key={label} className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-bg)] p-3">
+                          <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{label}</p>
+                          <p className={cn(
+                            "mt-0.5 font-mono text-[15px] font-semibold",
+                            neutral ? "text-[var(--sa-text-primary)]"
+                            : positive ? "text-[var(--sa-success)]"
+                            : "text-[var(--sa-danger)]"
+                          )}>{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2 rounded-lg bg-[var(--sa-hover)] px-3 py-2">
+                      {isProfit
+                        ? <TrendingUp size={13} className="text-[var(--sa-success)] shrink-0" />
+                        : <TrendingDown size={13} className="text-[var(--sa-danger)] shrink-0" />}
+                      <span className={cn("text-[13px] font-semibold", isProfit ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]")}>
+                        {isProfit ? "In profit" : "Below target"} · {Math.abs(marginPct).toFixed(1)}% margin
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </CollapsibleSection>
+          )}
         </div>
 
         {/* Right column (30%) — sticky */}
@@ -861,6 +1225,22 @@ export function ProductDetailClient({
       </div>
 
       <AnimatePresence>
+        {showAddMaterial && (
+          <AddMaterialModal
+            productId={product.id}
+            existingBom={localBom}
+            onClose={() => setShowAddMaterial(false)}
+            onSaved={(bom) => setLocalBom(bom)}
+          />
+        )}
+        {showAddSample && (
+          <AddSampleModal
+            productId={product.id}
+            nextRound={localSamples.length + 1}
+            onClose={() => setShowAddSample(false)}
+            onSaved={(s) => setLocalSamples((prev) => [...prev, s])}
+          />
+        )}
         {showAddTask && project && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}

@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { notFound } from "next/navigation";
 import {
   getProduct, getFactory, getMilestones, getUpdates, getSamples, getCosts,
