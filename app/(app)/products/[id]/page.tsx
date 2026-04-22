@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import {
   getProduct, getFactory, getMilestones, getUpdates, getSamples, getCosts,
-  getProject, getClient
+  getProject, getClient, getFactories,
 } from "@/lib/data";
 import { ProductDetailClient } from "./ProductDetailClient";
 
@@ -15,13 +15,14 @@ export default async function ProductDetailPage({ params }: Props) {
   const product = await getProduct(id);
   if (!product) notFound();
 
-  const [factory, milestones, updates, samples, costs, project] = await Promise.all([
+  const [factory, milestones, updates, samples, costs, project, factories] = await Promise.all([
     getFactory(product.factory_id ?? ""),
     getMilestones(id),
     getUpdates(id),
     getSamples(id),
     getCosts({ productId: id }),
     getProject(product.project_id),
+    getFactories(),
   ]);
 
   const client = project
@@ -38,6 +39,7 @@ export default async function ProductDetailPage({ params }: Props) {
       costs={costs}
       project={project}
       client={client}
+      factories={factories}
     />
   );
 }

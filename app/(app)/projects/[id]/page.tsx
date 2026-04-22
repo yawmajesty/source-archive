@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { getProject, getProducts, getClient, getFactories } from "@/lib/data";
-import { db } from "@/lib/mock-data";
 import { ProjectsPageClient } from "./ProjectsPageClient";
 
 interface Props {
@@ -17,7 +16,7 @@ export default async function ProjectPage({ params }: Props) {
 
   if (!project) notFound();
 
-  const client = db.clients.find((c) => c.id === project.client_id) ?? null;
+  const client = await getClient(project.client_id);
 
   // Attach factory info to products
   const productsWithFactory = products.map((p) => ({
@@ -30,6 +29,7 @@ export default async function ProjectPage({ params }: Props) {
       project={project}
       client={client}
       productsWithFactory={productsWithFactory}
+      factories={factories}
     />
   );
 }
