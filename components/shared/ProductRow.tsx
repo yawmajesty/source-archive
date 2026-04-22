@@ -99,9 +99,6 @@ export function ProductRow({ product, factory, selected, onClick, onDoubleClick 
           {product.name}
         </span>
 
-        {/* Stage dot */}
-        <StageDot stage={product.stage} />
-
         {/* Factory */}
         <span className="hidden w-32 shrink-0 truncate text-right text-[11px] text-[var(--sa-text-tertiary)] xl:block">
           {factory?.name ?? "—"}
@@ -118,6 +115,9 @@ export function ProductRow({ product, factory, selected, onClick, onDoubleClick 
             ? `$${product.quoted_cost_usd.toFixed(2)}`
             : `~$${product.target_cost_usd.toFixed(2)}`}
         </span>
+
+        {/* Stage dot — far right */}
+        <StageDot stage={product.stage} />
       </div>
     </ContextMenu>
   );

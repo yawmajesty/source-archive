@@ -1,12 +1,36 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send } from "lucide-react";
+import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { Client, Contract, PortalFile } from "@/lib/data";
 import type { Stage } from "@/lib/mock-data";
 import type { PortalProject, PortalProduct } from "./page";
+
+function usePortalTheme() {
+  const [dark, setDark] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("sa-theme");
+    const isDark = saved === "dark" || document.documentElement.classList.contains("dark");
+    setDark(isDark);
+  }, []);
+
+  function toggle() {
+    const next = !dark;
+    setDark(next);
+    if (next) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("sa-theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("sa-theme", "light");
+    }
+  }
+
+  return { dark, toggle };
+}
 
 // ── Types ────────────────────────────────────────────────────
 type Tab = "overview" | "projects" | "files" | "contracts";
@@ -65,13 +89,13 @@ function fmtSize(kb: number) {
 // ── Locked gate ──────────────────────────────────────────────
 function PortalGate({ client }: { client: Client }) {
   return (
-    <div className="min-h-screen bg-[#F5F5F7] flex flex-col" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" }}>
-      <header className="flex items-center justify-between px-8 py-5 border-b border-black/[0.08] bg-white">
+    <div className="min-h-screen flex flex-col" style={{ background: "var(--portal-bg)", fontFamily: "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" }}>
+      <header className="flex items-center justify-between px-8 py-5" style={{ borderBottom: "1px solid var(--portal-border)", background: "var(--portal-nav-bg)" }}>
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#1A1A2E] text-white text-[13px] font-bold">K</div>
-          <span className="text-[15px] font-semibold text-[#1D1D1F]">Source[Archive]</span>
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg text-white text-[13px] font-bold" style={{ background: "var(--portal-brand)" }}>K</div>
+          <span className="text-[15px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Source[Archive]</span>
         </div>
-        <span className="text-[13px] text-[#6E6E73]">{client.name}</span>
+        <span className="text-[13px]" style={{ color: "var(--portal-text-secondary)" }}>{client.name}</span>
       </header>
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-20">
         <motion.div
@@ -80,14 +104,14 @@ function PortalGate({ client }: { client: Client }) {
           transition={{ duration: 0.5 }}
           className="flex flex-col items-center gap-6 text-center max-w-md"
         >
-          <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-white border border-black/[0.08]">
-            <Clock size={36} strokeWidth={1.2} className="text-[#AEAEB2]" />
+          <div className="flex h-20 w-20 items-center justify-center rounded-3xl" style={{ background: "var(--portal-surface)", border: "1px solid var(--portal-border)" }}>
+            <Clock size={36} strokeWidth={1.2} style={{ color: "var(--portal-text-muted)" }} />
           </div>
           <div>
-            <h1 className="text-[28px] font-semibold text-[#1D1D1F] tracking-tight">Your portal is being prepared</h1>
-            <p className="mt-2 text-[16px] text-[#6E6E73] leading-relaxed">We&apos;ll notify you when your products are ready to review.</p>
+            <h1 className="text-[28px] font-semibold tracking-tight" style={{ color: "var(--portal-text-primary)" }}>Your portal is being prepared</h1>
+            <p className="mt-2 text-[16px] leading-relaxed" style={{ color: "var(--portal-text-secondary)" }}>We&apos;ll notify you when your products are ready to review.</p>
           </div>
-          <p className="text-[13px] text-[#AEAEB2]">Questions? Reach out to your account manager.</p>
+          <p className="text-[13px]" style={{ color: "var(--portal-text-muted)" }}>Questions? Reach out to your account manager.</p>
         </motion.div>
       </div>
     </div>
@@ -95,7 +119,9 @@ function PortalGate({ client }: { client: Client }) {
 }
 
 // ── NavBar ───────────────────────────────────────────────────
-function PortalNavBar({ client, tab, setTab }: { client: Client; tab: Tab; setTab: (t: Tab) => void }) {
+function PortalNavBar({ client, tab, setTab, dark, onToggleTheme }: {
+  client: Client; tab: Tab; setTab: (t: Tab) => void; dark: boolean; onToggleTheme: () => void;
+}) {
   const TABS: { id: Tab; label: string }[] = [
     { id: "overview",  label: "Overview" },
     { id: "projects",  label: "Projects" },
@@ -103,35 +129,55 @@ function PortalNavBar({ client, tab, setTab }: { client: Client; tab: Tab; setTa
     { id: "contracts", label: "Contracts" },
   ];
   return (
-    <header className="sticky top-0 z-10 border-b border-black/[0.08] bg-white">
+    <header className="sticky top-0 z-10" style={{ borderBottom: "1px solid var(--portal-border)", background: "var(--portal-nav-bg)" }}>
       <div className="flex items-center justify-between px-4 sm:px-8 py-3 sm:py-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-[#1A1A2E] text-white text-[13px] sm:text-[14px] font-bold select-none">
+          <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full text-white text-[13px] sm:text-[14px] font-bold select-none" style={{ background: "var(--portal-brand)" }}>
             {client.logo_initial}
           </div>
           <div>
-            <p className="text-[14px] sm:text-[15px] font-medium text-[#1D1D1F] leading-tight">{client.name}</p>
-            <p className="text-[11px] sm:text-[12px] text-[#8E8E93] leading-tight">Client portal</p>
+            <p className="text-[14px] sm:text-[15px] font-medium leading-tight" style={{ color: "var(--portal-text-primary)" }}>{client.name}</p>
+            <p className="text-[11px] sm:text-[12px] leading-tight" style={{ color: "var(--portal-text-tertiary)" }}>Client portal</p>
           </div>
         </div>
-        {/* Desktop tabs */}
-        <nav className="hidden sm:flex items-center gap-1">
-          {TABS.map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className="rounded-full px-4 py-1.5 text-[12px] transition-colors"
-              style={tab === t.id ? { backgroundColor: "#1A1A2E", color: "#FFFFFF" } : { backgroundColor: "transparent", color: "#6E6E73", border: "0.5px solid #D1D1D6" }}
-            >{t.label}</button>
-          ))}
-        </nav>
+        <div className="hidden sm:flex items-center gap-2">
+          {/* Desktop tabs */}
+          <nav className="flex items-center gap-1">
+            {TABS.map((t) => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className="rounded-full px-4 py-1.5 text-[12px] transition-colors"
+                style={tab === t.id
+                  ? { backgroundColor: "var(--portal-brand)", color: "#FFFFFF" }
+                  : { backgroundColor: "transparent", color: "var(--portal-text-secondary)", border: "0.5px solid var(--portal-border)" }}
+              >{t.label}</button>
+            ))}
+          </nav>
+          {/* Theme toggle */}
+          <button onClick={onToggleTheme}
+            className="flex h-8 w-8 items-center justify-center rounded-full transition-colors"
+            style={{ background: "var(--portal-hover)", color: "var(--portal-text-secondary)" }}
+            title={dark ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {dark ? <Sun size={14} /> : <Moon size={14} />}
+          </button>
+        </div>
       </div>
       {/* Mobile tabs row */}
       <div className="sm:hidden flex items-center gap-1 px-4 pb-3 overflow-x-auto">
         {TABS.map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className="rounded-full px-4 py-1.5 text-[12px] whitespace-nowrap transition-colors shrink-0"
-            style={tab === t.id ? { backgroundColor: "#1A1A2E", color: "#FFFFFF" } : { backgroundColor: "transparent", color: "#6E6E73", border: "0.5px solid #D1D1D6" }}
+            style={tab === t.id
+              ? { backgroundColor: "var(--portal-brand)", color: "#FFFFFF" }
+              : { backgroundColor: "transparent", color: "var(--portal-text-secondary)", border: "0.5px solid var(--portal-border)" }}
           >{t.label}</button>
         ))}
+        <button onClick={onToggleTheme}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full ml-auto"
+          style={{ background: "var(--portal-hover)", color: "var(--portal-text-secondary)" }}
+        >
+          {dark ? <Sun size={14} /> : <Moon size={14} />}
+        </button>
       </div>
     </header>
   );
@@ -165,10 +211,10 @@ function StatsRow({ projects, files }: { projects: PortalProject[]; files: Porta
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
       {cards.map((c) => (
-        <div key={c.label} className="rounded-lg bg-white border border-[#E0E0E0] p-4">
-          <p className="text-[11px] text-[#8E8E93] mb-1">{c.label}</p>
-          <p className="text-[20px] font-medium text-[#1D1D1F] leading-tight">{c.value}</p>
-          <p className="text-[11px] text-[#8E8E93] mt-0.5">{c.sub}</p>
+        <div key={c.label} className="rounded-lg p-4" style={{ background: "var(--portal-surface)", border: "1px solid var(--portal-border)" }}>
+          <p className="text-[11px] mb-1" style={{ color: "var(--portal-text-tertiary)" }}>{c.label}</p>
+          <p className="text-[20px] font-medium leading-tight" style={{ color: "var(--portal-text-primary)" }}>{c.value}</p>
+          <p className="text-[11px] mt-0.5" style={{ color: "var(--portal-text-tertiary)" }}>{c.sub}</p>
         </div>
       ))}
     </div>
@@ -243,40 +289,42 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
         animate={{ x: 0 }}
         exit={{ x: "100%" }}
         transition={{ type: "spring", damping: 30, stiffness: 300 }}
-        className="w-full max-w-lg bg-white flex flex-col h-full overflow-hidden shadow-2xl"
+        className="w-full max-w-lg flex flex-col h-full overflow-hidden shadow-2xl"
+        style={{ background: "var(--portal-surface)" }}
       >
         {/* Drawer header */}
-        <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-[#F0F0F0]">
+        <div className="flex items-start justify-between px-6 pt-6 pb-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
           <div>
-            <h2 className="text-[18px] font-semibold text-[#1D1D1F]">{product.name}</h2>
-            <p className="text-[13px] text-[#8E8E93] mt-0.5">{product.category}</p>
+            <h2 className="text-[18px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>{product.name}</h2>
+            <p className="text-[13px] mt-0.5" style={{ color: "var(--portal-text-secondary)" }}>{product.category}</p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-[#F5F5F7] text-[#8E8E93] transition-colors text-[18px] leading-none">✕</button>
+          <button onClick={onClose} className="p-2 rounded-lg transition-colors text-[18px] leading-none" style={{ color: "var(--portal-text-secondary)" }}>✕</button>
         </div>
 
         <div className="flex-1 overflow-y-auto">
           {/* Stage */}
-          <div className="px-6 py-4 border-b border-[#F0F0F0]">
+          <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
             <StagePill stage={product.stage} />
             <div className="mt-3 flex gap-0.5 h-1.5">
               {(["brief","sourcing","sampling","approved","production","qc","shipped"] as Stage[]).map((s, i) => {
                 const idx = STAGE_ORDER.indexOf(product.stage);
                 return (
                   <div key={s} className="flex-1 rounded-sm first:rounded-l last:rounded-r"
-                    style={{ backgroundColor: i < idx ? "#C8963C" : i === idx ? "transparent" : "#E5E5EA", border: i === idx ? "1.5px solid #C8963C" : undefined }} />
+                    style={{ backgroundColor: i < idx ? "#C8963C" : i === idx ? "transparent" : "var(--portal-border)", border: i === idx ? "1.5px solid #C8963C" : undefined }} />
                 );
               })}
             </div>
           </div>
 
           {/* Images / media */}
-          <div className="px-6 py-4 border-b border-[#F0F0F0]">
+          <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#AEAEB2]">Photos</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--portal-text-muted)" }}>Photos</p>
               <button
                 onClick={() => fileRef.current?.click()}
                 disabled={uploadingPhoto}
-                className="flex items-center gap-1 text-[11px] text-[#1A1A2E] border border-[#E0E0E0] rounded-lg px-2.5 py-1 hover:bg-[#F5F5F7] transition-colors disabled:opacity-50"
+                className="flex items-center gap-1 text-[11px] rounded-lg px-2.5 py-1 transition-colors disabled:opacity-50"
+                style={{ color: "var(--portal-text-primary)", border: "1px solid var(--portal-border)" }}
               >
                 <Upload size={11} /> {uploadingPhoto ? "Uploading…" : "Add photo"}
               </button>
@@ -285,7 +333,7 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
             {images.length > 0 ? (
               <div className="grid grid-cols-3 gap-2">
                 {images.map((url) => (
-                  <div key={url} className="aspect-square rounded-xl overflow-hidden bg-[#F7F7F7] border border-[#E0E0E0]">
+                  <div key={url} className="aspect-square rounded-xl overflow-hidden" style={{ background: "var(--portal-surface-raised)", border: "1px solid var(--portal-border)" }}>
                     <img src={url} alt="" className="h-full w-full object-cover" />
                   </div>
                 ))}
@@ -293,17 +341,18 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
             ) : (
               <button
                 onClick={() => fileRef.current?.click()}
-                className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-[#D1D1D6] bg-[#F7F7F7] py-6"
+                className="flex w-full flex-col items-center gap-2 rounded-xl border-dashed py-6"
+                style={{ border: "1px dashed var(--portal-border)", background: "var(--portal-surface-raised)" }}
               >
-                <Upload size={18} strokeWidth={1.5} className="text-[#AEAEB2]" />
-                <p className="text-[11px] text-[#AEAEB2]">Upload photos for this product</p>
+                <Upload size={18} strokeWidth={1.5} style={{ color: "var(--portal-text-muted)" }} />
+                <p className="text-[11px]" style={{ color: "var(--portal-text-muted)" }}>Upload photos for this product</p>
               </button>
             )}
           </div>
 
           {/* Product info */}
-          <div className="px-6 py-4 border-b border-[#F0F0F0]">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#AEAEB2] mb-3">Product details</p>
+          <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
+            <p className="text-[11px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--portal-text-muted)" }}>Product details</p>
             <div className="grid grid-cols-2 gap-3">
               {[
                 ["Category", product.category],
@@ -311,18 +360,18 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
                 ["Order qty", product.order_qty ? product.order_qty.toLocaleString() + " units" : "TBC"],
                 ["Unit price", product.quoted_cost_usd ? `$${product.quoted_cost_usd}` : "TBC"],
               ].map(([k, v]) => (
-                <div key={k} className="rounded-lg bg-[#F7F7F7] p-3">
-                  <p className="text-[10px] text-[#AEAEB2] mb-0.5">{k}</p>
-                  <p className="text-[13px] font-medium text-[#1D1D1F]">{v}</p>
+                <div key={k} className="rounded-lg p-3" style={{ background: "var(--portal-surface-raised)" }}>
+                  <p className="text-[10px] mb-0.5" style={{ color: "var(--portal-text-muted)" }}>{k}</p>
+                  <p className="text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>{v}</p>
                 </div>
               ))}
             </div>
             {product.colorways.length > 0 && (
               <div className="mt-3">
-                <p className="text-[10px] text-[#AEAEB2] mb-2">Colourways</p>
+                <p className="text-[10px] mb-2" style={{ color: "var(--portal-text-muted)" }}>Colourways</p>
                 <div className="flex flex-wrap gap-1.5">
                   {product.colorways.map((c) => (
-                    <span key={c} className="rounded-full border border-[#E0E0E0] bg-white px-2.5 py-1 text-[11px] text-[#6E6E73]">{c}</span>
+                    <span key={c} className="rounded-full px-2.5 py-1 text-[11px]" style={{ border: "1px solid var(--portal-border)", color: "var(--portal-text-secondary)", background: "var(--portal-surface)" }}>{c}</span>
                   ))}
                 </div>
               </div>
@@ -331,22 +380,23 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
 
           {/* Milestone timeline */}
           {sorted.length > 0 && (
-            <div className="px-6 py-4 border-b border-[#F0F0F0]">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#AEAEB2] mb-3">Timeline</p>
+            <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--portal-text-muted)" }}>Timeline</p>
               <div className="flex flex-col gap-0">
                 {sorted.map((m, i) => {
                   const done = !!m.completed_at;
                   return (
                     <div key={m.id} className="flex items-start gap-3">
                       <div className="flex flex-col items-center">
-                        <div className={`mt-0.5 h-4 w-4 shrink-0 rounded-full flex items-center justify-center ${done ? "bg-emerald-500" : new Date(m.due_date) < now ? "bg-red-400" : "border-2 border-[#C8963C] bg-white"}`}>
+                        <div className={`mt-0.5 h-4 w-4 shrink-0 rounded-full flex items-center justify-center ${done ? "bg-emerald-500" : new Date(m.due_date) < now ? "bg-red-400" : "border-2 border-[#C8963C]"}`}
+                          style={!done && new Date(m.due_date) >= now ? { background: "var(--portal-surface)" } : {}}>
                           {done && <CheckCircle2 size={10} className="text-white" />}
                         </div>
-                        {i < sorted.length - 1 && <div className="w-px flex-1 min-h-[20px] bg-[#E5E5EA] mt-0.5" />}
+                        {i < sorted.length - 1 && <div className="w-px flex-1 min-h-[20px] mt-0.5" style={{ background: "var(--portal-border)" }} />}
                       </div>
                       <div className="pb-4">
-                        <p className={`text-[12px] font-medium ${done ? "text-[#AEAEB2] line-through" : "text-[#1D1D1F]"}`}>{m.title}</p>
-                        <p className="text-[11px] text-[#AEAEB2] mt-0.5">
+                        <p className={`text-[12px] font-medium ${done ? "line-through" : ""}`} style={{ color: done ? "var(--portal-text-muted)" : "var(--portal-text-primary)" }}>{m.title}</p>
+                        <p className="text-[11px] mt-0.5" style={{ color: "var(--portal-text-muted)" }}>
                           {new Date(m.due_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                         </p>
                       </div>
@@ -359,16 +409,16 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
 
           {/* Files */}
           {productFiles.length > 0 && (
-            <div className="px-6 py-4 border-b border-[#F0F0F0]">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#AEAEB2] mb-3">Files & documents</p>
+            <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--portal-text-muted)" }}>Files & documents</p>
               {productFiles.map((f) => (
-                <div key={f.id} className="flex items-center gap-2.5 py-2 border-b border-[#F5F5F7] last:border-0">
-                  <FileText size={13} className="text-[#AEAEB2] shrink-0" />
+                <div key={f.id} className="flex items-center gap-2.5 py-2 last:border-0" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
+                  <FileText size={13} className="shrink-0" style={{ color: "var(--portal-text-muted)" }} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-medium text-[#1D1D1F] truncate">{f.filename}</p>
-                    <p className="text-[11px] text-[#AEAEB2]">{f.source === "agency" ? "Shared by agency" : "Your upload"}</p>
+                    <p className="text-[12px] font-medium truncate" style={{ color: "var(--portal-text-primary)" }}>{f.filename}</p>
+                    <p className="text-[11px]" style={{ color: "var(--portal-text-muted)" }}>{f.source === "agency" ? "Shared by agency" : "Your upload"}</p>
                   </div>
-                  <button className="shrink-0 text-[11px] text-[#0066CC]">Download</button>
+                  <button className="shrink-0 text-[11px]" style={{ color: "#0066CC" }}>Download</button>
                 </div>
               ))}
             </div>
@@ -376,20 +426,21 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
 
           {/* Feedback & updates */}
           <div className="px-6 py-4">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#AEAEB2] mb-3">Updates & Feedback</p>
-            {/* Leave feedback */}
+            <p className="text-[11px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--portal-text-muted)" }}>Updates & Feedback</p>
             <div className="flex gap-2 mb-4">
               <input
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submitFeedback()}
                 placeholder="Leave feedback or a comment…"
-                className="flex-1 rounded-xl border border-[#E0E0E0] bg-[#F7F7F7] px-3 py-2 text-[12px] text-[#1D1D1F] placeholder:text-[#AEAEB2] outline-none focus:border-[#1A1A2E] transition-colors"
+                className="flex-1 rounded-xl px-3 py-2 text-[12px] outline-none transition-colors"
+                style={{ border: "1px solid var(--portal-border)", background: "var(--portal-input-bg)", color: "var(--portal-text-primary)" }}
               />
               <button
                 onClick={submitFeedback}
                 disabled={!feedback.trim() || sendingFeedback}
-                className="flex items-center justify-center h-9 w-9 rounded-xl bg-[#1A1A2E] text-white hover:opacity-90 disabled:opacity-30 transition-opacity shrink-0"
+                className="flex items-center justify-center h-9 w-9 rounded-xl text-white hover:opacity-90 disabled:opacity-30 transition-opacity shrink-0"
+                style={{ background: "var(--portal-brand)" }}
               >
                 <Send size={13} />
               </button>
@@ -397,30 +448,30 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
             {updates.length > 0 ? (
               <div className="flex flex-col gap-3">
                 {updates.map((u) => {
-                  const isRecent = (now.getTime() - new Date(u.created_at).getTime()) < 48 * 3600000;
                   const isClientMessage = u.author === client.name;
                   return (
                     <div key={u.id} className="flex items-start gap-2.5">
-                      <div className={`mt-1 h-5 w-5 shrink-0 rounded-full flex items-center justify-center text-[8px] font-bold text-white ${isClientMessage ? "bg-[#C8963C]" : "bg-[#1A1A2E]"}`}>
+                      <div className={`mt-1 h-5 w-5 shrink-0 rounded-full flex items-center justify-center text-[8px] font-bold text-white`}
+                        style={{ background: isClientMessage ? "#C8963C" : "var(--portal-brand)" }}>
                         {u.author_initials}
                       </div>
                       <div>
-                        <p className="text-[12px] text-[#1D1D1F] leading-relaxed">{u.text}</p>
-                        <p className="mt-0.5 text-[11px] text-[#8E8E93]">{u.author} · {relativeTime(u.created_at)}</p>
+                        <p className="text-[12px] leading-relaxed" style={{ color: "var(--portal-text-primary)" }}>{u.text}</p>
+                        <p className="mt-0.5 text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>{u.author} · {relativeTime(u.created_at)}</p>
                       </div>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <p className="text-[12px] text-[#AEAEB2] text-center py-4">No updates yet. Be the first to leave feedback.</p>
+              <p className="text-[12px] text-center py-4" style={{ color: "var(--portal-text-muted)" }}>No updates yet. Be the first to leave feedback.</p>
             )}
           </div>
         </div>
 
         {/* Sample approval CTA */}
         {product.stage === "sampling" && (
-          <div className="px-6 py-4 border-t border-[#F0F0F0]">
+          <div className="px-6 py-4" style={{ borderTop: "1px solid var(--portal-border-subtle)" }}>
             <button className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#C8963C] py-3 text-[13px] font-semibold text-white hover:opacity-90 transition-opacity">
               <CheckCircle2 size={14} strokeWidth={2.5} />
               Approve Sample
@@ -436,19 +487,20 @@ function ProductCard({ product, onClick }: { product: PortalProduct; onClick: ()
   return (
     <button
       onClick={onClick}
-      className="text-left rounded-xl border border-[#E0E0E0] bg-white overflow-hidden hover:border-[#1A1A2E]/40 hover:shadow-sm transition-all cursor-pointer"
+      className="text-left rounded-xl overflow-hidden hover:shadow-sm transition-all cursor-pointer"
+      style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}
     >
-      <div className="h-20 bg-[#F7F7F7] flex items-center justify-center">
+      <div className="h-20 flex items-center justify-center" style={{ background: "var(--portal-surface-raised)" }}>
         <svg width="32" height="32" viewBox="0 0 32 32" fill="none" opacity={0.25}>
-          <rect x="6" y="3" width="20" height="26" rx="2" stroke="#1D1D1F" strokeWidth="1.5"/>
-          <line x1="10" y1="10" x2="22" y2="10" stroke="#1D1D1F" strokeWidth="1.5"/>
-          <line x1="10" y1="15" x2="22" y2="15" stroke="#1D1D1F" strokeWidth="1.5"/>
-          <line x1="10" y1="20" x2="17" y2="20" stroke="#1D1D1F" strokeWidth="1.5"/>
+          <rect x="6" y="3" width="20" height="26" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+          <line x1="10" y1="10" x2="22" y2="10" stroke="currentColor" strokeWidth="1.5"/>
+          <line x1="10" y1="15" x2="22" y2="15" stroke="currentColor" strokeWidth="1.5"/>
+          <line x1="10" y1="20" x2="17" y2="20" stroke="currentColor" strokeWidth="1.5"/>
         </svg>
       </div>
       <div className="p-3 flex flex-col gap-2">
-        <p className="text-[12px] font-medium text-[#1D1D1F] truncate">{product.name}</p>
-        <p className="text-[11px] text-[#8E8E93]">
+        <p className="text-[12px] font-medium truncate" style={{ color: "var(--portal-text-primary)" }}>{product.name}</p>
+        <p className="text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>
           MOQ {product.moq.toLocaleString()} · {product.quoted_cost_usd ? `$${product.quoted_cost_usd}/unit` : "Price TBC"}
         </p>
         <StagePill stage={product.stage} />
@@ -487,10 +539,10 @@ function UpdatesFeed({ projects }: { projects: PortalProject[] }) {
   const shown = expanded ? all : all.slice(0, 4);
 
   return (
-    <div className="rounded-lg bg-white border border-[#E0E0E0] p-5">
-      <p className="text-[13px] font-medium text-[#1D1D1F] mb-4">Latest updates</p>
+    <div className="rounded-lg p-5" style={{ background: "var(--portal-surface)", border: "1px solid var(--portal-border)" }}>
+      <p className="text-[13px] font-medium mb-4" style={{ color: "var(--portal-text-primary)" }}>Latest updates</p>
       {all.length === 0 ? (
-        <p className="text-[12px] text-[#8E8E93]">No updates yet — your agency will post progress notes here</p>
+        <p className="text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>No updates yet — your agency will post progress notes here</p>
       ) : (
         <>
           <div className="flex flex-col gap-4">
@@ -498,17 +550,17 @@ function UpdatesFeed({ projects }: { projects: PortalProject[] }) {
               const isRecent = (now.getTime() - new Date(u.created_at).getTime()) < 48 * 3600000;
               return (
                 <div key={u.id} className="flex items-start gap-3">
-                  <div className="mt-1.5 h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: isRecent ? "#1D9E75" : "#D3D1C7" }} />
+                  <div className="mt-1.5 h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: isRecent ? "#1D9E75" : "var(--portal-border)" }} />
                   <div>
-                    <p className="text-[12px] text-[#1D1D1F] leading-relaxed">{u.text}</p>
-                    <p className="mt-0.5 text-[11px] text-[#8E8E93]">{u.productName} · {relativeTime(u.created_at)}</p>
+                    <p className="text-[12px] leading-relaxed" style={{ color: "var(--portal-text-primary)" }}>{u.text}</p>
+                    <p className="mt-0.5 text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>{u.productName} · {relativeTime(u.created_at)}</p>
                   </div>
                 </div>
               );
             })}
           </div>
           {all.length > 4 && (
-            <button onClick={() => setExpanded(!expanded)} className="mt-4 text-[11px] text-[#0066CC]">
+            <button onClick={() => setExpanded(!expanded)} className="mt-4 text-[11px]" style={{ color: "#0066CC" }}>
               {expanded ? "Show less" : `View all (${all.length})`}
             </button>
           )}
@@ -606,7 +658,8 @@ function ProjectsTable({ projects, client }: { projects: PortalProject[]; client
 
   const TH = ({ label, sortable, k }: { label: string; sortable?: boolean; k?: SortKey }) => (
     <th
-      className={`px-3 py-2 text-left text-[10px] font-medium text-[#8E8E93] uppercase tracking-wide whitespace-nowrap ${sortable ? "cursor-pointer select-none hover:text-[#1D1D1F]" : ""}`}
+      className={`px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wide whitespace-nowrap ${sortable ? "cursor-pointer select-none" : ""}`}
+      style={{ color: "var(--portal-text-secondary)" }}
       onClick={sortable && k ? () => toggleSort(k) : undefined}
     >
       {label}{sortable && k && <SortIcon k={k} />}
@@ -616,19 +669,20 @@ function ProjectsTable({ projects, client }: { projects: PortalProject[]; client
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <p className="text-[13px] font-medium text-[#1D1D1F]">All products ({sorted.length})</p>
+        <p className="text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>All products ({sorted.length})</p>
         <button
           onClick={() => downloadCSV(csvRows, client.name)}
-          className="flex items-center gap-1.5 rounded-lg border border-[#D1D1D6] px-3 py-1.5 text-[11px] text-[#6E6E73] hover:bg-[#F5F5F7] transition-colors"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] transition-colors"
+          style={{ border: "1px solid var(--portal-border)", color: "var(--portal-text-secondary)", background: "transparent" }}
         >
           <Download size={11} />
           Export CSV
         </button>
       </div>
-      <div className="rounded-xl border border-[#E0E0E0] overflow-hidden bg-white">
+      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
         <div className="overflow-x-auto">
         <table className="w-full border-collapse">
-          <thead className="bg-[#F7F7F7] border-b border-[#E0E0E0]">
+          <thead style={{ background: "var(--portal-thead)", borderBottom: "1px solid var(--portal-border)" }}>
             <tr>
               <TH label="Product" />
               <TH label="Category" />
@@ -644,24 +698,24 @@ function ProjectsTable({ projects, client }: { projects: PortalProject[]; client
             {sorted.map(({ product, sampleDue, delivery }, i) => {
               const isApproved = STAGE_ORDER.indexOf(product.stage) >= STAGE_ORDER.indexOf("approved");
               return (
-                <tr key={product.id} className={`border-b border-[#E0E0E0] last:border-0 ${i % 2 === 0 ? "" : "bg-[#FAFAFA]"}`}>
-                  <td className="px-3 py-2.5 text-[12px] font-medium text-[#1D1D1F]">{product.name}</td>
+                <tr key={product.id} style={{ borderBottom: "1px solid var(--portal-border-subtle)", background: i % 2 === 0 ? "transparent" : "var(--portal-row-alt)" }}>
+                  <td className="px-3 py-2.5 text-[12px] font-medium" style={{ color: "var(--portal-text-primary)" }}>{product.name}</td>
                   <td className="px-3 py-2.5">
-                    <span className="text-[11px] text-[#6E6E73]">{product.category}</span>
+                    <span className="text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>{product.category}</span>
                   </td>
                   <td className="px-3 py-2.5"><StagePill stage={product.stage} /></td>
-                  <td className="px-3 py-2.5 text-[12px] text-[#6E6E73]">{product.moq.toLocaleString()}</td>
-                  <td className="px-3 py-2.5 text-[12px] text-[#6E6E73]">
+                  <td className="px-3 py-2.5 text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>{product.moq.toLocaleString()}</td>
+                  <td className="px-3 py-2.5 text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>
                     {product.quoted_cost_usd ? `$${product.quoted_cost_usd}` : "—"}
                   </td>
-                  <td className="px-3 py-2.5 text-[12px] text-[#6E6E73]">{sampleDue ? formatDate(sampleDue) : "—"}</td>
-                  <td className="px-3 py-2.5 text-[12px] text-[#6E6E73]">{formatDate(delivery)}</td>
+                  <td className="px-3 py-2.5 text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>{sampleDue ? formatDate(sampleDue) : "—"}</td>
+                  <td className="px-3 py-2.5 text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>{formatDate(delivery)}</td>
                   <td className="px-3 py-2.5">
                     {isApproved ? (
                       <CheckCircle2 size={14} strokeWidth={2} className="text-emerald-500" />
                     ) : (
                       <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        <rect x="0.75" y="0.75" width="12.5" height="12.5" rx="2.25" stroke="#D1D1D6" strokeWidth="1.5"/>
+                        <rect x="0.75" y="0.75" width="12.5" height="12.5" rx="2.25" stroke="var(--portal-border)" strokeWidth="1.5"/>
                       </svg>
                     )}
                   </td>
@@ -684,25 +738,25 @@ function FileRow({ file }: { file: PortalFile }) {
   const isZip   = ext === "zip";
 
   return (
-    <div className="flex items-center gap-3 py-2.5 border-b border-[#F0F0F0] last:border-0">
-      <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#F5F5F7] shrink-0">
+    <div className="flex items-center gap-3 py-2.5 last:border-0" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
+      <div className="flex h-7 w-7 items-center justify-center rounded-md shrink-0" style={{ background: "var(--portal-surface-raised)" }}>
         {isImage ? (
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="12" height="12" rx="2" stroke="#8E8E93" strokeWidth="1.2"/><circle cx="4.5" cy="4.5" r="1" fill="#8E8E93"/><path d="M1 9.5l3-3 3 3 2-2 3 3" stroke="#8E8E93" strokeWidth="1.2" strokeLinecap="round"/></svg>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="12" height="12" rx="2" stroke="var(--portal-text-muted)" strokeWidth="1.2"/><circle cx="4.5" cy="4.5" r="1" fill="var(--portal-text-muted)"/><path d="M1 9.5l3-3 3 3 2-2 3 3" stroke="var(--portal-text-muted)" strokeWidth="1.2" strokeLinecap="round"/></svg>
         ) : isDoc ? (
-          <FileText size={14} strokeWidth={1.5} className="text-[#8E8E93]" />
+          <FileText size={14} strokeWidth={1.5} style={{ color: "var(--portal-text-muted)" }} />
         ) : isZip ? (
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="12" height="12" rx="2" stroke="#8E8E93" strokeWidth="1.2"/><path d="M6 1v12M6 4h2M6 7h2M6 10h2" stroke="#8E8E93" strokeWidth="1.2" strokeLinecap="round"/></svg>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="12" height="12" rx="2" stroke="var(--portal-text-muted)" strokeWidth="1.2"/><path d="M6 1v12M6 4h2M6 7h2M6 10h2" stroke="var(--portal-text-muted)" strokeWidth="1.2" strokeLinecap="round"/></svg>
         ) : (
-          <FileText size={14} strokeWidth={1.5} className="text-[#8E8E93]" />
+          <FileText size={14} strokeWidth={1.5} style={{ color: "var(--portal-text-muted)" }} />
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-[12px] font-medium text-[#1D1D1F] truncate">{file.filename}</p>
-        <p className="text-[11px] text-[#8E8E93]">
+        <p className="text-[12px] font-medium truncate" style={{ color: "var(--portal-text-primary)" }}>{file.filename}</p>
+        <p className="text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>
           {file.source === "client" ? "Uploaded by you" : "Shared by agency"} · {formatDate(file.uploaded_at)} · {fmtSize(file.size_kb)}
         </p>
       </div>
-      <button className="flex items-center gap-1 rounded-lg border border-[#D1D1D6] px-2.5 py-1 text-[11px] text-[#6E6E73] hover:bg-[#F5F5F7] transition-colors shrink-0">
+      <button className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] transition-colors shrink-0" style={{ border: "1px solid var(--portal-border)", color: "var(--portal-text-secondary)", background: "transparent" }}>
         <Download size={10} />
         Download
       </button>
@@ -716,31 +770,28 @@ function FilesSection({ files }: { files: PortalFile[] }) {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Your uploads */}
-      <div className="rounded-xl border border-[#E0E0E0] bg-white p-5">
-        <p className="text-[13px] font-medium text-[#1D1D1F] mb-3">Your uploads</p>
+      <div className="rounded-xl p-5" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
+        <p className="text-[13px] font-medium mb-3" style={{ color: "var(--portal-text-primary)" }}>Your uploads</p>
         {clientFiles.length === 0 ? (
-          <p className="text-[12px] text-[#8E8E93]">You have not uploaded any files yet — use the area below to upload artwork, references, or specifications</p>
+          <p className="text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>You have not uploaded any files yet — use the area below to upload artwork, references, or specifications</p>
         ) : (
           clientFiles.map((f) => <FileRow key={f.id} file={f} />)
         )}
       </div>
 
-      {/* Shared by agency */}
-      <div className="rounded-xl border border-[#E0E0E0] bg-white p-5">
-        <p className="text-[13px] font-medium text-[#1D1D1F] mb-3">Shared by agency</p>
+      <div className="rounded-xl p-5" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
+        <p className="text-[13px] font-medium mb-3" style={{ color: "var(--portal-text-primary)" }}>Shared by agency</p>
         {agencyFiles.length === 0 ? (
-          <p className="text-[12px] text-[#8E8E93]">Your agency will share files here — tech packs, QC reports, and other documents will appear here</p>
+          <p className="text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>Your agency will share files here — tech packs, QC reports, and other documents will appear here</p>
         ) : (
           agencyFiles.map((f) => <FileRow key={f.id} file={f} />)
         )}
       </div>
 
-      {/* Upload zone */}
-      <div className="rounded-xl border-2 border-dashed border-[#D1D1D6] bg-white p-8 text-center hover:border-[#1A1A2E] transition-colors cursor-pointer group">
-        <Upload size={22} strokeWidth={1.5} className="mx-auto mb-3 text-[#AEAEB2] group-hover:text-[#1A1A2E] transition-colors" />
-        <p className="text-[13px] font-medium text-[#1D1D1F]">Upload artwork or references</p>
-        <p className="mt-1 text-[11px] text-[#8E8E93]">Drop files here or click to browse · .ai .pdf .png .jpg .psd .zip .mov .mp4 · max 500 MB</p>
+      <div className="rounded-xl p-8 text-center cursor-pointer group transition-colors" style={{ border: "2px dashed var(--portal-border)", background: "var(--portal-surface)" }}>
+        <Upload size={22} strokeWidth={1.5} className="mx-auto mb-3 transition-colors" style={{ color: "var(--portal-text-muted)" }} />
+        <p className="text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>Upload artwork or references</p>
+        <p className="mt-1 text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>Drop files here or click to browse · .ai .pdf .png .jpg .psd .zip .mov .mp4 · max 500 MB</p>
       </div>
     </div>
   );
@@ -750,25 +801,25 @@ function FilesSection({ files }: { files: PortalFile[] }) {
 function ContractsList({ contracts }: { contracts: Contract[] }) {
   if (contracts.length === 0) {
     return (
-      <div className="rounded-xl border border-[#E0E0E0] bg-white p-8 text-center">
-        <FileText size={28} strokeWidth={1.2} className="mx-auto mb-3 text-[#AEAEB2]" />
-        <p className="text-[13px] text-[#8E8E93]">Your contracts will appear here once shared by your agency</p>
+      <div className="rounded-xl p-8 text-center" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
+        <FileText size={28} strokeWidth={1.2} className="mx-auto mb-3" style={{ color: "var(--portal-text-muted)" }} />
+        <p className="text-[13px]" style={{ color: "var(--portal-text-secondary)" }}>Your contracts will appear here once shared by your agency</p>
       </div>
     );
   }
   return (
-    <div className="rounded-xl border border-[#E0E0E0] bg-white overflow-hidden">
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
       {contracts.map((c) => {
         const d = new Date(c.date).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
         const isSigned = c.status === "signed";
         return (
-          <div key={c.id} className="flex items-center gap-3 px-5 py-3.5 border-b border-[#F0F0F0] last:border-0">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#F5F5F7] shrink-0">
-              <FileText size={14} strokeWidth={1.5} className="text-[#8E8E93]" />
+          <div key={c.id} className="flex items-center gap-3 px-5 py-3.5 last:border-0" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
+            <div className="flex h-7 w-7 items-center justify-center rounded-md shrink-0" style={{ background: "var(--portal-surface-raised)" }}>
+              <FileText size={14} strokeWidth={1.5} style={{ color: "var(--portal-text-secondary)" }} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-medium text-[#1D1D1F]">{c.name}</p>
-              <p className="text-[11px] text-[#8E8E93]">{isSigned ? "Signed" : "Sent"} · {d}</p>
+              <p className="text-[12px] font-medium" style={{ color: "var(--portal-text-primary)" }}>{c.name}</p>
+              <p className="text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>{isSigned ? "Signed" : "Sent"} · {d}</p>
             </div>
             <span
               className="rounded-full px-2.5 py-0.5 text-[10px] font-medium leading-none shrink-0"
@@ -776,7 +827,7 @@ function ContractsList({ contracts }: { contracts: Contract[] }) {
             >
               {isSigned ? "Signed" : "Pending"}
             </span>
-            <button className="flex items-center gap-1 rounded-lg border border-[#D1D1D6] px-2.5 py-1 text-[11px] text-[#6E6E73] hover:bg-[#F5F5F7] transition-colors shrink-0">
+            <button className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] transition-colors shrink-0" style={{ border: "1px solid var(--portal-border)", color: "var(--portal-text-secondary)", background: "transparent" }}>
               <Download size={10} />
               Download
             </button>
@@ -791,15 +842,16 @@ function ContractsList({ contracts }: { contracts: Contract[] }) {
 export function PortalClient({ client, locked, projects, contracts, files }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [selectedProduct, setSelectedProduct] = useState<PortalProduct | null>(null);
+  const { dark, toggle } = usePortalTheme();
 
   if (locked) return <PortalGate client={client} />;
 
   return (
     <div
-      className="min-h-screen bg-[#F5F5F7]"
-      style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" }}
+      className="min-h-full"
+      style={{ background: "var(--portal-bg)", fontFamily: "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" }}
     >
-      <PortalNavBar client={client} tab={tab} setTab={setTab} />
+      <PortalNavBar client={client} tab={tab} setTab={setTab} dark={dark} onToggleTheme={toggle} />
 
       <main className="mx-auto max-w-4xl px-4 sm:px-6 py-5 sm:py-8">
         {tab === "overview" && (
@@ -830,13 +882,13 @@ export function PortalClient({ client, locked, projects, contracts, files }: Pro
 
         {tab === "contracts" && (
           <motion.div key="contracts" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-            <p className="text-[13px] font-medium text-[#1D1D1F] mb-4">Contracts ({contracts.length})</p>
+            <p className="text-[13px] font-medium mb-4" style={{ color: "var(--portal-text-primary)" }}>Contracts ({contracts.length})</p>
             <ContractsList contracts={contracts} />
           </motion.div>
         )}
       </main>
 
-      <footer className="py-8 text-center text-[11px] text-[#AEAEB2]">
+      <footer className="py-8 text-center text-[11px]" style={{ color: "var(--portal-text-muted)" }}>
         Powered by Source[Archive]
       </footer>
 

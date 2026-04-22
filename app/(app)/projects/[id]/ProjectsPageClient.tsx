@@ -345,9 +345,9 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
             <div className="flex items-center gap-3 px-3 py-1 panel-border-b bg-[var(--sa-window)] border-b border-[var(--sa-border)]">
               <div className="h-6 w-6 shrink-0" />
               <span className="flex-1 text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">Product</span>
-              <span className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">Stage</span>
               <span className="hidden w-32 shrink-0 text-right text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] xl:block">Factory</span>
               <span className="w-16 shrink-0 text-right text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">Cost</span>
+              <span className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">Stage</span>
             </div>
 
             {/* Rows */}
