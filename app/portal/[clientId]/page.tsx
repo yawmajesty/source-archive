@@ -42,14 +42,12 @@ export default async function PortalPage({ params }: Props) {
     getPortalFiles(clientId),
   ]);
 
-  const unlockedProjects = projects.filter((p) => p.portal_unlocked_at !== null);
-
-  if (unlockedProjects.length === 0) {
+  if (!client.portal_enabled) {
     return <PortalClient client={client} locked={true} projects={[]} contracts={contracts} files={files} />;
   }
 
   const portalProjects: PortalProject[] = await Promise.all(
-    unlockedProjects.map(async (project) => {
+    projects.map(async (project) => {
       const products = await getProducts(project.id);
       const enriched: PortalProduct[] = await Promise.all(
         products.map(async (product) => {

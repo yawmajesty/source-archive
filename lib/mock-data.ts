@@ -39,6 +39,7 @@ export interface Client {
   contact_name: string;
   contact_email: string;
   has_new_activity: boolean;
+  portal_enabled?: boolean;
   created_at: string;
 }
 

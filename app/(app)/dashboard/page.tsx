@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { getDashboardStats, getRecentActivity, getClientSummaries } from "@/lib/data";
 import { DashboardClient } from "./DashboardClient";
 

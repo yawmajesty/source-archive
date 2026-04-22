@@ -36,10 +36,9 @@ function formatDate(d: string) {
   return new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function ProjectDetailPanel({ data, onNavigate, onBack }: { data: ProjectData; onNavigate: () => void; onBack: () => void }) {
+function ProjectDetailPanel({ data, portalEnabled, onNavigate, onBack }: { data: ProjectData; portalEnabled: boolean; onNavigate: () => void; onBack: () => void }) {
   const { project, products, totalCostGbp } = data;
   const progress = stageProgress(products);
-  const isPortalOpen = !!project.portal_unlocked_at;
 
   return (
     <motion.div
@@ -74,10 +73,10 @@ function ProjectDetailPanel({ data, onNavigate, onBack }: { data: ProjectData; o
           <div
             className={cn(
               "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-              isPortalOpen ? "bg-green-50 dark:bg-green-500/15" : "bg-[var(--sa-hover)]"
+              portalEnabled ? "bg-green-50 dark:bg-green-500/15" : "bg-[var(--sa-hover)]"
             )}
           >
-            {isPortalOpen
+            {portalEnabled
               ? <Globe size={18} className="text-[var(--sa-success)]" />
               : <Lock size={18} className="text-[var(--sa-text-tertiary)]" />
             }
@@ -87,24 +86,21 @@ function ProjectDetailPanel({ data, onNavigate, onBack }: { data: ProjectData; o
               Client Portal
             </p>
             <p className="text-[12px] text-[var(--sa-text-secondary)]">
-              {isPortalOpen
-                ? `Unlocked ${formatDate(project.portal_unlocked_at!)}`
-                : "Portal is locked — client cannot view"
+              {portalEnabled
+                ? "Portal is active — client can view all projects"
+                : "Portal is off — toggle it in the panel header"
               }
             </p>
           </div>
-          <a
-            href={`/portal/${project.client_id}`}
-            target="_blank"
-            className={cn(
-              "shrink-0 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors",
-              isPortalOpen
-                ? "bg-[var(--sa-success)] text-white hover:opacity-90"
-                : "bg-[var(--sa-hover)] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
-            )}
-          >
-            {isPortalOpen ? "View portal" : "Locked"}
-          </a>
+          {portalEnabled && (
+            <a
+              href={`/portal/${project.client_id}`}
+              target="_blank"
+              className="shrink-0 rounded-lg px-3 py-1.5 text-[12px] font-medium bg-[var(--sa-success)] text-white hover:opacity-90 transition-opacity"
+            >
+              View portal
+            </a>
+          )}
         </section>
 
         {/* Stats row */}
@@ -241,6 +237,16 @@ export function ClientsPageClient({ client, projectData }: Props) {
     projectData[0]?.project.id ?? null
   );
   const [showAddProject, setShowAddProject] = useState(false);
+  const [portalEnabled, setPortalEnabled] = useState(!!client.portal_enabled);
+  const [togglingPortal, setTogglingPortal] = useState(false);
+
+  async function togglePortal() {
+    setTogglingPortal(true);
+    const next = !portalEnabled;
+    await supabase.from("clients").update({ portal_enabled: next }).eq("id", client.id);
+    setPortalEnabled(next);
+    setTogglingPortal(false);
+  }
 
   const selected = projectData.find((d) => d.project.id === selectedId);
 
@@ -269,11 +275,36 @@ export function ClientsPageClient({ client, projectData }: Props) {
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--sa-accent-light)] text-[15px] font-bold text-[var(--sa-accent)]">
               {client.logo_initial}
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="text-[13px] font-semibold text-[var(--sa-text-primary)]">{client.name}</p>
               <p className="text-[11px] text-[var(--sa-text-tertiary)]">
                 {client.industry} · {client.country}
               </p>
+            </div>
+            {/* Portal toggle */}
+            <div className="flex items-center gap-2 shrink-0">
+              {portalEnabled && (
+                <a
+                  href={`/portal/${client.id}`}
+                  target="_blank"
+                  className="text-[11px] text-[var(--sa-accent)] hover:opacity-80 transition-opacity"
+                >
+                  View
+                </a>
+              )}
+              <button
+                onClick={togglePortal}
+                disabled={togglingPortal}
+                title={portalEnabled ? "Lock client portal" : "Unlock client portal"}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors disabled:opacity-50",
+                  portalEnabled
+                    ? "bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-500/15 dark:text-green-400"
+                    : "bg-[var(--sa-hover)] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-border)]"
+                )}
+              >
+                {portalEnabled ? <><Globe size={11} />Portal on</> : <><Lock size={11} />Portal off</>}
+              </button>
             </div>
           </div>
 
@@ -284,7 +315,6 @@ export function ClientsPageClient({ client, projectData }: Props) {
             ) : (
               projectData.map(({ project, products }) => {
                 const isSelected = project.id === selectedId;
-                const isPortalOpen = !!project.portal_unlocked_at;
                 const contextItems: ContextMenuItem[] = [
                   { label: "Open project", onClick: () => router.push(`/projects/${project.id}`) },
                   { label: "View portal", onClick: () => window.open(`/portal/${project.client_id}`, "_blank") },
@@ -317,12 +347,7 @@ export function ClientsPageClient({ client, projectData }: Props) {
                       </div>
                       <div className="flex items-center justify-between text-[11px] text-[var(--sa-text-tertiary)]">
                         <span>{products.length} products</span>
-                        <div className="flex items-center gap-1">
-                          {isPortalOpen
-                            ? <><Globe size={10} className="text-[var(--sa-success)]" /><span className="text-[var(--sa-success)]">Portal open</span></>
-                            : <><Lock size={10} /><span>Portal locked</span></>
-                          }
-                        </div>
+                        <span>{project.season}</span>
                       </div>
                       {products.length > 0 && (
                         <StageTrack
@@ -347,6 +372,7 @@ export function ClientsPageClient({ client, projectData }: Props) {
             <ProjectDetailPanel
               key={selected.project.id}
               data={selected}
+              portalEnabled={portalEnabled}
               onNavigate={() => router.push(`/projects/${selected.project.id}`)}
               onBack={() => setSelectedId(null)}
             />

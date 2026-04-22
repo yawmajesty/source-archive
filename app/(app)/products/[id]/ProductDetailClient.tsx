@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, ChevronDown, ChevronRight, Package,
-  Star, Clock, CheckCircle, AlertCircle, Plus, Upload,
-  ExternalLink,
+  CheckCircle, Plus, Upload, Edit2, X, Trash2, Image as ImageIcon,
 } from "lucide-react";
 import { StageTrack } from "@/components/shared/StageTrack";
 import { StatusBadge, SampleStatusBadge } from "@/components/shared/StatusBadge";
@@ -14,17 +13,204 @@ import { MilestoneItem } from "@/components/shared/MilestoneItem";
 import { UpdateItem } from "@/components/shared/UpdateItem";
 import { TrafficDot } from "@/components/shared/TrafficLight";
 import { cn } from "@/lib/utils";
-import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client } from "@/lib/mock-data";
+import { supabase } from "@/lib/supabase";
+import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage } from "@/lib/mock-data";
+
+const STAGES: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
+const CURRENCIES = ["USD", "GBP", "EUR", "CNY"];
 
 interface Props {
   product: Product;
   factory: Factory | null;
+  factories: Factory[];
   milestones: Milestone[];
   updates: Update[];
   samples: Sample[];
   costs: Cost[];
   project: Project | null;
   client: Client | null;
+}
+
+function EditProductDrawer({
+  product, factories, onClose, onSaved,
+}: {
+  product: Product; factories: Factory[]; onClose: () => void; onSaved: (p: Partial<Product>) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({
+    name: product.name,
+    category: product.category,
+    stage: product.stage as Stage,
+    factory_id: product.factory_id ?? "",
+    moq: String(product.moq),
+    order_qty: product.order_qty != null ? String(product.order_qty) : "",
+    target_cost_usd: String(product.target_cost_usd),
+    quoted_cost_usd: product.quoted_cost_usd != null ? String(product.quoted_cost_usd) : "",
+    quoted_cost_currency: product.quoted_cost_currency,
+    lead_time_days: String(product.lead_time_days),
+    colorways: product.colorways.join(", "),
+    notes: product.notes ?? "",
+  });
+
+  const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors";
+  const labelCls = "block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1";
+
+  function set(k: string, v: string) { setForm((f) => ({ ...f, [k]: v })); }
+
+  async function handleSave() {
+    if (!form.name.trim()) { setError("Name is required"); return; }
+    setSaving(true); setError("");
+    const updates: any = {
+      name: form.name.trim(),
+      category: form.category.trim(),
+      stage: form.stage,
+      factory_id: form.factory_id || null,
+      moq: parseInt(form.moq) || 0,
+      order_qty: form.order_qty ? parseInt(form.order_qty) : null,
+      target_cost_usd: parseFloat(form.target_cost_usd) || 0,
+      quoted_cost_usd: form.quoted_cost_usd ? parseFloat(form.quoted_cost_usd) : null,
+      quoted_cost_currency: form.quoted_cost_currency,
+      lead_time_days: parseInt(form.lead_time_days) || 0,
+      colorways: form.colorways.split(",").map((s) => s.trim()).filter(Boolean),
+      notes: form.notes?.trim() ?? "",
+    };
+    const { error: err } = await supabase.from("products").update(updates).eq("id", product.id);
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    onSaved(updates);
+    onClose();
+  }
+
+  return (
+    <>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose} className="fixed inset-0 z-40 bg-black/30" />
+      <motion.aside
+        initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col bg-[var(--sa-window)] shadow-xl"
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--sa-border)]">
+          <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)]">Edit Product</h2>
+          <button onClick={onClose} className="rounded-md p-1.5 text-[var(--sa-text-tertiary)] hover:bg-[var(--sa-hover)]"><X size={16} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+          <div><label className={labelCls}>Product name *</label><input className={inputCls} value={form.name} onChange={(e) => set("name", e.target.value)} /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={labelCls}>Category</label><input className={inputCls} value={form.category} onChange={(e) => set("category", e.target.value)} /></div>
+            <div>
+              <label className={labelCls}>Stage</label>
+              <select className={inputCls} value={form.stage} onChange={(e) => set("stage", e.target.value)}>
+                {STAGES.map((s) => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>Factory</label>
+            <select className={inputCls} value={form.factory_id} onChange={(e) => set("factory_id", e.target.value)}>
+              <option value="">Not assigned</option>
+              {factories.map((f) => <option key={f.id} value={f.id}>{f.name} — {f.city}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={labelCls}>MOQ (units)</label><input className={inputCls} type="number" value={form.moq} onChange={(e) => set("moq", e.target.value)} /></div>
+            <div><label className={labelCls}>Order qty</label><input className={inputCls} type="number" value={form.order_qty} onChange={(e) => set("order_qty", e.target.value)} placeholder="TBD" /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={labelCls}>Target cost (USD)</label><input className={inputCls} type="number" step="0.01" value={form.target_cost_usd} onChange={(e) => set("target_cost_usd", e.target.value)} /></div>
+            <div><label className={labelCls}>Quoted cost</label><input className={inputCls} type="number" step="0.01" value={form.quoted_cost_usd} onChange={(e) => set("quoted_cost_usd", e.target.value)} placeholder="TBD" /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Quote currency</label>
+              <select className={inputCls} value={form.quoted_cost_currency} onChange={(e) => set("quoted_cost_currency", e.target.value)}>
+                {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div><label className={labelCls}>Lead time (days)</label><input className={inputCls} type="number" value={form.lead_time_days} onChange={(e) => set("lead_time_days", e.target.value)} /></div>
+          </div>
+          <div><label className={labelCls}>Colorways (comma separated)</label><input className={inputCls} value={form.colorways} onChange={(e) => set("colorways", e.target.value)} placeholder="White, Black, Navy" /></div>
+          <div><label className={labelCls}>Notes</label><textarea className={inputCls + " resize-none"} rows={3} value={form.notes} onChange={(e) => set("notes", e.target.value)} /></div>
+          {error && <p className="text-[12px] text-red-500">{error}</p>}
+        </div>
+        <div className="flex gap-2 px-5 py-4 border-t border-[var(--sa-border)]">
+          <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--sa-border)] py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors">Cancel</button>
+          <button onClick={handleSave} disabled={saving} className="flex-1 rounded-lg bg-[var(--sa-accent)] py-2 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-60 transition-opacity">
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+        </div>
+      </motion.aside>
+    </>
+  );
+}
+
+function MediaSection({ productId, initialImages }: { productId: string; initialImages: string[] }) {
+  const [images, setImages] = useState<string[]>(initialImages ?? []);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    setUploading(true);
+    const newUrls: string[] = [];
+    for (const file of files) {
+      const path = `${productId}/${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage.from("product-media").upload(path, file);
+      if (!error) {
+        const { data } = supabase.storage.from("product-media").getPublicUrl(path);
+        newUrls.push(data.publicUrl);
+      }
+    }
+    if (newUrls.length) {
+      const updated = [...images, ...newUrls];
+      await supabase.from("products").update({ images: updated }).eq("id", productId);
+      setImages(updated);
+    }
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function removeImage(url: string) {
+    const updated = images.filter((u) => u !== url);
+    await supabase.from("products").update({ images: updated }).eq("id", productId);
+    setImages(updated);
+  }
+
+  return (
+    <div>
+      {images.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+          {images.map((url) => (
+            <div key={url} className="group relative aspect-square rounded-xl overflow-hidden border border-[var(--sa-border)] bg-[var(--sa-bg)]">
+              <img src={url} alt="" className="h-full w-full object-cover" />
+              <button
+                onClick={() => removeImage(url)}
+                className="absolute top-1.5 right-1.5 hidden group-hover:flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-red-500 transition-colors"
+              >
+                <Trash2 size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {images.length === 0 && (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--sa-border)] py-8 mb-3">
+          <ImageIcon size={24} className="text-[var(--sa-text-tertiary)]" />
+          <p className="text-[12px] text-[var(--sa-text-tertiary)]">No images yet</p>
+        </div>
+      )}
+      <input ref={fileRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleUpload} />
+      <button
+        onClick={() => fileRef.current?.click()}
+        disabled={uploading}
+        className="flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors disabled:opacity-60"
+      >
+        <Upload size={12} /> {uploading ? "Uploading…" : "Upload images / video"}
+      </button>
+    </div>
+  );
 }
 
 function formatDate(d: string | null) {
@@ -136,8 +322,9 @@ function SampleCard({ sample }: { sample: Sample }) {
 }
 
 export function ProductDetailClient({
-  product,
-  factory,
+  product: initialProduct,
+  factory: initialFactory,
+  factories,
   milestones,
   updates,
   samples,
@@ -146,6 +333,9 @@ export function ProductDetailClient({
   client,
 }: Props) {
   const router = useRouter();
+  const [product, setProduct] = useState(initialProduct);
+  const [factory, setFactory] = useState(initialFactory);
+  const [showEdit, setShowEdit] = useState(false);
   const [localUpdates, setLocalUpdates] = useState(updates);
   const [newUpdate, setNewUpdate] = useState("");
 
@@ -153,6 +343,14 @@ export function ProductDetailClient({
     product.quoted_cost_usd != null
       ? ((product.quoted_cost_usd - product.target_cost_usd) / product.target_cost_usd) * 100
       : null;
+
+  function handleSaved(updates: Partial<Product>) {
+    setProduct((p) => ({ ...p, ...updates }));
+    const newFactory = updates.factory_id
+      ? factories.find((f) => f.id === updates.factory_id) ?? null
+      : updates.factory_id === null ? null : factory;
+    setFactory(newFactory ?? null);
+  }
 
   function addUpdate() {
     if (!newUpdate.trim()) return;
@@ -202,6 +400,12 @@ export function ProductDetailClient({
         )}
         <ChevronRight size={11} className="text-[var(--sa-text-tertiary)]" />
         <span className="text-[12px] font-medium text-[var(--sa-text-primary)] truncate">{product.name}</span>
+        <button
+          onClick={() => setShowEdit(true)}
+          className="ml-auto flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors shrink-0"
+        >
+          <Edit2 size={11} /> Edit
+        </button>
       </div>
 
       {/* Product header */}
@@ -298,6 +502,11 @@ export function ProductDetailClient({
                 </span>
               )}
             </div>
+          </CollapsibleSection>
+
+          {/* Media */}
+          <CollapsibleSection title="Images & Video">
+            <MediaSection productId={product.id} initialImages={(product as any).images ?? []} />
           </CollapsibleSection>
 
           {/* BOM */}
@@ -477,6 +686,17 @@ export function ProductDetailClient({
           )}
         </div>
       </div>
+
+      <AnimatePresence>
+        {showEdit && (
+          <EditProductDrawer
+            product={product}
+            factories={factories}
+            onClose={() => setShowEdit(false)}
+            onSaved={handleSaved}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
