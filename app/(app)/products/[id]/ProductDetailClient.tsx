@@ -336,8 +336,17 @@ export function ProductDetailClient({
   const [product, setProduct] = useState(initialProduct);
   const [factory, setFactory] = useState(initialFactory);
   const [showEdit, setShowEdit] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [localUpdates, setLocalUpdates] = useState(updates);
   const [newUpdate, setNewUpdate] = useState("");
+
+  async function handleDelete() {
+    setDeleting(true);
+    await supabase.from("products").delete().eq("id", product.id);
+    setDeleting(false);
+    router.back();
+  }
 
   const variancePct =
     product.quoted_cost_usd != null
@@ -400,12 +409,21 @@ export function ProductDetailClient({
         )}
         <ChevronRight size={11} className="text-[var(--sa-text-tertiary)]" />
         <span className="text-[12px] font-medium text-[var(--sa-text-primary)] truncate">{product.name}</span>
-        <button
-          onClick={() => setShowEdit(true)}
-          className="ml-auto flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors shrink-0"
-        >
-          <Edit2 size={11} /> Edit
-        </button>
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => setShowEdit(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
+          >
+            <Edit2 size={11} /> Edit
+          </button>
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="flex items-center justify-center rounded-lg border border-[var(--sa-border)] p-1.5 text-[var(--sa-text-tertiary)] hover:border-[var(--sa-danger)] hover:text-[var(--sa-danger)] transition-colors"
+            title="Delete product"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
       </div>
 
       {/* Product header */}
@@ -695,6 +713,30 @@ export function ProductDetailClient({
             onClose={() => setShowEdit(false)}
             onSaved={handleSaved}
           />
+        )}
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setShowDeleteConfirm(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="relative z-10 w-full max-w-sm rounded-2xl bg-[var(--sa-window)] border border-[var(--sa-border)] shadow-2xl p-6"
+            >
+              <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)] mb-2">Delete product?</h2>
+              <p className="text-[13px] text-[var(--sa-text-secondary)] mb-2">
+                <span className="font-semibold text-[var(--sa-text-primary)]">{product.name}</span> will be permanently deleted.
+              </p>
+              <p className="text-[12px] text-[var(--sa-danger)] mb-5">This cannot be undone.</p>
+              <div className="flex gap-2">
+                <button onClick={() => setShowDeleteConfirm(false)} className="flex-1 rounded-lg border border-[var(--sa-border)] py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors">Cancel</button>
+                <button onClick={handleDelete} disabled={deleting} className="flex-1 rounded-lg bg-[var(--sa-danger)] py-2 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-60 transition-opacity">
+                  {deleting ? "Deleting…" : "Delete"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

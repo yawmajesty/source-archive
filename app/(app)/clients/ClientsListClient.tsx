@@ -2,8 +2,8 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
-import { Plus, ExternalLink } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Plus, ExternalLink, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
@@ -160,9 +160,61 @@ function AddProjectModal({ clientId, onClose }: { clientId: string; onClose: () 
   );
 }
 
+function DeleteClientModal({ client, onClose }: { client: Client; onClose: () => void }) {
+  const router = useRouter();
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleDelete() {
+    setDeleting(true);
+    setError("");
+    // Delete in order: products → projects → client
+    const { data: clientProjects } = await supabase.from("projects").select("id").eq("client_id", client.id);
+    const projectIds = (clientProjects ?? []).map((p: any) => p.id);
+    if (projectIds.length > 0) {
+      await supabase.from("products").delete().in("project_id", projectIds);
+      await supabase.from("projects").delete().in("id", projectIds);
+    }
+    const { error: err } = await supabase.from("clients").delete().eq("id", client.id);
+    setDeleting(false);
+    if (err) { setError(err.message); return; }
+    router.refresh();
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        className="relative z-10 w-full max-w-sm rounded-2xl bg-[var(--sa-window)] border border-[var(--sa-border)] shadow-2xl p-6"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)]">Delete client?</h2>
+          <button onClick={onClose} className="rounded-lg p-1 hover:bg-[var(--sa-hover)]"><X size={16} className="text-[var(--sa-text-tertiary)]" /></button>
+        </div>
+        <p className="text-[13px] text-[var(--sa-text-secondary)] mb-2">
+          This will permanently delete <span className="font-semibold text-[var(--sa-text-primary)]">{client.name}</span> and all their projects and products.
+        </p>
+        <p className="text-[12px] text-[var(--sa-danger)] mb-4">This cannot be undone.</p>
+        {error && <p className="text-[12px] text-red-500 mb-3">{error}</p>}
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--sa-border)] py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors">Cancel</button>
+          <button onClick={handleDelete} disabled={deleting} className="flex-1 rounded-lg bg-[var(--sa-danger)] py-2 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-60 transition-opacity">
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 export function ClientsListClient({ clients, projects, products }: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const [addProjectFor, setAddProjectFor] = useState<string | null>(null);
+  const [deleteClient, setDeleteClient] = useState<Client | null>(null);
 
   function getStats(clientId: string) {
     const clientProjects = projects.filter((p) => p.client_id === clientId);
@@ -251,6 +303,13 @@ export function ClientsListClient({ clients, projects, products }: Props) {
                   >
                     <ExternalLink size={11} /> Portal
                   </Link>
+                  <button
+                    onClick={() => setDeleteClient(client)}
+                    className="flex items-center justify-center rounded-lg border border-[var(--sa-border)] p-1.5 text-[var(--sa-text-tertiary)] hover:border-[var(--sa-danger)] hover:text-[var(--sa-danger)] transition-colors"
+                    title="Delete client"
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </div>
               </motion.div>
             );
@@ -262,6 +321,11 @@ export function ClientsListClient({ clients, projects, products }: Props) {
       {addProjectFor && (
         <AddProjectModal clientId={addProjectFor} onClose={() => setAddProjectFor(null)} />
       )}
+      <AnimatePresence>
+        {deleteClient && (
+          <DeleteClientModal client={deleteClient} onClose={() => setDeleteClient(null)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
