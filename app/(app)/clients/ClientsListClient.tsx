@@ -1,0 +1,267 @@
+"use client";
+
+import { useState, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
+import { Plus, ExternalLink } from "lucide-react";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
+import type { Client, Project, Product } from "@/lib/data";
+
+interface Props { clients: Client[]; projects: Project[]; products: Product[] }
+
+const STATUS_COLORS: Record<Client["status"], string> = {
+  active:     "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400",
+  onboarding: "bg-amber-50 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400",
+  paused:     "bg-gray-100 text-gray-500 dark:bg-gray-500/20 dark:text-gray-400",
+};
+
+function AddClientModal({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const nameRef = useRef<HTMLInputElement>(null);
+  const industryRef = useRef<HTMLInputElement>(null);
+  const contactNameRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const countryRef = useRef<HTMLInputElement>(null);
+  const statusRef = useRef<HTMLSelectElement>(null);
+
+  const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] placeholder:text-[var(--sa-text-tertiary)] outline-none focus:border-[var(--sa-accent)] transition-colors";
+  const labelCls = "block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1";
+
+  async function handleSave() {
+    const name = nameRef.current?.value.trim();
+    if (!name) { setError("Company name is required"); return; }
+    setSaving(true);
+    setError("");
+    const id = "client-" + Date.now();
+    const { error: err } = await supabase.from("clients").insert({
+      id,
+      name,
+      slug: name.toLowerCase().replace(/\s+/g, "-"),
+      industry: industryRef.current?.value.trim() || null,
+      contact_name: contactNameRef.current?.value.trim() || null,
+      contact_email: emailRef.current?.value.trim() || null,
+      country: countryRef.current?.value.trim() || null,
+      status: statusRef.current?.value || "onboarding",
+      logo_initial: name[0].toUpperCase(),
+      has_new_activity: false,
+    });
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    router.refresh();
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="w-full max-w-md rounded-2xl bg-[var(--sa-window)] border border-[var(--sa-border)] shadow-xl p-6"
+      >
+        <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)] mb-4">Add new client</h2>
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={labelCls}>Company name *</label><input ref={nameRef} className={inputCls} placeholder="Acme Studio" /></div>
+            <div><label className={labelCls}>Industry</label><input ref={industryRef} className={inputCls} placeholder="Fashion, Homeware…" /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={labelCls}>Contact name</label><input ref={contactNameRef} className={inputCls} placeholder="Jane Smith" /></div>
+            <div><label className={labelCls}>Contact email</label><input ref={emailRef} type="email" className={inputCls} placeholder="jane@company.com" /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={labelCls}>Country</label><input ref={countryRef} className={inputCls} placeholder="United Kingdom" /></div>
+            <div>
+              <label className={labelCls}>Status</label>
+              <select ref={statusRef} className={inputCls}>
+                <option value="onboarding">Onboarding</option>
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+              </select>
+            </div>
+          </div>
+          {error && <p className="text-[12px] text-red-500">{error}</p>}
+          <div className="flex gap-2 pt-1">
+            <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--sa-border)] py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors">Cancel</button>
+            <button onClick={handleSave} disabled={saving} className="flex-1 rounded-lg bg-[var(--sa-accent)] py-2 text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-60">
+              {saving ? "Saving…" : "Add Client"}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function AddProjectModal({ clientId, onClose }: { clientId: string; onClose: () => void }) {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const nameRef = useRef<HTMLInputElement>(null);
+  const seasonRef = useRef<HTMLInputElement>(null);
+  const startRef = useRef<HTMLInputElement>(null);
+  const targetRef = useRef<HTMLInputElement>(null);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
+
+  const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] placeholder:text-[var(--sa-text-tertiary)] outline-none focus:border-[var(--sa-accent)] transition-colors";
+  const labelCls = "block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1";
+
+  async function handleSave() {
+    const name = nameRef.current?.value.trim();
+    if (!name) { setError("Project name is required"); return; }
+    setSaving(true);
+    setError("");
+    const { error: err } = await supabase.from("projects").insert({
+      id: "proj-" + Date.now(),
+      client_id: clientId,
+      name,
+      season: seasonRef.current?.value.trim() || null,
+      status: "active",
+      start_date: startRef.current?.value || new Date().toISOString().slice(0, 10),
+      target_completion: targetRef.current?.value || null,
+      portal_unlocked_at: null,
+      notes: notesRef.current?.value.trim() || "",
+    });
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    router.refresh();
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="w-full max-w-md rounded-2xl bg-[var(--sa-window)] border border-[var(--sa-border)] shadow-xl p-6"
+      >
+        <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)] mb-4">Add new project</h2>
+        <div className="flex flex-col gap-3">
+          <div><label className={labelCls}>Project name *</label><input ref={nameRef} className={inputCls} placeholder="SS26 Collection" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={labelCls}>Season</label><input ref={seasonRef} className={inputCls} placeholder="SS26" /></div>
+            <div><label className={labelCls}>Start date</label><input ref={startRef} type="date" className={inputCls} defaultValue={new Date().toISOString().slice(0, 10)} /></div>
+          </div>
+          <div><label className={labelCls}>Target completion</label><input ref={targetRef} type="date" className={inputCls} /></div>
+          <div><label className={labelCls}>Notes</label><textarea ref={notesRef} className={inputCls + " resize-none"} rows={2} placeholder="Optional notes…" /></div>
+          {error && <p className="text-[12px] text-red-500">{error}</p>}
+          <div className="flex gap-2 pt-1">
+            <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--sa-border)] py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors">Cancel</button>
+            <button onClick={handleSave} disabled={saving} className="flex-1 rounded-lg bg-[var(--sa-accent)] py-2 text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-60">
+              {saving ? "Saving…" : "Add Project"}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+export function ClientsListClient({ clients, projects, products }: Props) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [addProjectFor, setAddProjectFor] = useState<string | null>(null);
+
+  function getStats(clientId: string) {
+    const clientProjects = projects.filter((p) => p.client_id === clientId);
+    const projectIds = clientProjects.map((p) => p.id);
+    const clientProducts = products.filter((p) => projectIds.includes(p.project_id));
+    return {
+      projects: clientProjects.filter((p) => p.status === "active").length,
+      products: clientProducts.length,
+    };
+  }
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex items-center justify-between px-6 py-4 panel-border-b bg-[var(--sa-window)]">
+        <div>
+          <h1 className="text-[15px] font-semibold text-[var(--sa-text-primary)]">Clients</h1>
+          <p className="text-[12px] text-[var(--sa-text-tertiary)]">{clients.length} clients</p>
+        </div>
+        <button
+          onClick={() => setShowAdd(true)}
+          className="flex items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-3 py-1.5 text-[12px] font-medium text-white hover:opacity-90 transition-opacity"
+        >
+          <Plus size={13} strokeWidth={2.5} /> Add Client
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-6 py-5 bg-[var(--sa-bg)]">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {clients.map((client) => {
+            const stats = getStats(client.id);
+            return (
+              <motion.div
+                key={client.id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] p-5 hover:border-[var(--sa-border-strong)] transition-colors"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--sa-accent)] text-white text-[16px] font-bold">
+                      {client.logo_initial}
+                    </div>
+                    <div>
+                      <p className="text-[14px] font-semibold text-[var(--sa-text-primary)]">{client.name}</p>
+                      <p className="text-[11px] text-[var(--sa-text-tertiary)]">{client.industry} · {client.country}</p>
+                    </div>
+                  </div>
+                  <span className={cn("rounded-full px-2.5 py-0.5 text-[10px] font-medium capitalize", STATUS_COLORS[client.status])}>
+                    {client.status}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  <div className="rounded-lg bg-[var(--sa-bg)] p-2.5 text-center">
+                    <p className="font-mono text-[16px] font-semibold text-[var(--sa-text-primary)]">{stats.projects}</p>
+                    <p className="text-[10px] text-[var(--sa-text-tertiary)]">Active projects</p>
+                  </div>
+                  <div className="rounded-lg bg-[var(--sa-bg)] p-2.5 text-center">
+                    <p className="font-mono text-[16px] font-semibold text-[var(--sa-text-primary)]">{stats.products}</p>
+                    <p className="text-[10px] text-[var(--sa-text-tertiary)]">Products</p>
+                  </div>
+                </div>
+
+                <div className="mb-4 text-[12px] text-[var(--sa-text-secondary)]">
+                  <p className="font-medium text-[var(--sa-text-primary)]">{client.contact_name}</p>
+                  <p className="truncate">{client.contact_email}</p>
+                </div>
+
+                <div className="flex items-center gap-2 pt-3 border-t border-[var(--sa-border)]">
+                  <Link
+                    href={`/clients/${client.id}`}
+                    className="flex-1 rounded-lg bg-[var(--sa-selected)] py-1.5 text-center text-[12px] font-medium text-[var(--sa-accent)] hover:opacity-80 transition-opacity"
+                  >
+                    Open
+                  </Link>
+                  <button
+                    onClick={() => setAddProjectFor(client.id)}
+                    className="flex items-center gap-1 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
+                  >
+                    <Plus size={11} strokeWidth={2.5} /> Project
+                  </button>
+                  <Link
+                    href={`/portal/${client.id}`}
+                    className="flex items-center gap-1 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
+                    target="_blank"
+                  >
+                    <ExternalLink size={11} /> Portal
+                  </Link>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+
+      {showAdd && <AddClientModal onClose={() => setShowAdd(false)} />}
+      {addProjectFor && (
+        <AddProjectModal clientId={addProjectFor} onClose={() => setAddProjectFor(null)} />
+      )}
+    </div>
+  );
+}

@@ -1,26 +1,343 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
+/* ─────────────────────────────────────────
+   Kōru Design Tokens — Tailwind v4 theme
+   ───────────────────────────────────────── */
 @theme inline {
+  /* shadcn wiring */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* ── Kōru palette tokens ── */
+  --color-koru-bg: var(--sa-bg);
+  --color-koru-window: var(--sa-window);
+  --color-koru-sidebar: var(--sa-sidebar);
+  --color-koru-hover: var(--sa-hover);
+  --color-koru-selected: var(--sa-selected);
+  --color-koru-border: var(--sa-border);
+  --color-koru-border-strong: var(--sa-border-strong);
+  --color-koru-text-primary: var(--sa-text-primary);
+  --color-koru-text-secondary: var(--sa-text-secondary);
+  --color-koru-text-tertiary: var(--sa-text-tertiary);
+  --color-koru-accent: var(--sa-accent);
+  --color-koru-accent-light: var(--sa-accent-light);
+  --color-koru-success: var(--sa-success);
+  --color-koru-warning: var(--sa-warning);
+  --color-koru-danger: var(--sa-danger);
+  --color-koru-gold: var(--sa-gold);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ─────────────────────────────────────────
+   Light mode — Apple grey aesthetic
+   ───────────────────────────────────────── */
+:root {
+  /* shadcn overrides → match Kōru palette */
+  --background: #F5F5F7;
+  --foreground: #1D1D1F;
+  --card: #FFFFFF;
+  --card-foreground: #1D1D1F;
+  --popover: #FFFFFF;
+  --popover-foreground: #1D1D1F;
+  --primary: #0066CC;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F5F5F7;
+  --secondary-foreground: #1D1D1F;
+  --muted: rgba(0,0,0,0.04);
+  --muted-foreground: #6E6E73;
+  --accent: #0066CC;
+  --accent-foreground: #FFFFFF;
+  --destructive: #FF3B30;
+  --border: rgba(0,0,0,0.08);
+  --input: rgba(0,0,0,0.06);
+  --ring: rgba(0,102,204,0.4);
+  --radius: 0.5rem;
+
+  --chart-1: #0066CC;
+  --chart-2: #34C759;
+  --chart-3: #FF9500;
+  --chart-4: #FF3B30;
+  --chart-5: #C8963C;
+
+  --sidebar: rgba(246,246,246,0.85);
+  --sidebar-foreground: #1D1D1F;
+  --sidebar-primary: #0066CC;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: rgba(0,102,204,0.12);
+  --sidebar-accent-foreground: #0066CC;
+  --sidebar-border: rgba(0,0,0,0.08);
+  --sidebar-ring: rgba(0,102,204,0.4);
+
+  /* ── Kōru design tokens ── */
+  --sa-bg: #F5F5F7;
+  --sa-window: #FFFFFF;
+  --sa-sidebar: rgba(246,246,246,0.85);
+  --sa-hover: rgba(0,0,0,0.04);
+  --sa-selected: rgba(0,102,204,0.12);
+  --sa-border: rgba(0,0,0,0.08);
+  --sa-border-strong: rgba(0,0,0,0.14);
+  --sa-text-primary: #1D1D1F;
+  --sa-text-secondary: #6E6E73;
+  --sa-text-tertiary: #AEAEB2;
+  --sa-accent: #0066CC;
+  --sa-accent-light: rgba(0,102,204,0.1);
+  --sa-success: #34C759;
+  --sa-warning: #FF9500;
+  --sa-danger: #FF3B30;
+  --sa-gold: #C8963C;
+}
+
+/* ─────────────────────────────────────────
+   Dark mode
+   ───────────────────────────────────────── */
+.dark {
+  --background: #1C1C1E;
+  --foreground: #F5F5F7;
+  --card: #2C2C2E;
+  --card-foreground: #F5F5F7;
+  --popover: #2C2C2E;
+  --popover-foreground: #F5F5F7;
+  --primary: #0A84FF;
+  --primary-foreground: #FFFFFF;
+  --secondary: #3A3A3C;
+  --secondary-foreground: #F5F5F7;
+  --muted: rgba(255,255,255,0.05);
+  --muted-foreground: #98989D;
+  --accent: #0A84FF;
+  --accent-foreground: #FFFFFF;
+  --destructive: #FF453A;
+  --border: rgba(255,255,255,0.08);
+  --input: rgba(255,255,255,0.08);
+  --ring: rgba(10,132,255,0.4);
+
+  --chart-1: #0A84FF;
+  --chart-2: #30D158;
+  --chart-3: #FF9F0A;
+  --chart-4: #FF453A;
+  --chart-5: #C8963C;
+
+  --sidebar: rgba(28,28,30,0.85);
+  --sidebar-foreground: #F5F5F7;
+  --sidebar-primary: #0A84FF;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: rgba(10,132,255,0.2);
+  --sidebar-accent-foreground: #0A84FF;
+  --sidebar-border: rgba(255,255,255,0.08);
+  --sidebar-ring: rgba(10,132,255,0.4);
+
+  /* ── Kōru dark tokens ── */
+  --sa-bg: #1C1C1E;
+  --sa-window: #2C2C2E;
+  --sa-sidebar: rgba(28,28,30,0.85);
+  --sa-hover: rgba(255,255,255,0.05);
+  --sa-selected: rgba(10,132,255,0.2);
+  --sa-border: rgba(255,255,255,0.08);
+  --sa-border-strong: rgba(255,255,255,0.12);
+  --sa-text-primary: #F5F5F7;
+  --sa-text-secondary: #98989D;
+  --sa-text-tertiary: #636366;
+  --sa-accent: #0A84FF;
+  --sa-accent-light: rgba(10,132,255,0.15);
+  --sa-success: #30D158;
+  --sa-warning: #FF9F0A;
+  --sa-danger: #FF453A;
+  --sa-gold: #D4A843;
+}
+
+/* ─────────────────────────────────────────
+   Base styles
+   ───────────────────────────────────────── */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    background-color: var(--sa-bg);
+    color: var(--sa-text-primary);
+    height: 100%;
+    overflow: hidden;
+  }
+
+  #__next,
+  [data-nextjs-scroll-focus-boundary] {
+    height: 100%;
+  }
+
+  /* SF Mono stack for code/numbers */
+  .font-mono,
+  code,
+  kbd,
+  pre {
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", Menlo, monospace;
+  }
+
+  /* Scrollbar styling — macOS overlay style */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(0,0,0,0.18);
+    border-radius: 3px;
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.15);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0,0,0,0.3);
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255,255,255,0.25);
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ─────────────────────────────────────────
+   Utilities
+   ───────────────────────────────────────── */
+@layer utilities {
+  /* Frosted glass — macOS vibrancy */
+  .glass {
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+  }
+
+  /* Panel borders */
+  .panel-border-r {
+    border-right: 1px solid var(--sa-border);
+  }
+  .panel-border-b {
+    border-bottom: 1px solid var(--sa-border);
+  }
+
+  /* Kōru text helpers */
+  .text-koru-primary   { color: var(--sa-text-primary); }
+  .text-koru-secondary { color: var(--sa-text-secondary); }
+  .text-koru-tertiary  { color: var(--sa-text-tertiary); }
+  .text-koru-accent    { color: var(--sa-accent); }
+
+  /* Kōru bg helpers */
+  .bg-koru             { background-color: var(--sa-bg); }
+  .bg-koru-window      { background-color: var(--sa-window); }
+  .bg-koru-sidebar     { background-color: var(--sa-sidebar); }
+  .bg-koru-hover       { background-color: var(--sa-hover); }
+  .bg-koru-selected    { background-color: var(--sa-selected); }
+
+  /* Stage segment colours */
+  .stage-complete { background-color: var(--sa-gold); }
+  .stage-current  { border: 2px solid var(--sa-gold); background: transparent; }
+  .stage-future   { background-color: var(--sa-border-strong); }
+
+  /* Skeleton pulse */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--sa-hover) 25%,
+      rgba(0,0,0,0.07) 50%,
+      var(--sa-hover) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-wave 1.4s ease-in-out infinite;
+  }
+  .dark .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--sa-hover) 25%,
+      rgba(255,255,255,0.08) 50%,
+      var(--sa-hover) 75%
+    );
+    background-size: 200% 100%;
+  }
+  @keyframes skeleton-wave {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* Row hover — instant */
+  .list-row {
+    transition: background-color 0ms;
+  }
+  .list-row:hover {
+    background-color: var(--sa-hover);
+  }
+  .list-row.selected {
+    background-color: var(--sa-selected);
+  }
+
+  /* Unread dot */
+  .unread-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--sa-accent);
+    flex-shrink: 0;
+  }
+
+  /* Traffic light dots */
+  .tl-red    { background-color: var(--sa-danger); }
+  .tl-amber  { background-color: var(--sa-warning); }
+  .tl-green  { background-color: var(--sa-success); }
 }

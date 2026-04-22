@@ -1,0 +1,107 @@
+import { getClient, getProjects, getProducts, getMilestones, getUpdates, getContracts, getPortalFiles } from "@/lib/data";
+import { notFound } from "next/navigation";
+import { PortalClient } from "./PortalClient";
+import type { Contract, PortalFile } from "@/lib/data";
+import type { Stage } from "@/lib/mock-data";
+
+interface Props {
+  params: Promise<{ clientId: string }>;
+}
+
+// Stripped product shape — no factory, cost, BOM, or internal fields
+export interface PortalProduct {
+  id: string;
+  name: string;
+  category: string;
+  stage: Stage;
+  moq: number;
+  order_qty: number | null;
+  quoted_cost_usd: number | null;
+  colorways: string[];
+  milestones: { id: string; title: string; due_date: string; completed_at: string | null }[];
+  updates: { id: string; author: string; author_initials: string; text: string; created_at: string }[];
+}
+
+export interface PortalProject {
+  id: string;
+  name: string;
+  season: string;
+  target_completion: string;
+  products: PortalProduct[];
+}
+
+export default async function PortalPage({ params }: Props) {
+  const { clientId } = await params;
+
+  const client = await getClient(clientId);
+  if (!client) notFound();
+
+  const [projects, contracts, files] = await Promise.all([
+    getProjects(clientId),
+    getContracts(clientId),
+    getPortalFiles(clientId),
+  ]);
+
+  const unlockedProjects = projects.filter((p) => p.portal_unlocked_at !== null);
+
+  if (unlockedProjects.length === 0) {
+    return <PortalClient client={client} locked={true} projects={[]} contracts={contracts} files={files} />;
+  }
+
+  const portalProjects: PortalProject[] = await Promise.all(
+    unlockedProjects.map(async (project) => {
+      const products = await getProducts(project.id);
+      const enriched: PortalProduct[] = await Promise.all(
+        products.map(async (product) => {
+          const [milestones, updates] = await Promise.all([
+            getMilestones(product.id),
+            getUpdates(product.id),
+          ]);
+          // Strip all internal fields — only expose client-safe shape
+          return {
+            id: product.id,
+            name: product.name,
+            category: product.category,
+            stage: product.stage,
+            moq: product.moq,
+            order_qty: product.order_qty,
+            quoted_cost_usd: product.quoted_cost_usd,
+            colorways: product.colorways,
+            milestones: milestones.map((m) => ({
+              id: m.id,
+              title: m.title,
+              due_date: m.due_date,
+              completed_at: m.completed_at,
+            })),
+            updates: updates
+              .filter((u) => u.visible_to_client)
+              .map((u) => ({
+                id: u.id,
+                author: u.author,
+                author_initials: u.author_initials,
+                text: u.text,
+                created_at: u.created_at,
+              })),
+          };
+        })
+      );
+      return {
+        id: project.id,
+        name: project.name,
+        season: project.season,
+        target_completion: project.target_completion,
+        products: enriched,
+      };
+    })
+  );
+
+  return (
+    <PortalClient
+      client={client}
+      locked={false}
+      projects={portalProjects}
+      contracts={contracts}
+      files={files}
+    />
+  );
+}
