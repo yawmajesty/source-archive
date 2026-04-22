@@ -27,7 +27,7 @@ export default async function AppLayout({
         overdueMilestones={overdueMilestones}
         pendingApprovals={pendingApprovals}
       />
-      <main className="flex flex-1 flex-col overflow-hidden">
+      <main className="flex flex-1 flex-col overflow-hidden pt-12 md:pt-0">
         {children}
       </main>
     </div>

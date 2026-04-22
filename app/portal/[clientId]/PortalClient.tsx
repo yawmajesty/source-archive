@@ -102,32 +102,36 @@ function PortalNavBar({ client, tab, setTab }: { client: Client; tab: Tab; setTa
     { id: "contracts", label: "Contracts" },
   ];
   return (
-    <header className="sticky top-0 z-10 flex items-center justify-between px-8 py-4 border-b border-black/[0.08] bg-white">
-      <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1A1A2E] text-white text-[14px] font-bold select-none">
-          {client.logo_initial}
+    <header className="sticky top-0 z-10 border-b border-black/[0.08] bg-white">
+      <div className="flex items-center justify-between px-4 sm:px-8 py-3 sm:py-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-[#1A1A2E] text-white text-[13px] sm:text-[14px] font-bold select-none">
+            {client.logo_initial}
+          </div>
+          <div>
+            <p className="text-[14px] sm:text-[15px] font-medium text-[#1D1D1F] leading-tight">{client.name}</p>
+            <p className="text-[11px] sm:text-[12px] text-[#8E8E93] leading-tight">Client portal</p>
+          </div>
         </div>
-        <div>
-          <p className="text-[15px] font-medium text-[#1D1D1F] leading-tight">{client.name}</p>
-          <p className="text-[12px] text-[#8E8E93] leading-tight">Client portal</p>
-        </div>
+        {/* Desktop tabs */}
+        <nav className="hidden sm:flex items-center gap-1">
+          {TABS.map((t) => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className="rounded-full px-4 py-1.5 text-[12px] transition-colors"
+              style={tab === t.id ? { backgroundColor: "#1A1A2E", color: "#FFFFFF" } : { backgroundColor: "transparent", color: "#6E6E73", border: "0.5px solid #D1D1D6" }}
+            >{t.label}</button>
+          ))}
+        </nav>
       </div>
-      <nav className="flex items-center gap-1">
+      {/* Mobile tabs row */}
+      <div className="sm:hidden flex items-center gap-1 px-4 pb-3 overflow-x-auto">
         {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className="rounded-full px-4 py-1.5 text-[12px] transition-colors"
-            style={
-              tab === t.id
-                ? { backgroundColor: "#1A1A2E", color: "#FFFFFF" }
-                : { backgroundColor: "transparent", color: "#6E6E73", border: "0.5px solid #D1D1D6" }
-            }
-          >
-            {t.label}
-          </button>
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className="rounded-full px-4 py-1.5 text-[12px] whitespace-nowrap transition-colors shrink-0"
+            style={tab === t.id ? { backgroundColor: "#1A1A2E", color: "#FFFFFF" } : { backgroundColor: "transparent", color: "#6E6E73", border: "0.5px solid #D1D1D6" }}
+          >{t.label}</button>
         ))}
-      </nav>
+      </div>
     </header>
   );
 }
@@ -538,6 +542,7 @@ function ProjectsTable({ projects, client }: { projects: PortalProject[]; client
         </button>
       </div>
       <div className="rounded-xl border border-[#E0E0E0] overflow-hidden bg-white">
+        <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead className="bg-[#F7F7F7] border-b border-[#E0E0E0]">
             <tr>
@@ -581,6 +586,7 @@ function ProjectsTable({ projects, client }: { projects: PortalProject[]; client
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
@@ -711,7 +717,7 @@ export function PortalClient({ client, locked, projects, contracts, files }: Pro
     >
       <PortalNavBar client={client} tab={tab} setTab={setTab} />
 
-      <main className="mx-auto max-w-4xl px-6 py-8">
+      <main className="mx-auto max-w-4xl px-4 sm:px-6 py-5 sm:py-8">
         {tab === "overview" && (
           <motion.div
             key="overview"

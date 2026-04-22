@@ -64,7 +64,7 @@ function PLView({ costs, projects, clients }: { costs: Cost[]; projects: Project
   return (
     <div className="px-6 pb-6 flex flex-col gap-5">
       {/* Summary cards */}
-      <div className="grid grid-cols-5 gap-3 pt-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-4">
         {[
           { label: "Revenue",   value: gbp(totals.revenue),   sub: "Agency fees in" },
           { label: "COGS",      value: gbp(totals.cogs),       sub: "Billable production costs" },
@@ -82,6 +82,7 @@ function PLView({ costs, projects, clients }: { costs: Cost[]; projects: Project
 
       {/* Per-project table */}
       <div className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-window)]">
+        <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead className="bg-[var(--sa-bg)] border-b border-[var(--sa-border)]">
             <tr>
@@ -118,6 +119,7 @@ function PLView({ costs, projects, clients }: { costs: Cost[]; projects: Project
             </tr>
           </tfoot>
         </table>
+        </div>
       </div>
     </div>
   );
@@ -255,8 +257,8 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
         {/* Table */}
         <div className="px-6 pb-6">
           <div className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-window)]">
-            {/* Col headers */}
-            <div className="grid grid-cols-[120px_1fr_1fr_100px_100px_80px_60px] gap-3 px-4 py-2 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
+            {/* Col headers — desktop only */}
+            <div className="hidden sm:grid grid-cols-[120px_1fr_1fr_100px_100px_80px_60px] gap-3 px-4 py-2 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
               {["Date", "Product", "Category", "Description", "Amount", "Billable", "Paid by"].map((h) => (
                 <span key={h} className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)]">{h}</span>
               ))}
@@ -288,31 +290,34 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
 
                   {/* Rows */}
                   {!isCollapsed && rows.map((cost) => (
-                    <div
-                      key={cost.id}
-                      className="grid grid-cols-[120px_1fr_1fr_100px_100px_80px_60px] gap-3 items-center px-4 py-2.5 border-b border-[var(--sa-border)] last:border-0 hover:bg-[var(--sa-hover)] transition-colors text-[12px]"
-                    >
-                      <span className="text-[var(--sa-text-tertiary)]">{formatDate(cost.date_paid)}</span>
-                      <span className="truncate text-[var(--sa-text-secondary)]">{getProductName(cost.product_id)}</span>
-                      <span>
-                        <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", CATEGORY_COLORS[cost.category])}>
-                          {cost.category}
+                    <div key={cost.id} className="border-b border-[var(--sa-border)] last:border-0 hover:bg-[var(--sa-hover)] transition-colors">
+                      {/* Mobile card */}
+                      <div className="sm:hidden flex flex-col gap-1 px-4 py-3 text-[12px]">
+                        <div className="flex items-center justify-between">
+                          <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", CATEGORY_COLORS[cost.category])}>{cost.category}</span>
+                          <span className="font-mono font-semibold text-[var(--sa-text-primary)]">£{cost.amount_gbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
+                        </div>
+                        <span className="text-[var(--sa-text-primary)] font-medium">{cost.description}</span>
+                        <div className="flex items-center gap-2 text-[var(--sa-text-tertiary)]">
+                          <span>{formatDate(cost.date_paid)}</span>
+                          <span>·</span>
+                          <span>{cost.paid_by}</span>
+                          {cost.billable_to_client && <span className="text-[var(--sa-success)] font-medium">· Billable</span>}
+                        </div>
+                      </div>
+                      {/* Desktop row */}
+                      <div className="hidden sm:grid grid-cols-[120px_1fr_1fr_100px_100px_80px_60px] gap-3 items-center px-4 py-2.5 text-[12px]">
+                        <span className="text-[var(--sa-text-tertiary)]">{formatDate(cost.date_paid)}</span>
+                        <span className="truncate text-[var(--sa-text-secondary)]">{getProductName(cost.product_id)}</span>
+                        <span><span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", CATEGORY_COLORS[cost.category])}>{cost.category}</span></span>
+                        <span className="truncate text-[var(--sa-text-primary)]">{cost.description}</span>
+                        <span className="font-mono text-[var(--sa-text-primary)]">
+                          £{cost.amount_gbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
+                          <span className="text-[10px] text-[var(--sa-text-tertiary)] ml-1">{cost.currency !== "GBP" ? `(${cost.currency} ${cost.amount})` : ""}</span>
                         </span>
-                      </span>
-                      <span className="truncate text-[var(--sa-text-primary)]">{cost.description}</span>
-                      <span className="font-mono text-[var(--sa-text-primary)]">
-                        £{cost.amount_gbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
-                        <span className="text-[10px] text-[var(--sa-text-tertiary)] ml-1">
-                          {cost.currency !== "GBP" ? `(${cost.currency} ${cost.amount})` : ""}
-                        </span>
-                      </span>
-                      <span>
-                        {cost.billable_to_client
-                          ? <span className="text-[11px] text-[var(--sa-success)] font-medium">Yes</span>
-                          : <span className="text-[11px] text-[var(--sa-text-tertiary)]">No</span>
-                        }
-                      </span>
-                      <span className="truncate text-[var(--sa-text-secondary)]">{cost.paid_by}</span>
+                        <span>{cost.billable_to_client ? <span className="text-[11px] text-[var(--sa-success)] font-medium">Yes</span> : <span className="text-[11px] text-[var(--sa-text-tertiary)]">No</span>}</span>
+                        <span className="truncate text-[var(--sa-text-secondary)]">{cost.paid_by}</span>
+                      </div>
                     </div>
                   ))}
 

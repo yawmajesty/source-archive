@@ -36,7 +36,7 @@ function formatDate(d: string) {
   return new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function ProjectDetailPanel({ data, onNavigate }: { data: ProjectData; onNavigate: () => void }) {
+function ProjectDetailPanel({ data, onNavigate, onBack }: { data: ProjectData; onNavigate: () => void; onBack: () => void }) {
   const { project, products, totalCostGbp } = data;
   const progress = stageProgress(products);
   const isPortalOpen = !!project.portal_unlocked_at;
@@ -51,11 +51,14 @@ function ProjectDetailPanel({ data, onNavigate }: { data: ProjectData; onNavigat
     >
       {/* Panel 3 header */}
       <div className="flex items-start justify-between px-5 py-4 panel-border-b bg-[var(--sa-window)]">
-        <div className="flex flex-col gap-1 min-w-0">
-          <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)] truncate">
-            {project.name}
-          </h2>
-          <p className="text-[12px] text-[var(--sa-text-tertiary)]">{project.season}</p>
+        <div className="flex items-center gap-2 min-w-0">
+          <button onClick={onBack} className="md:hidden flex items-center justify-center h-7 w-7 rounded-md text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] shrink-0">
+            <ArrowRight size={14} className="rotate-180" />
+          </button>
+          <div className="flex flex-col gap-1 min-w-0">
+            <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)] truncate">{project.name}</h2>
+            <p className="text-[12px] text-[var(--sa-text-tertiary)]">{project.season}</p>
+          </div>
         </div>
         <button
           onClick={onNavigate}
@@ -242,10 +245,10 @@ export function ClientsPageClient({ client, projectData }: Props) {
   const selected = projectData.find((d) => d.project.id === selectedId);
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* Panel 2 */}
-      <ResizablePanel defaultWidth={360} storageKey="koru-client-panel2">
-        <div className="flex h-full flex-col">
+    <div className="flex h-full overflow-hidden flex-col md:flex-row">
+      {/* Panel 2 — full width on mobile, fixed width on desktop */}
+      <ResizablePanel defaultWidth={360} storageKey="sa-client-panel2">
+        <div className={cn("flex flex-col", selected ? "hidden md:flex h-full" : "flex h-full")}>
           {/* Panel 2 header */}
           <div className="flex items-center justify-between gap-2 px-4 py-3 panel-border-b bg-[var(--sa-window)]">
             <div className="flex items-center gap-1.5 text-[12px] text-[var(--sa-text-tertiary)]">
@@ -337,14 +340,15 @@ export function ClientsPageClient({ client, projectData }: Props) {
         </div>
       </ResizablePanel>
 
-      {/* Panel 3 */}
-      <div className="flex-1 overflow-hidden bg-[var(--sa-bg)]">
+      {/* Panel 3 — hidden on mobile when nothing selected, back button to return to list */}
+      <div className={cn("flex-1 overflow-hidden bg-[var(--sa-bg)]", !selected && "hidden md:block")}>
         <AnimatePresence mode="wait">
           {selected ? (
             <ProjectDetailPanel
               key={selected.project.id}
               data={selected}
               onNavigate={() => router.push(`/projects/${selected.project.id}`)}
+              onBack={() => setSelectedId(null)}
             />
           ) : (
             <EmptyState
