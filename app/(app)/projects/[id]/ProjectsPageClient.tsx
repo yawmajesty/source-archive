@@ -54,6 +54,7 @@ function AddProductModal({ projectId, factories, onClose }: {
     setError(null);
 
     const { error: err } = await supabase.from("products").insert({
+      id: "prod-" + Date.now(),
       name,
       category: categoryRef.current?.value.trim() || null,
       stage: stageRef.current?.value || "brief",
@@ -66,7 +67,7 @@ function AddProductModal({ projectId, factories, onClose }: {
       quoted_cost_currency: "USD",
       lead_time_days: 0,
       colorways: [],
-      notes: null,
+      notes: "",
     });
 
     setSaving(false);
@@ -332,7 +333,7 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
               </button>
             </div>
 
-            {/* Sort bar */}
+            {/* Sort bar — collection breadcrumb already shown in header */}
             <div className="flex items-center gap-1 px-3 py-1.5 panel-border-b bg-[var(--sa-window)]">
               <span className="text-[10px] text-[var(--sa-text-tertiary)] mr-1">Sort:</span>
               <SortBtn k="name" label="Name" />
@@ -352,7 +353,7 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
             {/* Rows */}
             <div className="flex-1 overflow-y-auto">
               {sorted.length === 0 ? (
-                <EmptyState title="No products yet" description="Add products to this project." />
+                <EmptyState title="No products yet" description="Add products to this collection." />
               ) : (
                 sorted.map(({ product, factory }) => (
                   <ProductRow

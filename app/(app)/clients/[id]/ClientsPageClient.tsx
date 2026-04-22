@@ -87,7 +87,7 @@ function ProjectDetailPanel({ data, portalEnabled, onNavigate, onBack }: { data:
             </p>
             <p className="text-[12px] text-[var(--sa-text-secondary)]">
               {portalEnabled
-                ? "Portal is active — client can view all projects"
+                ? "Portal is active — client can view all collections"
                 : "Portal is off — toggle it in the panel header"
               }
             </p>
@@ -180,7 +180,7 @@ function AddProjectModal({ clientId, onClose }: { clientId: string; onClose: () 
 
   async function handleSave() {
     const name = nameRef.current?.value.trim();
-    if (!name) { setError("Project name is required"); return; }
+    if (!name) { setError("Collection name is required"); return; }
     setSaving(true);
     setError("");
     const { error: err } = await supabase.from("projects").insert({
@@ -207,10 +207,10 @@ function AddProjectModal({ clientId, onClose }: { clientId: string; onClose: () 
         animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-md rounded-2xl bg-[var(--sa-window)] border border-[var(--sa-border)] shadow-xl p-6"
       >
-        <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)] mb-4">Add new project</h2>
+        <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)] mb-4">Add new collection</h2>
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2"><label className={labelCls}>Project name *</label><input ref={nameRef} className={inputCls} placeholder="SS26 Collection" /></div>
+            <div className="col-span-2"><label className={labelCls}>Collection name *</label><input ref={nameRef} className={inputCls} placeholder="SS26 Collection" /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className={labelCls}>Season</label><input ref={seasonRef} className={inputCls} placeholder="SS26" /></div>
@@ -222,7 +222,7 @@ function AddProjectModal({ clientId, onClose }: { clientId: string; onClose: () 
           <div className="flex gap-2 pt-1">
             <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--sa-border)] py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors">Cancel</button>
             <button onClick={handleSave} disabled={saving} className="flex-1 rounded-lg bg-[var(--sa-accent)] py-2 text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-60">
-              {saving ? "Saving…" : "Add Project"}
+              {saving ? "Saving…" : "Add Collection"}
             </button>
           </div>
         </div>
@@ -266,7 +266,7 @@ export function ClientsPageClient({ client, projectData }: Props) {
               onClick={() => setShowAddProject(true)}
               className="flex items-center gap-1 rounded-lg bg-[var(--sa-accent)] px-2.5 py-1.5 text-[11px] font-medium text-white hover:opacity-90 transition-opacity"
             >
-              <Plus size={11} strokeWidth={2.5} /> New Project
+              <Plus size={11} strokeWidth={2.5} /> New Collection
             </button>
           </div>
 
@@ -311,12 +311,12 @@ export function ClientsPageClient({ client, projectData }: Props) {
           {/* Projects list */}
           <div className="flex-1 overflow-y-auto">
             {projectData.length === 0 ? (
-              <EmptyState title="No projects yet" description="This client has no projects." />
+              <EmptyState title="No collections yet" description="This client has no collections." />
             ) : (
               projectData.map(({ project, products }) => {
                 const isSelected = project.id === selectedId;
                 const contextItems: ContextMenuItem[] = [
-                  { label: "Open project", onClick: () => router.push(`/projects/${project.id}`) },
+                  { label: "Open collection", onClick: () => router.push(`/projects/${project.id}`) },
                   { label: "View portal", onClick: () => window.open(`/portal/${project.client_id}`, "_blank") },
                   { label: "Copy project ID", onClick: () => navigator.clipboard?.writeText(project.id) },
                 ];
@@ -378,8 +378,8 @@ export function ClientsPageClient({ client, projectData }: Props) {
             />
           ) : (
             <EmptyState
-              title="Select a project"
-              description="Click a project to see details"
+              title="Select a collection"
+              description="Click a collection to see details"
             />
           )}
         </AnimatePresence>

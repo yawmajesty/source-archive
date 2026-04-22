@@ -111,7 +111,7 @@ function AddProjectModal({ clientId, onClose }: { clientId: string; onClose: () 
 
   async function handleSave() {
     const name = nameRef.current?.value.trim();
-    if (!name) { setError("Project name is required"); return; }
+    if (!name) { setError("Collection name is required"); return; }
     setSaving(true);
     setError("");
     const { error: err } = await supabase.from("projects").insert({
@@ -138,9 +138,9 @@ function AddProjectModal({ clientId, onClose }: { clientId: string; onClose: () 
         animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-md rounded-2xl bg-[var(--sa-window)] border border-[var(--sa-border)] shadow-xl p-6"
       >
-        <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)] mb-4">Add new project</h2>
+        <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)] mb-4">Add new collection</h2>
         <div className="flex flex-col gap-3">
-          <div><label className={labelCls}>Project name *</label><input ref={nameRef} className={inputCls} placeholder="SS26 Collection" /></div>
+          <div><label className={labelCls}>Collection name *</label><input ref={nameRef} className={inputCls} placeholder="SS26 Collection" /></div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className={labelCls}>Season</label><input ref={seasonRef} className={inputCls} placeholder="SS26" /></div>
             <div><label className={labelCls}>Start date</label><input ref={startRef} type="date" className={inputCls} defaultValue={new Date().toISOString().slice(0, 10)} /></div>
@@ -151,7 +151,7 @@ function AddProjectModal({ clientId, onClose }: { clientId: string; onClose: () 
           <div className="flex gap-2 pt-1">
             <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--sa-border)] py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors">Cancel</button>
             <button onClick={handleSave} disabled={saving} className="flex-1 rounded-lg bg-[var(--sa-accent)] py-2 text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-60">
-              {saving ? "Saving…" : "Add Project"}
+              {saving ? "Saving…" : "Add Collection"}
             </button>
           </div>
         </div>
@@ -196,7 +196,7 @@ function DeleteClientModal({ client, onClose }: { client: Client; onClose: () =>
           <button onClick={onClose} className="rounded-lg p-1 hover:bg-[var(--sa-hover)]"><X size={16} className="text-[var(--sa-text-tertiary)]" /></button>
         </div>
         <p className="text-[13px] text-[var(--sa-text-secondary)] mb-2">
-          This will permanently delete <span className="font-semibold text-[var(--sa-text-primary)]">{client.name}</span> and all their projects and products.
+          This will permanently delete <span className="font-semibold text-[var(--sa-text-primary)]">{client.name}</span> and all their collections and products.
         </p>
         <p className="text-[12px] text-[var(--sa-danger)] mb-4">This cannot be undone.</p>
         {error && <p className="text-[12px] text-red-500 mb-3">{error}</p>}
@@ -270,7 +270,7 @@ export function ClientsListClient({ clients, projects, products }: Props) {
                 <div className="grid grid-cols-2 gap-2 mb-4">
                   <div className="rounded-lg bg-[var(--sa-bg)] p-2.5 text-center">
                     <p className="font-mono text-[16px] font-semibold text-[var(--sa-text-primary)]">{stats.projects}</p>
-                    <p className="text-[10px] text-[var(--sa-text-tertiary)]">Active projects</p>
+                    <p className="text-[10px] text-[var(--sa-text-tertiary)]">Active collections</p>
                   </div>
                   <div className="rounded-lg bg-[var(--sa-bg)] p-2.5 text-center">
                     <p className="font-mono text-[16px] font-semibold text-[var(--sa-text-primary)]">{stats.products}</p>
@@ -294,7 +294,7 @@ export function ClientsListClient({ clients, projects, products }: Props) {
                     onClick={() => setAddProjectFor(client.id)}
                     className="flex items-center gap-1 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
                   >
-                    <Plus size={11} strokeWidth={2.5} /> Project
+                    <Plus size={11} strokeWidth={2.5} /> Collection
                   </button>
                   <Link
                     href={`/portal/${client.id}`}
