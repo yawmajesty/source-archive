@@ -985,6 +985,7 @@ export function PortalClient({ client, locked, projects, contracts, files }: Pro
           >
             <StatsRow projects={projects} files={files} />
             <ProductGrid projects={projects} files={files} onSelect={setSelectedProduct} />
+            <SamplingInvoice projects={projects} client={client} />
             <UpdatesFeed projects={projects} />
           </motion.div>
         )}
@@ -992,7 +993,6 @@ export function PortalClient({ client, locked, projects, contracts, files }: Pro
         {tab === "projects" && (
           <motion.div key="projects" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
             <ProjectsTable projects={projects} client={client} />
-            <SamplingInvoice projects={projects} client={client} />
           </motion.div>
         )}
 
