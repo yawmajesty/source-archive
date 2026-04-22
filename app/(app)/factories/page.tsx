@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { getFactories, getProducts } from "@/lib/data";
 import { FactoriesPageClient } from "./FactoriesPageClient";
 
