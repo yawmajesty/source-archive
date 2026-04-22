@@ -34,7 +34,7 @@ function usePortalTheme() {
 }
 
 // ── Types ────────────────────────────────────────────────────
-type Tab = "overview" | "projects" | "files" | "contracts";
+type Tab = "overview" | "sampling" | "projects" | "files" | "contracts";
 
 interface Props {
   client: Client;
@@ -125,6 +125,7 @@ function PortalNavBar({ client, tab, setTab, dark, onToggleTheme }: {
 }) {
   const TABS: { id: Tab; label: string }[] = [
     { id: "overview",  label: "Overview" },
+    { id: "sampling",  label: "Sampling" },
     { id: "projects",  label: "Projects" },
     { id: "files",     label: "Files" },
     { id: "contracts", label: "Contracts" },
@@ -985,8 +986,13 @@ export function PortalClient({ client, locked, projects, contracts, files }: Pro
           >
             <StatsRow projects={projects} files={files} />
             <ProductGrid projects={projects} files={files} onSelect={setSelectedProduct} />
-            <SamplingInvoice projects={projects} client={client} />
             <UpdatesFeed projects={projects} />
+          </motion.div>
+        )}
+
+        {tab === "sampling" && (
+          <motion.div key="sampling" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+            <SamplingInvoice projects={projects} client={client} />
           </motion.div>
         )}
 
