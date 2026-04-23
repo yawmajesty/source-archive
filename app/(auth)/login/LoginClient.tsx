@@ -15,16 +15,21 @@ export function LoginClient() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const { error: err } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (err) {
-      setError(err.message === "Invalid login credentials"
-        ? "Incorrect email or password."
-        : err.message);
-      return;
+    try {
+      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+      if (err) {
+        setError(err.message === "Invalid login credentials"
+          ? "Incorrect email or password."
+          : err.message);
+        return;
+      }
+      router.push("/dashboard");
+      router.refresh();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Something went wrong. Check your connection.");
+    } finally {
+      setLoading(false);
     }
-    router.push("/dashboard");
-    router.refresh();
   }
 
   const inputCls = "w-full rounded-xl border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3.5 py-2.5 text-[14px] text-[var(--sa-text-primary)] placeholder:text-[var(--sa-text-tertiary)] outline-none focus:border-[var(--sa-accent)] transition-colors";
