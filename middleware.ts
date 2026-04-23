@@ -25,12 +25,8 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Refresh session — must be called before any redirects
-  const { data: { user } } = await supabase.auth.getUser();
-
   const { pathname } = request.nextUrl;
 
-  // Routes that don't require auth
   const isPublic =
     pathname.startsWith("/portal") ||
     pathname.startsWith("/login") ||
@@ -39,14 +35,27 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname.includes(".");
 
-  // Unauthenticated user hitting a protected route → send to login
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    // Supabase unreachable — check for session cookies as fallback
+    // If a session cookie exists, assume valid rather than kicking the user
+    const hasSession = request.cookies.getAll().some(
+      (c) => c.name.startsWith("sb-") && c.name.includes("auth-token")
+    );
+    if (hasSession && !isPublic) {
+      return supabaseResponse;
+    }
+  }
+
   if (!isPublic && !user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
-  // Already logged-in user hitting /login or /signup → send to dashboard
   if ((pathname === "/login" || pathname === "/signup") && user) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";

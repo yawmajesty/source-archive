@@ -27,7 +27,12 @@ export function LoginClient() {
       router.push("/dashboard");
       router.refresh();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Something went wrong. Check your connection.");
+      const msg = e instanceof Error ? e.message : "";
+      if (msg.toLowerCase().includes("fetch")) {
+        setError("Can't reach the server. Check your connection and try again.");
+      } else {
+        setError(msg || "Something went wrong. Try again.");
+      }
     } finally {
       setLoading(false);
     }

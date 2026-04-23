@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabaseData as supabase } from "./supabase-data";
 import type {
   Client, Project, Factory, Product, Sample, Milestone,
   Cost, Update, Task, Contract, PortalFile, Lead,
