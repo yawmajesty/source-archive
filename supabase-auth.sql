@@ -23,9 +23,19 @@ create policy "profiles_update_own"
   on public.profiles for update
   using (auth.uid() = id);
 
--- Admins can read all profiles (needed for team management later)
+-- Admins can read all profiles (needed for team management)
 create policy "profiles_admin_read_all"
   on public.profiles for select
+  using (
+    exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.role = 'agency_admin'
+    )
+  );
+
+-- Admins can update any profile's role
+create policy "profiles_admin_update_all"
+  on public.profiles for update
   using (
     exists (
       select 1 from public.profiles p
