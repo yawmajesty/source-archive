@@ -34,6 +34,7 @@ export async function middleware(request: NextRequest) {
   const isPublic =
     pathname.startsWith("/portal") ||
     pathname.startsWith("/login") ||
+    pathname.startsWith("/signup") ||
     pathname.startsWith("/brief") ||
     pathname.startsWith("/_next") ||
     pathname.includes(".");
@@ -45,8 +46,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Already logged-in user hitting /login → send to dashboard
-  if (pathname === "/login" && user) {
+  // Already logged-in user hitting /login or /signup → send to dashboard
+  if ((pathname === "/login" || pathname === "/signup") && user) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);

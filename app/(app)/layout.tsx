@@ -3,6 +3,8 @@ import { db } from "@/lib/mock-data";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { getUser } from "@/lib/supabase-server";
 
+export const revalidate = 30; // revalidate cached data every 30s
+
 export default async function AppLayout({
   children,
 }: {
