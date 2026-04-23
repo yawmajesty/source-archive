@@ -16,7 +16,6 @@ export function LoginClient() {
     setLoading(true);
     setError("");
     try {
-      console.log("Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
       const { error: err } = await supabase.auth.signInWithPassword({ email, password });
       if (err) {
         setError(err.message === "Invalid login credentials"
