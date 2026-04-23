@@ -6,8 +6,9 @@ import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Package, DollarSign, Factory, CheckSquare,
-  Users, Inbox, Folder, FolderOpen, Settings, Menu, X,
+  Users, Inbox, Folder, FolderOpen, Settings, Menu, X, LogOut,
 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { DarkModeToggle } from "@/components/shared/DarkModeToggle";
 import type { Client } from "@/lib/mock-data";
@@ -16,6 +17,7 @@ interface Props {
   clients: Client[];
   overdueMilestones: number;
   pendingApprovals: number;
+  userEmail?: string | null;
 }
 
 const WORKSPACE_NAV = [
@@ -72,7 +74,7 @@ function NavItem({
 }
 
 function SidebarContent({
-  clients, overdueMilestones, pendingApprovals, onNavClick,
+  clients, overdueMilestones, pendingApprovals, userEmail, onNavClick,
 }: Props & { onNavClick?: () => void }) {
   const pathname = usePathname();
 
@@ -132,19 +134,39 @@ function SidebarContent({
       </div>
 
       {/* Footer */}
-      <div className="px-2 pb-3" style={{ borderTop: "1px solid var(--sa-border)" }}>
+      <div className="px-2 pb-3 pt-2 flex flex-col gap-0.5" style={{ borderTop: "1px solid var(--sa-border)" }}>
         <Link href="/settings" onClick={onNavClick}
-          className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-[var(--sa-text-tertiary)] hover:bg-[var(--sa-hover)] hover:text-[var(--sa-text-secondary)] transition-colors mt-2"
+          className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-[var(--sa-text-tertiary)] hover:bg-[var(--sa-hover)] hover:text-[var(--sa-text-secondary)] transition-colors"
         >
           <Settings size={14} strokeWidth={1.8} />
           <span>Settings</span>
         </Link>
+
+        {userEmail && (
+          <div className="flex items-center gap-2.5 rounded-md px-2.5 py-2 mt-0.5">
+            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--sa-accent)] text-white text-[10px] font-semibold select-none">
+              {userEmail[0].toUpperCase()}
+            </div>
+            <span className="flex-1 truncate text-[11px] text-[var(--sa-text-tertiary)]">{userEmail}</span>
+          </div>
+        )}
+
+        <button
+          onClick={async () => {
+            await supabase.auth.signOut();
+            window.location.href = "/login";
+          }}
+          className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-[var(--sa-text-tertiary)] hover:bg-[var(--sa-hover)] hover:text-[var(--sa-danger)] transition-colors"
+        >
+          <LogOut size={14} strokeWidth={1.8} />
+          <span>Sign out</span>
+        </button>
       </div>
     </>
   );
 }
 
-export function Sidebar({ clients, overdueMilestones, pendingApprovals }: Props) {
+export function Sidebar({ clients, overdueMilestones, pendingApprovals, userEmail }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -164,6 +186,7 @@ export function Sidebar({ clients, overdueMilestones, pendingApprovals }: Props)
           clients={clients}
           overdueMilestones={overdueMilestones}
           pendingApprovals={pendingApprovals}
+          userEmail={userEmail}
         />
       </aside>
 
@@ -221,6 +244,7 @@ export function Sidebar({ clients, overdueMilestones, pendingApprovals }: Props)
                 clients={clients}
                 overdueMilestones={overdueMilestones}
                 pendingApprovals={pendingApprovals}
+                userEmail={userEmail}
                 onNavClick={() => setMobileOpen(false)}
               />
             </motion.aside>

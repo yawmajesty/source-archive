@@ -1,21 +1,20 @@
-import { getClients, getMilestones, getProducts } from "@/lib/data";
+import { getClients } from "@/lib/data";
 import { db } from "@/lib/mock-data";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { getUser } from "@/lib/supabase-server";
 
 export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const clients = await getClients();
+  const [clients, user] = await Promise.all([getClients(), getUser()]);
 
-  // Count overdue milestones across all products
   const now = new Date();
   const overdueMilestones = db.milestones.filter(
     (m) => !m.completed_at && new Date(m.due_date) < now
   ).length;
 
-  // Count samples awaiting approval (status = received, approved_at = null)
   const pendingApprovals = db.samples.filter(
     (s) => s.status === "received" && !s.approved_at
   ).length;
@@ -26,6 +25,7 @@ export default async function AppLayout({
         clients={clients}
         overdueMilestones={overdueMilestones}
         pendingApprovals={pendingApprovals}
+        userEmail={user?.email ?? null}
       />
       <main className="flex flex-1 flex-col overflow-hidden pt-12 md:pt-0">
         {children}
