@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Package, DollarSign, Factory, CheckSquare,
   Users, Inbox, Folder, FolderOpen, Settings, Menu, X, LogOut,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { useClerk } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { DarkModeToggle } from "@/components/shared/DarkModeToggle";
 import type { Client } from "@/lib/mock-data";
@@ -77,6 +77,7 @@ function SidebarContent({
   clients, overdueMilestones, pendingApprovals, userEmail, onNavClick,
 }: Props & { onNavClick?: () => void }) {
   const pathname = usePathname();
+  const { signOut } = useClerk();
 
   function isActive(href: string) {
     if (href === "/dashboard") return pathname === "/dashboard";
@@ -152,10 +153,7 @@ function SidebarContent({
         )}
 
         <button
-          onClick={async () => {
-            await supabase.auth.signOut();
-            window.location.href = "/login";
-          }}
+          onClick={() => signOut({ redirectUrl: "/sign-in" })}
           className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-[var(--sa-text-tertiary)] hover:bg-[var(--sa-hover)] hover:text-[var(--sa-danger)] transition-colors"
         >
           <LogOut size={14} strokeWidth={1.8} />

@@ -1,16 +1,16 @@
+import { auth, currentUser } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import { getClients } from "@/lib/data";
 import { db } from "@/lib/mock-data";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { getUser } from "@/lib/supabase-server";
 
-export const revalidate = 30; // revalidate cached data every 30s
+export const revalidate = 30;
 
-export default async function AppLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const [clients, user] = await Promise.all([getClients(), getUser()]);
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
+
+  const [clients, user] = await Promise.all([getClients(), currentUser()]);
 
   const now = new Date();
   const overdueMilestones = db.milestones.filter(
@@ -27,7 +27,7 @@ export default async function AppLayout({
         clients={clients}
         overdueMilestones={overdueMilestones}
         pendingApprovals={pendingApprovals}
-        userEmail={user?.email ?? null}
+        userEmail={user?.emailAddresses[0]?.emailAddress ?? null}
       />
       <main className="flex flex-1 flex-col overflow-hidden pt-12 md:pt-0">
         {children}

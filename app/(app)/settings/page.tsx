@@ -1,47 +1,47 @@
 export const dynamic = "force-dynamic";
 
-import { getUser, createSupabaseServerClient } from "@/lib/supabase-server";
-import { SettingsClient } from "./SettingsClient";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { SettingsClient } from "./SettingsClient";
 
 export const metadata = { title: "Settings — Source[Archive]" };
 
-export interface Profile {
+export interface ClerkUserProfile {
   id: string;
   email: string;
-  full_name: string | null;
-  role: "agency_admin" | "agency_member";
-  created_at: string;
+  fullName: string | null;
+  role: string;
+  createdAt: number;
 }
 
 export default async function SettingsPage() {
-  const user = await getUser();
-  if (!user) redirect("/login");
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
 
-  const supabase = await createSupabaseServerClient();
+  const client = await clerkClient();
+  const currentUser = await client.users.getUser(userId);
+  const role = (currentUser.publicMetadata?.role as string) ?? "team";
+  const isAdmin = role === "admin";
 
-  // Fetch current user's profile
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single();
-
-  const isAdmin = profile?.role === "agency_admin";
-
-  // Admins can see all team members
-  let team: Profile[] = [];
+  let team: ClerkUserProfile[] = [];
   if (isAdmin) {
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .order("created_at");
-    team = (data ?? []) as Profile[];
+    const { data: users } = await client.users.getUserList({ limit: 100 });
+    team = users.map((u) => ({
+      id: u.id,
+      email: u.emailAddresses[0]?.emailAddress ?? "",
+      fullName: u.firstName && u.lastName ? `${u.firstName} ${u.lastName}` : (u.firstName ?? null),
+      role: (u.publicMetadata?.role as string) ?? "team",
+      createdAt: u.createdAt,
+    }));
   }
 
   return (
     <SettingsClient
-      currentUser={{ id: user.id, email: user.email ?? "", profile }}
+      currentUser={{
+        id: userId,
+        email: currentUser.emailAddresses[0]?.emailAddress ?? "",
+        role,
+      }}
       team={team}
       isAdmin={isAdmin}
     />

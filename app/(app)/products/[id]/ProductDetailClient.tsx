@@ -167,8 +167,9 @@ function MediaSection({ productId, initialImages }: { productId: string; initial
     }
     if (newUrls.length) {
       const updated = [...images, ...newUrls];
-      await supabase.from("products").update({ images: updated }).eq("id", productId);
-      setImages(updated);
+      const { error: dbErr } = await supabase.from("products").update({ images: updated }).eq("id", productId);
+      if (dbErr) { setUploadError(`Saved to storage but DB update failed: ${dbErr.message}`); }
+      else { setImages(updated); }
     }
     setUploading(false);
     if (fileRef.current) fileRef.current.value = "";
