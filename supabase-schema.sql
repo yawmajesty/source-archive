@@ -12,6 +12,7 @@ create table if not exists clients (
   contact_name text,
   contact_email text,
   has_new_activity boolean default false,
+  portal_enabled boolean default false,
   created_at timestamptz default now()
 );
 
@@ -63,8 +64,15 @@ create table if not exists products (
   moq integer,
   order_qty integer,
   lead_time_days integer,
-  colorways text[],
+  colorways jsonb default '[]'::jsonb,
+  bom jsonb default '[]'::jsonb,
+  bom_data jsonb default '[]'::jsonb,
   notes text,
+  sample_fee_usd numeric,
+  sample_cost_usd numeric,
+  expected_sample_date text,
+  images jsonb default '[]'::jsonb,
+  documents jsonb default '[]'::jsonb,
   created_at timestamptz default now()
 );
 
@@ -84,10 +92,12 @@ create table if not exists samples (
   status text default 'sent',
   courier text,
   tracking_number text,
-  sent_date date,
-  received_date date,
+  sent_date text,
+  received_date text,
   feedback text,
-  approved_at timestamptz
+  approved_at timestamptz,
+  images jsonb default '[]'::jsonb,
+  created_at timestamptz default now()
 );
 
 create table if not exists costs (
@@ -146,6 +156,7 @@ create table if not exists portal_files (
   client_id text references clients(id) on delete cascade,
   project_id text references projects(id),
   filename text,
+  url text,
   size_kb integer,
   source text default 'agency',
   uploaded_at timestamptz default now()
