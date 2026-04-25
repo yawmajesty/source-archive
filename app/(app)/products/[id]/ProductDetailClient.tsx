@@ -167,7 +167,7 @@ function MediaSection({ productId, initialImages }: { productId: string; initial
     }
     if (newUrls.length) {
       const updated = [...images, ...newUrls];
-      const { error: dbErr } = await supabase.from("products").update({ images: updated }).eq("id", productId);
+      const { error: dbErr } = await supabase.rpc("update_product_images", { p_id: productId, p_images: updated });
       if (dbErr) { setUploadError(`Saved to storage but DB update failed: ${dbErr.message}`); }
       else { setImages(updated); }
     }
@@ -177,7 +177,7 @@ function MediaSection({ productId, initialImages }: { productId: string; initial
 
   async function removeImage(url: string) {
     const updated = images.filter((u) => u !== url);
-    await supabase.from("products").update({ images: updated }).eq("id", productId);
+    await supabase.rpc("update_product_images", { p_id: productId, p_images: updated });
     setImages(updated);
   }
 
@@ -717,7 +717,7 @@ function DocumentsSection({ productId, initialDocs }: { productId: string; initi
     }
     if (newDocs.length) {
       const updated = [...docs, ...newDocs];
-      await supabase.from("products").update({ documents: updated }).eq("id", productId);
+      await supabase.rpc("update_product_documents", { p_id: productId, p_documents: updated });
       setDocs(updated);
     }
     setUploading(false);
@@ -726,7 +726,7 @@ function DocumentsSection({ productId, initialDocs }: { productId: string; initi
 
   async function removeDoc(id: string) {
     const updated = docs.filter((d) => d.id !== id);
-    await supabase.from("products").update({ documents: updated }).eq("id", productId);
+    await supabase.rpc("update_product_documents", { p_id: productId, p_documents: updated });
     setDocs(updated);
   }
 
