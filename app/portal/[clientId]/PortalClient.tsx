@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { uploadFile } from "@/lib/storage";
-import type { Client, Contract, PortalFile } from "@/lib/data";
+import type { Client, Contract, PortalFile, AgencySettings } from "@/lib/data";
 import type { Stage } from "@/lib/mock-data";
 import type { PortalProject, PortalProduct } from "./page";
 
@@ -42,6 +42,7 @@ interface Props {
   projects: PortalProject[];
   contracts: Contract[];
   files: PortalFile[];
+  agencySettings: AgencySettings;
 }
 
 // ── Stage config (from spec Prompt 3) ────────────────────────
@@ -223,7 +224,115 @@ function StatsRow({ projects, files }: { projects: PortalProject[]; files: Porta
   );
 }
 
-// ── ProductGrid ──────────────────────────────────────────────
+// ── Lightbox ─────────────────────────────────────────────────
+function Lightbox({ images, startIndex, onClose }: { images: string[]; startIndex: number; onClose: () => void }) {
+  const [index, setIndex] = useState(startIndex);
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const dragging = useRef(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+  const offsetStart = useRef({ x: 0, y: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setScale(1); setOffset({ x: 0, y: 0 }); }, [index]);
+
+  const close = useCallback(() => onClose(), [onClose]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") close();
+      if (e.key === "ArrowLeft") setIndex((i) => Math.max(0, i - 1));
+      if (e.key === "ArrowRight") setIndex((i) => Math.min(images.length - 1, i + 1));
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [images.length, close]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    function onWheel(e: WheelEvent) {
+      e.preventDefault();
+      setScale((s) => Math.min(5, Math.max(1, s - e.deltaY * 0.003)));
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  function onMouseDown(e: React.MouseEvent) {
+    if (scale <= 1) return;
+    e.preventDefault();
+    dragging.current = true;
+    dragStart.current = { x: e.clientX, y: e.clientY };
+    offsetStart.current = { ...offset };
+  }
+  function onMouseMove(e: React.MouseEvent) {
+    if (!dragging.current) return;
+    setOffset({ x: offsetStart.current.x + e.clientX - dragStart.current.x, y: offsetStart.current.y + e.clientY - dragStart.current.y });
+  }
+  function onMouseUp() { dragging.current = false; }
+
+  function onImgClick() {
+    if (scale > 1) { setScale(1); setOffset({ x: 0, y: 0 }); }
+    else setScale(2.5);
+  }
+
+  const nav = (dir: 1 | -1) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIndex((i) => Math.max(0, Math.min(images.length - 1, i + dir)));
+  };
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center select-none" style={{ background: "rgba(0,0,0,0.93)" }}>
+      {/* Header */}
+      <div className="absolute top-0 inset-x-0 flex items-center justify-between px-4 py-3 z-10">
+        <span className="text-white/50 text-[13px]">{index + 1} / {images.length}</span>
+        <button onClick={close} className="flex h-9 w-9 items-center justify-center rounded-full text-white text-[18px]" style={{ background: "rgba(255,255,255,0.12)" }}>✕</button>
+      </div>
+
+      {/* Image container */}
+      <div
+        ref={containerRef}
+        className="flex items-center justify-center"
+        style={{ width: "100vw", height: "100vh", overflow: "hidden", cursor: scale > 1 ? "grab" : "zoom-in" }}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+        onClick={onImgClick}
+      >
+        <img
+          src={images[index]}
+          alt=""
+          draggable={false}
+          style={{
+            maxWidth: "92vw",
+            maxHeight: "88vh",
+            objectFit: "contain",
+            transform: `scale(${scale}) translate(${offset.x / scale}px, ${offset.y / scale}px)`,
+            transition: dragging.current ? "none" : "transform 0.2s ease",
+            userSelect: "none",
+            pointerEvents: "none",
+          }}
+        />
+      </div>
+
+      {/* Prev */}
+      {index > 0 && (
+        <button onClick={nav(-1)} className="absolute left-3 top-1/2 -translate-y-1/2 z-10 flex h-11 w-11 items-center justify-center rounded-full text-white text-[22px]" style={{ background: "rgba(255,255,255,0.12)" }}>‹</button>
+      )}
+      {/* Next */}
+      {index < images.length - 1 && (
+        <button onClick={nav(1)} className="absolute right-3 top-1/2 -translate-y-1/2 z-10 flex h-11 w-11 items-center justify-center rounded-full text-white text-[22px]" style={{ background: "rgba(255,255,255,0.12)" }}>›</button>
+      )}
+
+      {scale === 1 && (
+        <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[11px] text-white/30 pointer-events-none">Click or scroll to zoom · arrow keys to navigate</p>
+      )}
+    </div>
+  );
+}
+
 // ── Product detail drawer ────────────────────────────────────
 function ProductDetailDrawer({ product, files, client, onClose }: {
   product: PortalProduct;
@@ -235,6 +344,7 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
   const sorted = [...product.milestones].sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
   const [updates, setUpdates] = useState(product.updates.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
   const [images, setImages] = useState<string[]>(product.images ?? []);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [feedback, setFeedback] = useState("");
   const [sendingFeedback, setSendingFeedback] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -288,6 +398,7 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
   }
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" }}>
       {/* Backdrop */}
       <div className="flex-1 bg-black/20" onClick={onClose} />
@@ -343,12 +454,14 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
               <div className="grid grid-cols-3 gap-2">
                 {images.map((url, i) => (
                   <div key={url} className="group relative aspect-square rounded-xl overflow-hidden" style={{ background: "var(--portal-surface-raised)", border: "1px solid var(--portal-border)" }}>
-                    <img src={url} alt="" className="h-full w-full object-cover" />
+                    <button className="h-full w-full" onClick={() => setLightboxIdx(i)}>
+                      <img src={url} alt="" className="h-full w-full object-cover" />
+                    </button>
                     {i === 0 && (
-                      <span className="absolute bottom-1 left-1 rounded-md px-1.5 py-0.5 text-[9px] font-semibold text-white" style={{ background: "rgba(0,0,0,0.55)" }}>Preview</span>
+                      <span className="absolute bottom-1 left-1 rounded-md px-1.5 py-0.5 text-[9px] font-semibold text-white pointer-events-none" style={{ background: "rgba(0,0,0,0.55)" }}>Preview</span>
                     )}
                     <button
-                      onClick={() => handleDeletePhoto(url)}
+                      onClick={(e) => { e.stopPropagation(); handleDeletePhoto(url); }}
                       className="absolute top-1 right-1 hidden group-hover:flex h-6 w-6 items-center justify-center rounded-full text-white transition-colors"
                       style={{ background: "rgba(0,0,0,0.55)" }}
                     >
@@ -499,6 +612,11 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
         )}
       </motion.div>
     </div>
+
+    {lightboxIdx !== null && (
+      <Lightbox images={images} startIndex={lightboxIdx} onClose={() => setLightboxIdx(null)} />
+    )}
+    </>
   );
 }
 
@@ -507,10 +625,10 @@ function ProductCard({ product, onClick }: { product: PortalProduct; onClick: ()
   return (
     <button
       onClick={onClick}
-      className="text-left rounded-xl overflow-hidden hover:shadow-sm transition-all cursor-pointer"
+      className="w-full flex flex-col text-left rounded-xl overflow-hidden hover:shadow-sm transition-all cursor-pointer"
       style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}
     >
-      <div className="h-28 overflow-hidden" style={{ background: "var(--portal-surface-raised)" }}>
+      <div className="w-full aspect-[4/5] overflow-hidden" style={{ background: "var(--portal-surface-raised)" }}>
         {previewImg ? (
           <img src={previewImg} alt={product.name} className="h-full w-full object-cover" />
         ) : (
@@ -542,7 +660,7 @@ function ProductGrid({ projects, files, onSelect }: { projects: PortalProject[];
       <div className="flex items-center justify-between mb-3">
         <p className="text-[13px] font-medium text-[#1D1D1F]">Your products ({all.length})</p>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {all.map((p) => <ProductCard key={p.id} product={p} onClick={() => onSelect(p)} />)}
       </div>
     </div>
@@ -824,7 +942,92 @@ function FilesSection({ files }: { files: PortalFile[] }) {
 }
 
 // ── SamplingInvoice ──────────────────────────────────────────
-function SamplingInvoice({ projects, client }: { projects: PortalProject[]; client: Client }) {
+function buildInvoiceHTML(
+  client: Client,
+  byProject: Array<{ id: string; name: string; season: string; products: PortalProduct[] }>,
+  grandTotal: number,
+  date: string,
+  agencySettings: AgencySettings,
+): string {
+  const rows = byProject.map((proj) => {
+    const projTotal = proj.products.reduce((s, p) => s + (p.sample_fee_usd ?? 0), 0);
+    const productRows = proj.products.map((p, i) => `
+      <tr style="background:${i % 2 === 0 ? "#fff" : "#f9f9f7"}">
+        <td style="padding:10px 16px;font-size:11px;color:#888;text-align:right">${i + 1}</td>
+        <td style="padding:10px 16px">
+          <div style="font-size:12px;font-weight:500;color:#1d1d1f">${p.name}</div>
+          <div style="font-size:10px;color:#888;margin-top:2px">${p.category}</div>
+        </td>
+        <td style="padding:10px 16px;font-size:11px;color:#555;white-space:nowrap">${p.expected_sample_date ? new Date(p.expected_sample_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}</td>
+        <td style="padding:10px 16px;font-size:13px;font-weight:600;font-family:monospace;white-space:nowrap;text-align:right">$${p.sample_fee_usd!.toFixed(2)}</td>
+      </tr>`).join("");
+    return `
+      <tr style="background:#f5f5f0">
+        <td colspan="3" style="padding:8px 16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#555">${proj.name}${proj.season ? ` · ${proj.season}` : ""}</td>
+        <td style="padding:8px 16px;font-size:12px;font-weight:600;font-family:monospace;text-align:right;color:#555">$${projTotal.toFixed(2)}</td>
+      </tr>
+      ${productRows}`;
+  }).join("");
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Sampling Invoice – ${client.name}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;background:#fff;color:#1d1d1f;padding:40px}
+  @media print{body{padding:20px}button{display:none!important}@page{margin:20mm}}
+  table{width:100%;border-collapse:collapse}
+  th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;padding:8px 16px;text-align:left;border-bottom:1px solid #eee}
+  th:last-child{text-align:right}
+  tr{border-bottom:1px solid #eee}
+</style></head><body>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px">
+  <div>
+    <div style="font-size:22px;font-weight:700;letter-spacing:-.5px">Sampling Invoice</div>
+    <div style="font-size:13px;color:#888;margin-top:4px">${client.name} · ${date}</div>
+  </div>
+  <div style="text-align:right">
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#aaa">Total due</div>
+    <div style="font-size:28px;font-weight:800;font-family:monospace;margin-top:2px">$${grandTotal.toFixed(2)}</div>
+  </div>
+</div>
+<div style="border:1px solid #eee;border-radius:10px;overflow:hidden">
+<table>
+  <thead><tr><th style="width:2rem">#</th><th>Product</th><th>Expected Date</th><th style="text-align:right">Amount</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-top:2px solid #eee">
+  <span style="font-size:13px;font-weight:600">Total sampling charges</span>
+  <span style="font-size:16px;font-weight:800;font-family:monospace">$${grandTotal.toFixed(2)}</span>
+</div>
+</div>
+${(() => {
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const row = (label: string, val: string) => val ? `<tr><td style="padding:4px 0;font-size:10px;color:#aaa;white-space:nowrap;width:140px">${label}</td><td style="padding:4px 0 4px 12px;font-size:11px;color:#333;font-weight:500">${esc(val)}</td></tr>` : "";
+  const hasBankDetails = [agencySettings.account_name, agencySettings.bank_name, agencySettings.account_number, agencySettings.sort_code, agencySettings.iban, agencySettings.swift_code, agencySettings.account_location, agencySettings.bank_address, agencySettings.account_created_on].some(Boolean);
+  const bankBlock = hasBankDetails ? `<div style="border:1px solid #eee;border-radius:10px;padding:16px;flex:1">
+  <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;margin-bottom:10px">Bank details</div>
+  <table style="border-collapse:collapse;width:100%">
+    ${row("Account name", agencySettings.account_name)}
+    ${row("Bank name", agencySettings.bank_name)}
+    ${row("Account number", agencySettings.account_number)}
+    ${row("Sort code", agencySettings.sort_code)}
+    ${row("IBAN", agencySettings.iban)}
+    ${row("SWIFT / BIC", agencySettings.swift_code)}
+    ${row("Account location", agencySettings.account_location)}
+    ${row("Bank address", agencySettings.bank_address)}
+    ${row("Account created on", agencySettings.account_created_on)}
+  </table>
+</div>` : "";
+  const termsBlock = agencySettings.invoice_terms ? `<div style="border:1px solid #eee;border-radius:10px;padding:16px;flex:1">
+  <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;margin-bottom:10px">Terms &amp; conditions</div>
+  <p style="font-size:11px;color:#333;line-height:1.7">${esc(agencySettings.invoice_terms)}</p>
+</div>` : "";
+  return (bankBlock || termsBlock) ? `<div style="margin-top:24px;display:flex;gap:16px;align-items:flex-start">${bankBlock}${termsBlock}</div>` : "";
+})()}
+<div style="margin-top:16px;font-size:10px;color:#aaa;text-align:center">Generated by Kōru · ${date}</div>
+</body></html>`;
+}
+
+function SamplingInvoice({ projects, client, agencySettings }: { projects: PortalProject[]; client: Client; agencySettings: AgencySettings }) {
   const date = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 
   const byProject = projects
@@ -836,9 +1039,31 @@ function SamplingInvoice({ projects, client }: { projects: PortalProject[]; clie
 
   const grandTotal = byProject.flatMap((p) => p.products).reduce((s, p) => s + (p.sample_fee_usd ?? 0), 0);
 
+  function handleDownload() {
+    const html = buildInvoiceHTML(client, byProject, grandTotal, date, agencySettings);
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 400);
+  }
+
   return (
     <div className="mt-8">
-      <p className="text-[13px] font-medium mb-4" style={{ color: "var(--portal-text-primary)" }}>Sampling charges</p>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>Sampling charges</p>
+        {grandTotal > 0 && (
+          <button
+            onClick={handleDownload}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors"
+            style={{ background: "var(--portal-brand)", color: "#fff" }}
+          >
+            <Download size={13} />
+            Download PDF
+          </button>
+        )}
+      </div>
       {grandTotal === 0 ? (
         <div className="rounded-xl p-8 text-center" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
           <p className="text-[13px]" style={{ color: "var(--portal-text-secondary)" }}>No sampling charges to show yet</p>
@@ -961,7 +1186,7 @@ function ContractsList({ contracts }: { contracts: Contract[] }) {
 }
 
 // ── Main portal ──────────────────────────────────────────────
-export function PortalClient({ client, locked, projects, contracts, files }: Props) {
+export function PortalClient({ client, locked, projects, contracts, files, agencySettings }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [selectedProduct, setSelectedProduct] = useState<PortalProduct | null>(null);
   const { dark, toggle } = usePortalTheme();
@@ -992,7 +1217,7 @@ export function PortalClient({ client, locked, projects, contracts, files }: Pro
 
         {tab === "sampling" && (
           <motion.div key="sampling" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-            <SamplingInvoice projects={projects} client={client} />
+            <SamplingInvoice projects={projects} client={client} agencySettings={agencySettings} />
           </motion.div>
         )}
 

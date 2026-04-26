@@ -221,6 +221,38 @@ export async function getClientSummaries(): Promise<ClientSummary[]> {
   });
 }
 
+// ── Agency Settings ────────────────────────────────────────
+
+export interface AgencySettings {
+  account_name: string;
+  account_number: string;
+  sort_code: string;
+  swift_code: string;
+  account_location: string;
+  iban: string;
+  bank_name: string;
+  bank_address: string;
+  account_created_on: string;
+  invoice_terms: string;
+}
+
+export async function getAgencySettings(): Promise<AgencySettings> {
+  const { data } = await supabase.from("agency_settings").select("*").eq("id", "default").single();
+  const d = data as any;
+  return {
+    account_name: d?.account_name ?? "",
+    account_number: d?.account_number ?? "",
+    sort_code: d?.sort_code ?? "",
+    swift_code: d?.swift_code ?? "",
+    account_location: d?.account_location ?? "",
+    iban: d?.iban ?? "",
+    bank_name: d?.bank_name ?? "",
+    bank_address: d?.bank_address ?? "",
+    account_created_on: d?.account_created_on ?? "",
+    invoice_terms: d?.invoice_terms ?? "",
+  };
+}
+
 // ── Helpers ────────────────────────────────────────
 
 export async function getFactoryById(id: string | null): Promise<Factory | null> {

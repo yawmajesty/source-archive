@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { SettingsClient } from "./SettingsClient";
+import { getAgencySettings } from "@/lib/data";
 
 export const metadata = { title: "Settings — Source[Archive]" };
 
@@ -35,6 +36,8 @@ export default async function SettingsPage() {
     }));
   }
 
+  const agencySettings = await getAgencySettings();
+
   return (
     <SettingsClient
       currentUser={{
@@ -44,6 +47,7 @@ export default async function SettingsPage() {
       }}
       team={team}
       isAdmin={isAdmin}
+      agencySettings={agencySettings}
     />
   );
 }

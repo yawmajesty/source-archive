@@ -1,7 +1,7 @@
-import { getClient, getProjects, getProducts, getMilestones, getUpdates, getContracts, getPortalFiles } from "@/lib/data";
+import { getClient, getProjects, getProducts, getMilestones, getUpdates, getContracts, getPortalFiles, getAgencySettings } from "@/lib/data";
 import { notFound } from "next/navigation";
 import { PortalClient } from "./PortalClient";
-import type { Contract, PortalFile } from "@/lib/data";
+import type { Contract, PortalFile, AgencySettings } from "@/lib/data";
 import type { Stage } from "@/lib/mock-data";
 
 interface Props {
@@ -39,14 +39,15 @@ export default async function PortalPage({ params }: Props) {
   const client = await getClient(clientId);
   if (!client) notFound();
 
-  const [projects, contracts, files] = await Promise.all([
+  const [projects, contracts, files, agencySettings] = await Promise.all([
     getProjects(clientId),
     getContracts(clientId),
     getPortalFiles(clientId),
+    getAgencySettings(),
   ]);
 
   if (!client.portal_enabled) {
-    return <PortalClient client={client} locked={true} projects={[]} contracts={contracts} files={files} />;
+    return <PortalClient client={client} locked={true} projects={[]} contracts={contracts} files={files} agencySettings={agencySettings} />;
   }
 
   const portalProjects: PortalProject[] = await Promise.all(
@@ -106,6 +107,7 @@ export default async function PortalPage({ params }: Props) {
       projects={portalProjects}
       contracts={contracts}
       files={files}
+      agencySettings={agencySettings}
     />
   );
 }

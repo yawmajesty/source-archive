@@ -2,13 +2,15 @@
 
 import { useState, useTransition } from "react";
 import { Shield, User, Copy, Check } from "lucide-react";
-import { updateUserRole } from "./actions";
+import { updateUserRole, saveAgencySettings } from "./actions";
 import type { ClerkUserProfile } from "./page";
+import type { AgencySettings } from "@/lib/data";
 
 interface Props {
   currentUser: { id: string; email: string; role: string };
   team: ClerkUserProfile[];
   isAdmin: boolean;
+  agencySettings: AgencySettings;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -55,7 +57,90 @@ function CopyLink({ url }: { url: string }) {
   );
 }
 
-export function SettingsClient({ currentUser, team, isAdmin }: Props) {
+const INPUT_CLS = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[12px] text-[var(--sa-text-primary)] placeholder:text-[var(--sa-text-tertiary)] focus:outline-none focus:ring-1 focus:ring-[var(--sa-accent)]";
+const LABEL_CLS = "text-[11px] font-medium text-[var(--sa-text-secondary)] mb-1 block";
+
+function Field({ label, value, onChange, placeholder, span2 }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; span2?: boolean;
+}) {
+  return (
+    <div className={span2 ? "col-span-2" : undefined}>
+      <label className={LABEL_CLS}>{label}</label>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={INPUT_CLS}
+      />
+    </div>
+  );
+}
+
+function InvoiceSettings({ initial }: { initial: AgencySettings }) {
+  const [s, setS] = useState<AgencySettings>(initial);
+  const [isPending, startTransition] = useTransition();
+  const [saved, setSaved] = useState(false);
+
+  function set(key: keyof AgencySettings) {
+    return (v: string) => setS((prev) => ({ ...prev, [key]: v }));
+  }
+
+  function handleSave() {
+    startTransition(async () => {
+      await saveAgencySettings(s);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    });
+  }
+
+  return (
+    <section>
+      <h2 className="text-[11px] font-semibold uppercase tracking-widest text-[var(--sa-text-tertiary)] mb-3">Invoice settings</h2>
+      <div className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] divide-y divide-[var(--sa-border)]">
+
+        <div className="px-4 py-4 flex flex-col gap-1.5">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-[var(--sa-text-tertiary)] mb-2">Bank details</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <Field label="Account name"       value={s.account_name}       onChange={set("account_name")}       placeholder="YAW LIMITED" />
+            <Field label="Bank name"          value={s.bank_name}          onChange={set("bank_name")}          placeholder="AIRWALLEX (UK) LIMITED" />
+            <Field label="Account number"     value={s.account_number}     onChange={set("account_number")}     placeholder="01090237" />
+            <Field label="Sort code"          value={s.sort_code}          onChange={set("sort_code")}          placeholder="04-19-07" />
+            <Field label="IBAN"               value={s.iban}               onChange={set("iban")}               placeholder="GB35AIRW04190701090237" />
+            <Field label="SWIFT / BIC code"   value={s.swift_code}         onChange={set("swift_code")}         placeholder="AIRWGB22XXX" />
+            <Field label="Account location"   value={s.account_location}   onChange={set("account_location")}   placeholder="United Kingdom" />
+            <Field label="Account created on" value={s.account_created_on} onChange={set("account_created_on")} placeholder="14 May 2025" />
+            <Field label="Bank address" value={s.bank_address} onChange={set("bank_address")} placeholder="Labs House 15-19 Bloomsbury Way, London, WC1A 2TH" span2 />
+          </div>
+        </div>
+
+        <div className="px-4 py-4 flex flex-col gap-1.5">
+          <label className={LABEL_CLS}>Payment terms</label>
+          <textarea
+            value={s.invoice_terms}
+            onChange={(e) => setS((prev) => ({ ...prev, invoice_terms: e.target.value }))}
+            rows={3}
+            placeholder="Payment due within 14 days of invoice date. All sampling fees are non-refundable."
+            className={`${INPUT_CLS} resize-none`}
+          />
+        </div>
+
+        <div className="px-4 py-3 flex justify-end">
+          <button
+            onClick={handleSave}
+            disabled={isPending}
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-4 py-1.5 text-[12px] font-medium text-white disabled:opacity-50 transition-opacity"
+          >
+            {saved ? <><Check size={12} /> Saved</> : isPending ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      </div>
+      <p className="mt-2 text-[11px] text-[var(--sa-text-tertiary)]">These appear on every sampling invoice downloaded from the client portal.</p>
+    </section>
+  );
+}
+
+export function SettingsClient({ currentUser, team, isAdmin, agencySettings }: Props) {
   const signupUrl = typeof window !== "undefined"
     ? `${window.location.origin}/sign-up`
     : "/sign-up";
@@ -136,6 +221,8 @@ export function SettingsClient({ currentUser, team, isAdmin }: Props) {
             </p>
           </section>
         )}
+
+        {isAdmin && <InvoiceSettings initial={agencySettings} />}
 
         {!isAdmin && (
           <section>

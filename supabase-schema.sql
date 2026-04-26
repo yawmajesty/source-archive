@@ -177,6 +177,21 @@ create table if not exists leads (
   created_at timestamptz default now()
 );
 
+create table if not exists agency_settings (
+  id text primary key default 'default',
+  account_name text,
+  account_number text,
+  sort_code text,
+  swift_code text,
+  account_location text,
+  iban text,
+  bank_name text,
+  bank_address text,
+  account_created_on text,
+  invoice_terms text,
+  updated_at timestamptz default now()
+);
+
 -- Enable Row Level Security (open for now — add policies when you add auth)
 alter table clients enable row level security;
 alter table projects enable row level security;
@@ -190,6 +205,7 @@ alter table updates enable row level security;
 alter table contracts enable row level security;
 alter table portal_files enable row level security;
 alter table leads enable row level security;
+alter table agency_settings enable row level security;
 
 -- Permissive policies for now (lock down per-user when you add auth)
 create policy "allow_all" on clients for all using (true) with check (true);
@@ -204,3 +220,4 @@ create policy "allow_all" on updates for all using (true) with check (true);
 create policy "allow_all" on contracts for all using (true) with check (true);
 create policy "allow_all" on portal_files for all using (true) with check (true);
 create policy "allow_all" on leads for all using (true) with check (true);
+create policy "allow_all" on agency_settings for all using (true) with check (true);
