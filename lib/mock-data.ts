@@ -58,6 +58,17 @@ export interface Project {
 
 export type LeadStatus = "new" | "contacted" | "qualified" | "proposal_sent" | "converted" | "lost";
 
+export interface BriefProduct {
+  name: string;
+  category: string;
+  description: string;
+  target_qty: number | null;
+  target_price_usd: number | null;
+  colorways: number | null;
+  moodboard_link: string;
+  sustainability: string;
+}
+
 export interface Lead {
   id: string;
   company_name: string;
@@ -71,6 +82,16 @@ export interface Lead {
   status: LeadStatus;
   source: "brief_form" | "referral" | "direct";
   created_at: string;
+  // Extended brief fields
+  website?: string | null;
+  phone?: string | null;
+  brand_stage?: string | null;
+  manufactured_before?: boolean | null;
+  timeline?: string | null;
+  how_found_us?: string | null;
+  sustainability_requirements?: string | null;
+  brief_products?: BriefProduct[];
+  moodboard_links?: string | null;
 }
 
 export interface Factory {
