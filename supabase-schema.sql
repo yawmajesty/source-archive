@@ -221,3 +221,32 @@ create policy "allow_all" on contracts for all using (true) with check (true);
 create policy "allow_all" on portal_files for all using (true) with check (true);
 create policy "allow_all" on leads for all using (true) with check (true);
 create policy "allow_all" on agency_settings for all using (true) with check (true);
+
+create table if not exists reference_samples (
+  id text primary key default gen_random_uuid()::text,
+  client_id text references clients(id) on delete cascade,
+  product_id text references products(id),
+  item_description text not null,
+  brand text,
+  reference_for text[] default '{}',
+  reference_for_other text,
+  size text,
+  courier text,
+  tracking_number text,
+  expected_arrival_date text,
+  client_notes text,
+  client_images jsonb default '[]',
+  submitted_at timestamptz default now(),
+  status text default 'submitted',
+  location text default 'agency',
+  factory_id text references factories(id),
+  received_date text,
+  condition_notes text,
+  agency_images jsonb default '[]',
+  internal_notes text,
+  assigned_to text,
+  return_tracking_number text,
+  created_at timestamptz default now()
+);
+alter table reference_samples enable row level security;
+create policy "allow_all" on reference_samples for all using (true) with check (true);

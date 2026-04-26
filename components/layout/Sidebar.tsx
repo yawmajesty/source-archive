@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Package, DollarSign, Factory, CheckSquare,
-  Users, Inbox, Folder, FolderOpen, Settings, Menu, X, LogOut,
+  Users, Inbox, Folder, FolderOpen, Settings, Menu, X, LogOut, Layers,
 } from "lucide-react";
 import { useClerk } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
@@ -27,7 +27,8 @@ const WORKSPACE_NAV = [
   { href: "/tasks",      label: "Tasks",        icon: CheckSquare },
   { href: "/costs",      label: "Cost Tracker", icon: DollarSign },
   { href: "/factories",  label: "Factories",    icon: Factory },
-  { href: "/leads",      label: "Leads",        icon: Inbox },
+  { href: "/leads",       label: "Leads",        icon: Inbox },
+  { href: "/references",  label: "References",   icon: Layers },
 ];
 
 const staggerContainer = {

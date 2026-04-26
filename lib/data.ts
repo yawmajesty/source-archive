@@ -221,6 +221,56 @@ export async function getClientSummaries(): Promise<ClientSummary[]> {
   });
 }
 
+// ── Reference Samples ────────────────────────────────────────
+
+export interface ReferenceSample {
+  id: string;
+  client_id: string;
+  product_id: string | null;
+  item_description: string;
+  brand: string | null;
+  reference_for: string[];
+  reference_for_other: string | null;
+  size: string | null;
+  courier: string | null;
+  tracking_number: string | null;
+  expected_arrival_date: string | null;
+  client_notes: string | null;
+  client_images: string[];
+  submitted_at: string;
+  status: string;
+  location: string;
+  factory_id: string | null;
+  received_date: string | null;
+  condition_notes: string | null;
+  agency_images: string[];
+  internal_notes: string | null;
+  assigned_to: string | null;
+  return_tracking_number: string | null;
+  created_at: string;
+  client_name?: string;
+  product_name?: string;
+  factory_name?: string;
+}
+
+export async function getReferenceSamples(clientId?: string): Promise<ReferenceSample[]> {
+  let q = supabase
+    .from("reference_samples")
+    .select("*, clients(name), products(name), factories(name)")
+    .order("created_at", { ascending: false });
+  if (clientId) q = q.eq("client_id", clientId);
+  const { data } = await q;
+  return (data ?? []).map((r: any) => ({
+    ...r,
+    client_images: r.client_images ?? [],
+    agency_images: r.agency_images ?? [],
+    reference_for: r.reference_for ?? [],
+    client_name: r.clients?.name ?? null,
+    product_name: r.products?.name ?? null,
+    factory_name: r.factories?.name ?? null,
+  }));
+}
+
 // ── Agency Settings ────────────────────────────────────────
 
 export interface AgencySettings {

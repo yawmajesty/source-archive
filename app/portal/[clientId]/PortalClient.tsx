@@ -34,7 +34,7 @@ function usePortalTheme() {
 }
 
 // ── Types ────────────────────────────────────────────────────
-type Tab = "overview" | "sampling" | "projects" | "files" | "contracts";
+type Tab = "overview" | "sampling" | "projects" | "files" | "contracts" | "references";
 
 interface Props {
   client: Client;
@@ -125,11 +125,12 @@ function PortalNavBar({ client, tab, setTab, dark, onToggleTheme }: {
   client: Client; tab: Tab; setTab: (t: Tab) => void; dark: boolean; onToggleTheme: () => void;
 }) {
   const TABS: { id: Tab; label: string }[] = [
-    { id: "overview",  label: "Overview" },
-    { id: "sampling",  label: "Sampling" },
-    { id: "projects",  label: "Projects" },
-    { id: "files",     label: "Files" },
-    { id: "contracts", label: "Contracts" },
+    { id: "overview",    label: "Overview" },
+    { id: "sampling",    label: "Sampling" },
+    { id: "projects",    label: "Projects" },
+    { id: "files",       label: "Files" },
+    { id: "contracts",   label: "Contracts" },
+    { id: "references",  label: "References" },
   ];
   return (
     <header className="sticky top-0 z-10" style={{ borderBottom: "1px solid var(--portal-border)", background: "var(--portal-nav-bg)" }}>
@@ -1185,6 +1186,309 @@ function ContractsList({ contracts }: { contracts: Contract[] }) {
   );
 }
 
+// ── ReferencesTab ─────────────────────────────────────────────
+const REF_PURPOSES = ["shape", "fit", "fabric", "other"] as const;
+const REF_STATUS_CFG: Record<string, { label: string; bg: string; fg: string }> = {
+  submitted:  { label: "Submitted",  bg: "#DBEAFE", fg: "#1D4ED8" },
+  in_transit: { label: "In transit", bg: "#FEF3C7", fg: "#92400E" },
+  arrived:    { label: "Arrived",    bg: "#D1FAE5", fg: "#065F46" },
+  in_factory: { label: "At factory", bg: "#EDE9FE", fg: "#5B21B6" },
+  returned:   { label: "Returned",   bg: "#F3F4F6", fg: "#6B7280" },
+};
+
+function ReferencesTab({ client, projects }: { client: Client; projects: PortalProject[] }) {
+  const allProducts = projects.flatMap((p) => p.products);
+  const [samples, setSamples] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [clientImages, setClientImages] = useState<string[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [form, setForm] = useState({
+    item_description: "",
+    brand: "",
+    size: "",
+    reference_for: [] as string[],
+    reference_for_other: "",
+    product_id: "",
+    courier: "",
+    tracking_number: "",
+    expected_arrival_date: "",
+    client_notes: "",
+  });
+
+  useEffect(() => {
+    supabase
+      .from("reference_samples")
+      .select("*")
+      .eq("client_id", client.id)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => { setSamples(data ?? []); setLoading(false); });
+  }, [client.id]);
+
+  function togglePurpose(p: string) {
+    setForm((prev) => ({
+      ...prev,
+      reference_for: prev.reference_for.includes(p)
+        ? prev.reference_for.filter((x) => x !== p)
+        : [...prev.reference_for, p],
+    }));
+  }
+
+  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    setUploadingPhoto(true);
+    const urls: string[] = [];
+    for (const file of files) {
+      const path = `references/portal-${client.id}-${Date.now()}-${file.name}`;
+      const { url } = await uploadFile("product-media", path, file);
+      if (url) urls.push(url);
+    }
+    setClientImages((prev) => [...prev, ...urls]);
+    setUploadingPhoto(false);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function handleSubmit() {
+    if (!form.item_description.trim()) return;
+    setSubmitting(true);
+    const payload = {
+      id: `ref-${Date.now()}`,
+      client_id: client.id,
+      product_id: form.product_id || null,
+      item_description: form.item_description.trim(),
+      brand: form.brand.trim() || null,
+      size: form.size.trim() || null,
+      reference_for: form.reference_for,
+      reference_for_other: form.reference_for.includes("other") ? form.reference_for_other.trim() || null : null,
+      courier: form.courier.trim() || null,
+      tracking_number: form.tracking_number.trim() || null,
+      expected_arrival_date: form.expected_arrival_date || null,
+      client_notes: form.client_notes.trim() || null,
+      client_images: clientImages,
+      status: "submitted",
+      submitted_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabase.from("reference_samples").insert(payload).select().single();
+    if (!error && data) {
+      setSamples((prev) => [data, ...prev]);
+      setShowForm(false);
+      setForm({ item_description: "", brand: "", size: "", reference_for: [], reference_for_other: "", product_id: "", courier: "", tracking_number: "", expected_arrival_date: "", client_notes: "" });
+      setClientImages([]);
+    }
+    setSubmitting(false);
+  }
+
+  const inputCls = "w-full rounded-xl px-3 py-2.5 text-[13px] outline-none transition-colors";
+  const inputStyle = { border: "1px solid var(--portal-border)", background: "var(--portal-input-bg)", color: "var(--portal-text-primary)" };
+  const labelCls = "text-[11px] font-medium mb-1 block";
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <p className="text-[15px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Reference Garments</p>
+          <p className="text-[12px] mt-0.5" style={{ color: "var(--portal-text-secondary)" }}>Submit reference garments you are sending us to help guide production</p>
+        </div>
+        {!showForm && (
+          <button
+            onClick={() => setShowForm(true)}
+            className="shrink-0 rounded-xl px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
+            style={{ background: "var(--portal-brand)" }}
+          >
+            + Submit reference
+          </button>
+        )}
+      </div>
+
+      {/* Submission form */}
+      <AnimatePresence>
+        {showForm && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="rounded-2xl mb-6 overflow-hidden"
+            style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}
+          >
+            <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
+              <p className="text-[14px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Submit reference garment</p>
+              <button onClick={() => setShowForm(false)} style={{ color: "var(--portal-text-secondary)" }}>✕</button>
+            </div>
+
+            <div className="px-5 py-5 flex flex-col gap-4">
+              {/* Item + brand */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls} style={{ color: "var(--portal-text-secondary)" }}>Item description <span style={{ color: "var(--portal-brand)" }}>*</span></label>
+                  <input type="text" value={form.item_description} onChange={(e) => setForm((f) => ({ ...f, item_description: e.target.value }))} placeholder="e.g. Oversized bomber jacket" className={inputCls} style={inputStyle} />
+                </div>
+                <div>
+                  <label className={labelCls} style={{ color: "var(--portal-text-secondary)" }}>Brand</label>
+                  <input type="text" value={form.brand} onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))} placeholder="e.g. Acne Studios" className={inputCls} style={inputStyle} />
+                </div>
+              </div>
+
+              {/* Size + product */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls} style={{ color: "var(--portal-text-secondary)" }}>Size</label>
+                  <input type="text" value={form.size} onChange={(e) => setForm((f) => ({ ...f, size: e.target.value }))} placeholder="e.g. M / EU 48 / UK 12" className={inputCls} style={inputStyle} />
+                </div>
+                <div>
+                  <label className={labelCls} style={{ color: "var(--portal-text-secondary)" }}>Link to product (optional)</label>
+                  <select value={form.product_id} onChange={(e) => setForm((f) => ({ ...f, product_id: e.target.value }))} className={inputCls} style={{ ...inputStyle, appearance: "none" }}>
+                    <option value="">No product linked</option>
+                    {allProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Purpose */}
+              <div>
+                <label className={labelCls} style={{ color: "var(--portal-text-secondary)" }}>What are you using this reference for?</label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {REF_PURPOSES.map((p) => {
+                    const active = form.reference_for.includes(p);
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => togglePurpose(p)}
+                        className="rounded-full px-3 py-1.5 text-[12px] font-medium capitalize transition-colors"
+                        style={active
+                          ? { background: "var(--portal-brand)", color: "#fff" }
+                          : { border: "1px solid var(--portal-border)", color: "var(--portal-text-secondary)", background: "transparent" }
+                        }
+                      >{p}</button>
+                    );
+                  })}
+                </div>
+                {form.reference_for.includes("other") && (
+                  <input type="text" value={form.reference_for_other} onChange={(e) => setForm((f) => ({ ...f, reference_for_other: e.target.value }))} placeholder="Describe what else…" className={`${inputCls} mt-2`} style={inputStyle} />
+                )}
+              </div>
+
+              {/* Courier + tracking */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls} style={{ color: "var(--portal-text-secondary)" }}>Courier</label>
+                  <input type="text" value={form.courier} onChange={(e) => setForm((f) => ({ ...f, courier: e.target.value }))} placeholder="e.g. DHL, FedEx, Royal Mail" className={inputCls} style={inputStyle} />
+                </div>
+                <div>
+                  <label className={labelCls} style={{ color: "var(--portal-text-secondary)" }}>Tracking number</label>
+                  <input type="text" value={form.tracking_number} onChange={(e) => setForm((f) => ({ ...f, tracking_number: e.target.value }))} placeholder="e.g. 1234567890" className={inputCls} style={inputStyle} />
+                </div>
+              </div>
+
+              {/* Expected arrival */}
+              <div>
+                <label className={labelCls} style={{ color: "var(--portal-text-secondary)" }}>Expected arrival date</label>
+                <input type="date" value={form.expected_arrival_date} onChange={(e) => setForm((f) => ({ ...f, expected_arrival_date: e.target.value }))} className={inputCls} style={inputStyle} />
+              </div>
+
+              {/* Photos */}
+              <div>
+                <label className={labelCls} style={{ color: "var(--portal-text-secondary)" }}>Photos of the garment</label>
+                <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoUpload} />
+                {clientImages.length > 0 ? (
+                  <div className="grid grid-cols-4 gap-2 mb-2">
+                    {clientImages.map((url) => (
+                      <div key={url} className="group relative aspect-square rounded-xl overflow-hidden" style={{ border: "1px solid var(--portal-border)" }}>
+                        <img src={url} alt="" className="h-full w-full object-cover" />
+                        <button
+                          onClick={() => setClientImages((prev) => prev.filter((u) => u !== url))}
+                          className="absolute top-1 right-1 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full text-white text-[10px]"
+                          style={{ background: "rgba(0,0,0,0.6)" }}
+                        >✕</button>
+                      </div>
+                    ))}
+                    <button onClick={() => fileRef.current?.click()} disabled={uploadingPhoto} className="aspect-square rounded-xl flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-50" style={{ border: "1px dashed var(--portal-border)", background: "var(--portal-surface-raised)" }}>
+                      <Upload size={16} strokeWidth={1.5} style={{ color: "var(--portal-text-muted)" }} />
+                      <span className="text-[10px]" style={{ color: "var(--portal-text-muted)" }}>{uploadingPhoto ? "…" : "Add"}</span>
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={() => fileRef.current?.click()} disabled={uploadingPhoto} className="flex w-full flex-col items-center gap-2 rounded-xl py-6 transition-colors disabled:opacity-50" style={{ border: "1px dashed var(--portal-border)", background: "var(--portal-surface-raised)" }}>
+                    <Upload size={20} strokeWidth={1.5} style={{ color: "var(--portal-text-muted)" }} />
+                    <p className="text-[12px]" style={{ color: "var(--portal-text-muted)" }}>{uploadingPhoto ? "Uploading…" : "Upload photos of the garment"}</p>
+                  </button>
+                )}
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className={labelCls} style={{ color: "var(--portal-text-secondary)" }}>Additional notes</label>
+                <textarea value={form.client_notes} onChange={(e) => setForm((f) => ({ ...f, client_notes: e.target.value }))} rows={3} placeholder="Any specific details or instructions…" className={`${inputCls} resize-none`} style={inputStyle} />
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 justify-end pt-1">
+                <button onClick={() => setShowForm(false)} className="rounded-xl px-4 py-2.5 text-[13px] transition-colors" style={{ border: "1px solid var(--portal-border)", color: "var(--portal-text-secondary)", background: "transparent" }}>Cancel</button>
+                <button
+                  onClick={handleSubmit}
+                  disabled={submitting || !form.item_description.trim()}
+                  className="rounded-xl px-5 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                  style={{ background: "var(--portal-brand)" }}
+                >
+                  {submitting ? "Submitting…" : "Submit reference"}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Existing submissions */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <p className="text-[13px]" style={{ color: "var(--portal-text-muted)" }}>Loading…</p>
+        </div>
+      ) : samples.length === 0 ? (
+        <div className="rounded-2xl flex flex-col items-center justify-center py-14 gap-3" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
+          <p className="text-[14px] font-medium" style={{ color: "var(--portal-text-primary)" }}>No references submitted yet</p>
+          <p className="text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>Use the button above to submit your first reference garment</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {samples.map((s) => {
+            const cfg = REF_STATUS_CFG[s.status] ?? REF_STATUS_CFG.submitted;
+            return (
+              <div key={s.id} className="rounded-2xl overflow-hidden" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
+                <div className="flex items-start justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
+                  <div>
+                    <p className="text-[14px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>{s.item_description}</p>
+                    {s.brand && <p className="text-[12px] mt-0.5" style={{ color: "var(--portal-text-secondary)" }}>{s.brand}{s.size ? ` · Size ${s.size}` : ""}</p>}
+                  </div>
+                  <span className="rounded-full px-2.5 py-1 text-[11px] font-medium shrink-0 ml-3" style={{ background: cfg.bg, color: cfg.fg }}>{cfg.label}</span>
+                </div>
+                <div className="px-5 py-3 flex flex-wrap gap-3 text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>
+                  {(s.reference_for ?? []).length > 0 && (
+                    <span>Purpose: <strong style={{ color: "var(--portal-text-primary)" }}>{(s.reference_for as string[]).join(", ")}</strong></span>
+                  )}
+                  {s.courier && <span>Via {s.courier}</span>}
+                  {s.tracking_number && <span>Tracking: <strong style={{ color: "var(--portal-text-primary)" }}>{s.tracking_number}</strong></span>}
+                  {s.expected_arrival_date && <span>Expected: {new Date(s.expected_arrival_date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>}
+                </div>
+                {s.client_images?.length > 0 && (
+                  <div className="px-5 pb-4 grid grid-cols-4 gap-2">
+                    {(s.client_images as string[]).map((url: string) => (
+                      <img key={url} src={url} alt="" className="aspect-square rounded-xl object-cover w-full" style={{ border: "1px solid var(--portal-border)" }} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main portal ──────────────────────────────────────────────
 export function PortalClient({ client, locked, projects, contracts, files, agencySettings }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
@@ -1237,6 +1541,12 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
           <motion.div key="contracts" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
             <p className="text-[13px] font-medium mb-4" style={{ color: "var(--portal-text-primary)" }}>Contracts ({contracts.length})</p>
             <ContractsList contracts={contracts} />
+          </motion.div>
+        )}
+
+        {tab === "references" && (
+          <motion.div key="references" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+            <ReferencesTab client={client} projects={projects} />
           </motion.div>
         )}
       </main>
