@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, Plus, X, ChevronRight, ChevronLeft } from "lucide-react";
 import { submitTechpack } from "./actions";
@@ -189,6 +189,16 @@ function validate(step: number, form: Form): string | null {
 export function TechpackForm() {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<Form>(INITIAL);
+
+  useEffect(() => {
+    const prev = { htmlOverflow: document.documentElement.style.overflow, bodyOverflow: document.body.style.overflow };
+    document.documentElement.style.overflow = "auto";
+    document.body.style.overflow = "auto";
+    return () => {
+      document.documentElement.style.overflow = prev.htmlOverflow;
+      document.body.style.overflow = prev.bodyOverflow;
+    };
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [submitted, setSubmitted] = useState(false);

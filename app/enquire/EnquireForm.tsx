@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CheckCircle } from "lucide-react";
 import { submitEnquiry } from "./actions";
 
@@ -14,6 +14,15 @@ const labelCls = "block text-[12px] font-semibold text-[#6E6E73] mb-1.5 uppercas
 
 export function EnquireForm() {
   const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.style.overflow = "auto";
+    document.body.style.overflow = "auto";
+    return () => {
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
+    };
+  }, []);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     contact_name: "", company_name: "", contact_email: "",
