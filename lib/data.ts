@@ -303,6 +303,85 @@ export async function getAgencySettings(): Promise<AgencySettings> {
   };
 }
 
+// ── Techpack Submissions ────────────────────────────────────────
+
+export interface TechpackSubmission {
+  id: string;
+  contact_name: string;
+  company_name: string;
+  contact_email: string;
+  phone: string | null;
+  product_category: string;
+  collection_name: string | null;
+  launch_date: string | null;
+  target_quantity: number | null;
+  retail_price_point: string | null;
+  product_description: string | null;
+  aesthetic_feeling: string[];
+  reference_urls: string[];
+  competitor_urls: string[];
+  fit_type: string[];
+  measurements_known: boolean | null;
+  measurements_notes: string | null;
+  fabric_preference: string[];
+  fabric_gsm: string | null;
+  suggest_fabric: boolean;
+  print_type: string[];
+  print_placement: string[];
+  artwork_urls: string[];
+  wash_type: string[];
+  wash_effect: string | null;
+  zip_type: string | null;
+  button_type: string | null;
+  drawstring_type: string | null;
+  hardware_finish: string | null;
+  neck_label: string | null;
+  additional_labels: string[];
+  packaging: string | null;
+  custom_pattern: boolean;
+  multiple_panels: boolean;
+  special_construction: boolean;
+  custom_hardware: boolean;
+  sampling_budget: string | null;
+  target_unit_cost: string | null;
+  quality_priority: string | null;
+  understands_revisions: boolean;
+  produced_before: boolean | null;
+  ready_for_sampling: boolean | null;
+  deposit_agreed: boolean;
+  status: string;
+  internal_notes: string | null;
+  assigned_to: string | null;
+  created_at: string;
+}
+
+const TECHPACK_ARRAY_FIELDS = [
+  "aesthetic_feeling", "reference_urls", "competitor_urls", "fit_type",
+  "fabric_preference", "print_type", "print_placement", "artwork_urls",
+  "wash_type", "additional_labels",
+] as const;
+
+export async function getTechpackSubmissions(): Promise<TechpackSubmission[]> {
+  const { data } = await supabase
+    .from("techpack_submissions")
+    .select("*")
+    .order("created_at", { ascending: false });
+  return (data ?? []).map((r: any) => ({
+    ...r,
+    ...Object.fromEntries(TECHPACK_ARRAY_FIELDS.map((f) => [f, r[f] ?? []])),
+  }));
+}
+
+export async function getTechpackSubmission(id: string): Promise<TechpackSubmission | null> {
+  const { data } = await supabase.from("techpack_submissions").select("*").eq("id", id).single();
+  if (!data) return null;
+  const r = data as any;
+  return {
+    ...r,
+    ...Object.fromEntries(TECHPACK_ARRAY_FIELDS.map((f) => [f, r[f] ?? []])),
+  };
+}
+
 // ── Helpers ────────────────────────────────────────
 
 export async function getFactoryById(id: string | null): Promise<Factory | null> {
