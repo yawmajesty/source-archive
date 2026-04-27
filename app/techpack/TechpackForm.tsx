@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle, Plus, X, ChevronRight, ChevronLeft } from "lucide-react";
-import { submitTechpack } from "./actions";
+import { CheckCircle, Plus, X, ChevronRight, ChevronLeft, Upload, Link } from "lucide-react";
+import { submitTechpack, uploadTechpackFile } from "./actions";
 
 // ── Constants ────────────────────────────────────────
 
@@ -69,31 +69,118 @@ function YesNo({ value, onChange }: { value: boolean | null; onChange: (v: boole
   );
 }
 
-function URLList({ label, hint, values, onChange }: { label: string; hint?: string; values: string[]; onChange: (v: string[]) => void }) {
+function FileUploadList({
+  label, hint, values, onChange,
+}: {
+  label: string; hint?: string; values: string[]; onChange: (v: string[]) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [showUrl, setShowUrl] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const isImage = (u: string) => /\.(jpe?g|png|webp|gif|avif|svg)(\?|$)/i.test(u);
+  const isPdf   = (u: string) => /\.pdf(\?|$)/i.test(u);
+  const shortName = (u: string) => {
+    try { return decodeURIComponent(u.split("/").pop()?.split("?")[0] ?? u).slice(0, 32); }
+    catch { return u.slice(0, 32); }
+  };
+
+  async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    setUploading(true);
+    const newUrls: string[] = [];
+    for (const file of files) {
+      const fd = new FormData();
+      fd.append("file", file);
+      const url = await uploadTechpackFile(fd);
+      if (url) newUrls.push(url);
+    }
+    onChange([...values, ...newUrls]);
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function addUrl() {
+    const u = urlInput.trim();
+    if (!u) return;
+    onChange([...values, u]);
+    setUrlInput("");
+    setShowUrl(false);
+  }
+
+  function remove(i: number) { onChange(values.filter((_, j) => j !== i)); }
+
   return (
     <div>
       <label className={labelCls}>{label}</label>
       {hint && <p className="text-[12px] text-[#AEAEB2] mb-2">{hint}</p>}
-      <div className="flex flex-col gap-2">
-        {values.map((url, i) => (
-          <div key={i} className="flex gap-2">
-            <input
-              value={url}
-              onChange={(e) => { const next = [...values]; next[i] = e.target.value; onChange(next); }}
-              placeholder="https://…"
-              className={inputCls}
-            />
-            {values.length > 1 && (
-              <button type="button" onClick={() => onChange(values.filter((_, j) => j !== i))}
-                className="flex items-center justify-center w-10 shrink-0 rounded-xl border border-[#D1D1D6] text-[#AEAEB2] hover:text-red-500 hover:border-red-200 transition-colors"
-              ><X size={14} /></button>
-            )}
-          </div>
-        ))}
-        <button type="button" onClick={() => onChange([...values, ""])}
-          className="flex items-center gap-1.5 text-[12px] text-[#6E6E73] hover:text-[#1A1A2E] transition-colors mt-1"
-        ><Plus size={12} /> Add another link</button>
+
+      {/* Preview grid */}
+      {values.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-3">
+          {values.map((url, i) => (
+            <div key={i} className="group relative">
+              {isImage(url) ? (
+                <div className="relative w-20 h-20 rounded-xl overflow-hidden border border-[#D1D1D6] bg-[#F5F5F7]">
+                  <img src={url} alt="" className="w-full h-full object-cover" />
+                  <button type="button" onClick={() => remove(i)}
+                    className="absolute top-1 right-1 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white text-[10px]"
+                  >✕</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 rounded-xl border border-[#D1D1D6] bg-white pl-2.5 pr-1.5 py-1.5 text-[11px] max-w-[180px]">
+                  <span className="text-[14px] shrink-0">{isPdf(url) ? "📄" : "🔗"}</span>
+                  <span className="truncate text-[#3A3A3C] flex-1">{shortName(url)}</span>
+                  <button type="button" onClick={() => remove(i)} className="text-[#AEAEB2] hover:text-red-500 shrink-0">
+                    <X size={11} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="flex items-center gap-2 rounded-xl border border-dashed border-[#D1D1D6] px-4 py-2.5 text-[13px] text-[#6E6E73] hover:border-[#1A1A2E] hover:text-[#1A1A2E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Upload size={14} strokeWidth={1.8} />
+          {uploading ? "Uploading…" : "Upload photos or PDF"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowUrl((v) => !v)}
+          className="flex items-center gap-2 rounded-xl border border-[#D1D1D6] px-4 py-2.5 text-[13px] text-[#6E6E73] hover:border-[#1A1A2E] hover:text-[#1A1A2E] transition-colors"
+        >
+          <Link size={14} strokeWidth={1.8} /> Paste a link
+        </button>
+        <input ref={fileRef} type="file" accept="image/*,.pdf" multiple className="hidden" onChange={handleFiles} />
       </div>
+
+      {/* URL input */}
+      {showUrl && (
+        <div className="flex gap-2 mt-2">
+          <input
+            autoFocus
+            type="url"
+            placeholder="https://…"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addUrl(); } }}
+            className={inputCls}
+          />
+          <button type="button" onClick={addUrl}
+            className="shrink-0 rounded-xl border border-[#D1D1D6] px-4 text-[13px] text-[#3A3A3C] hover:bg-[#F5F5F7] transition-colors"
+          >Add</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -379,15 +466,15 @@ export function TechpackForm() {
                       <p className="text-[12px] text-[#AEAEB2] mb-2">Select all that apply.</p>
                       <MultiChips options={AESTHETICS} value={form.aesthetic_feeling} onChange={(v) => set("aesthetic_feeling", v)} />
                     </div>
-                    <URLList
-                      label="Reference images / moodboard links"
-                      hint="Google Drive, Dropbox, Pinterest, Figma, or direct image URLs."
+                    <FileUploadList
+                      label="Reference images / moodboard"
+                      hint="Upload photos, PDFs, or paste links (Google Drive, Dropbox, Pinterest, Figma)."
                       values={form.reference_urls}
                       onChange={(v) => set("reference_urls", v)}
                     />
-                    <URLList
+                    <FileUploadList
                       label="Competitor / inspiration products"
-                      hint="Links to existing products you want to reference for shape, quality, or detail."
+                      hint="Upload images or paste links to existing products you want to reference."
                       values={form.competitor_urls}
                       onChange={(v) => set("competitor_urls", v)}
                     />
@@ -466,9 +553,9 @@ export function TechpackForm() {
                             <label className={labelCls}>Placement(s)</label>
                             <MultiChips options={PLACEMENTS} value={form.print_placement} onChange={(v) => set("print_placement", v)} />
                           </div>
-                          <URLList
+                          <FileUploadList
                             label="Artwork / graphic files"
-                            hint="Share links to your artwork files (Google Drive, Dropbox, WeTransfer, etc.)"
+                            hint="Upload files or paste links (Google Drive, Dropbox, WeTransfer, etc.)"
                             values={form.artwork_urls}
                             onChange={(v) => set("artwork_urls", v)}
                           />

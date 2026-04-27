@@ -2,6 +2,20 @@
 
 import { supabaseData } from "@/lib/supabase-data";
 
+export async function uploadTechpackFile(formData: FormData): Promise<string | null> {
+  const file = formData.get("file") as File | null;
+  if (!file) return null;
+  const ext = file.name.split(".").pop() ?? "bin";
+  const path = `techpacks/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const bytes = await file.arrayBuffer();
+  const { data, error } = await supabaseData.storage
+    .from("product-media")
+    .upload(path, bytes, { contentType: file.type, upsert: false });
+  if (error || !data) return null;
+  const { data: { publicUrl } } = supabaseData.storage.from("product-media").getPublicUrl(data.path);
+  return publicUrl;
+}
+
 export interface TechpackPayload {
   contact_name: string;
   company_name: string;
