@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ExternalLink, ArrowRight, Check, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, Check, Plus, Trash2, Copy, CheckCheck, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { updateLeadStatus, convertLeadToClient, createLead, deleteLead } from "./actions";
 import type { Lead } from "@/lib/data";
@@ -20,6 +20,33 @@ const STATUS_CFG: Record<string, { label: string; cls: string }> = {
 };
 
 const SOURCE_OPTIONS = ["brief_form", "referral", "direct", "cold_outreach", "event", "social", "other"];
+
+function CopyLink({ label, path }: { label: string; path: string }) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    const url = typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
+    navigator.clipboard?.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+  return (
+    <div className="flex items-center rounded-lg border border-[var(--sa-border)] overflow-hidden text-[11px]">
+      <span className="px-2 py-1.5 text-[10px] text-[var(--sa-text-tertiary)] bg-[var(--sa-bg)] border-r border-[var(--sa-border)] whitespace-nowrap font-medium">{label}</span>
+      <span className="px-2.5 py-1.5 font-mono text-[var(--sa-text-secondary)] bg-[var(--sa-window)]">{path}</span>
+      <button
+        onClick={copy}
+        className={cn(
+          "flex items-center gap-1 px-2.5 py-1.5 border-l border-[var(--sa-border)] font-medium transition-colors whitespace-nowrap",
+          copied
+            ? "text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/10"
+            : "text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
+        )}
+      >
+        {copied ? <><CheckCheck size={11} /> Copied</> : <><Copy size={11} /> Copy</>}
+      </button>
+    </div>
+  );
+}
 
 const INPUT = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[12px] text-[var(--sa-text-primary)] placeholder:text-[var(--sa-text-tertiary)] focus:outline-none focus:ring-1 focus:ring-[var(--sa-accent)]";
 
@@ -339,7 +366,6 @@ export function LeadsClient({ leads }: Props) {
     return acc;
   }, {} as Record<string, number>);
 
-  const briefLink = typeof window !== "undefined" ? `${window.location.origin}/brief` : "/brief";
   const rightPanel = showAdd ? "add" : selected ? "detail" : null;
 
   return (
@@ -350,22 +376,19 @@ export function LeadsClient({ leads }: Props) {
             <h1 className="text-[15px] font-semibold text-[var(--sa-text-primary)]">Leads</h1>
             <p className="text-[12px] text-[var(--sa-text-tertiary)]">{leads.length} total · {counts.new ?? 0} new</p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigator.clipboard?.writeText(briefLink)}
-              className="flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
-              title="Copy brief form link"
-            >
-              <ExternalLink size={12} />
-              Copy brief link
-            </button>
-            <button
-              onClick={() => { setShowAdd(true); setSelected(null); }}
-              className="flex items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-3 py-1.5 text-[12px] font-medium text-white hover:opacity-90 transition-opacity"
-            >
-              <Plus size={12} /> Add lead
-            </button>
-          </div>
+          <button
+            onClick={() => { setShowAdd(true); setSelected(null); }}
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-3 py-1.5 text-[12px] font-medium text-white hover:opacity-90 transition-opacity"
+          >
+            <Plus size={12} /> Add lead
+          </button>
+        </div>
+
+        {/* Shareable form links */}
+        <div className="flex items-center gap-3 px-6 py-2.5 panel-border-b bg-[var(--sa-bg)] overflow-x-auto">
+          <span className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] shrink-0">Share forms</span>
+          <CopyLink label="Quick enquiry" path="/enquire" />
+          <CopyLink label="Full brief" path="/brief" />
         </div>
 
         <div className="flex items-center gap-3 px-6 py-3 panel-border-b bg-[var(--sa-window)] overflow-x-auto">

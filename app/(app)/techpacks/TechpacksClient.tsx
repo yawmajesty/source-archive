@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Download, ExternalLink } from "lucide-react";
+import { Download, ExternalLink, Copy, CheckCheck } from "lucide-react";
 import { supabaseData as supabase } from "@/lib/supabase-data";
 import { cn } from "@/lib/utils";
 import type { TechpackSubmission } from "@/lib/data";
@@ -392,6 +392,33 @@ function TechpackDetail({
   );
 }
 
+function CopyLink({ label, path }: { label: string; path: string }) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    const url = typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
+    navigator.clipboard?.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+  return (
+    <div className="flex items-center rounded-lg border border-[var(--sa-border)] overflow-hidden text-[11px]">
+      <span className="px-2 py-1.5 text-[10px] text-[var(--sa-text-tertiary)] bg-[var(--sa-bg)] border-r border-[var(--sa-border)] whitespace-nowrap font-medium">{label}</span>
+      <span className="px-2.5 py-1.5 font-mono text-[var(--sa-text-secondary)] bg-[var(--sa-window)]">{path}</span>
+      <button
+        onClick={copy}
+        className={cn(
+          "flex items-center gap-1 px-2.5 py-1.5 border-l border-[var(--sa-border)] font-medium transition-colors whitespace-nowrap",
+          copied
+            ? "text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/10"
+            : "text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
+        )}
+      >
+        {copied ? <><CheckCheck size={11} /> Copied</> : <><Copy size={11} /> Copy</>}
+      </button>
+    </div>
+  );
+}
+
 // ── Main board ────────────────────────────────────────
 
 export function TechpacksClient({ submissions: initial }: Props) {
@@ -421,12 +448,12 @@ export function TechpacksClient({ submissions: initial }: Props) {
             <h1 className="text-[15px] font-semibold text-[var(--sa-text-primary)]">Tech Packs</h1>
             <p className="text-[12px] text-[var(--sa-text-tertiary)]">{submissions.length} total · {counts.new ?? 0} new</p>
           </div>
-          <button
-            onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/techpack`)}
-            className="flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
-          >
-            Copy form link
-          </button>
+        </div>
+
+        {/* Shareable form link */}
+        <div className="flex items-center gap-3 px-6 py-2.5 panel-border-b bg-[var(--sa-bg)] overflow-x-auto">
+          <span className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] shrink-0">Share form</span>
+          <CopyLink label="Tech pack intake" path="/techpack" />
         </div>
 
         {/* Filter bar */}
