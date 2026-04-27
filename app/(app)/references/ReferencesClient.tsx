@@ -1,17 +1,19 @@
 "use client";
 
-import { useState, useTransition, useRef } from "react";
+import { useState, useTransition, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, X, ChevronDown } from "lucide-react";
+import { Upload, X, ChevronDown, Plus } from "lucide-react";
 import { supabaseData as supabase } from "@/lib/supabase-data";
-import { supabase as browserClient } from "@/lib/supabase";
 import { uploadFile } from "@/lib/storage";
 import { cn } from "@/lib/utils";
-import type { ReferenceSample, Factory } from "@/lib/data";
+import { createReferenceSample } from "./actions";
+import type { ReferenceSample, Factory, Client } from "@/lib/data";
 
 interface Props {
   samples: ReferenceSample[];
   factories: Factory[];
+  clients: Client[];
 }
 
 const STATUS_CFG: Record<string, { label: string; cls: string }> = {
@@ -28,6 +30,8 @@ const PURPOSE_CFG: Record<string, { label: string; cls: string }> = {
   fabric:  { label: "Fabric",  cls: "bg-amber-50 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400" },
   other:   { label: "Other",   cls: "bg-gray-100 text-gray-500 dark:bg-gray-500/20 dark:text-gray-400" },
 };
+
+const INPUT = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[12px] text-[var(--sa-text-primary)] placeholder:text-[var(--sa-text-tertiary)] focus:outline-none focus:ring-1 focus:ring-[var(--sa-accent)]";
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
@@ -50,6 +54,171 @@ function DetailRow({ label, value }: { label: string; value?: string | null }) {
       <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-0.5">{label}</p>
       <p className="text-[13px] text-[var(--sa-text-primary)]">{value}</p>
     </div>
+  );
+}
+
+function AddSamplePanel({ clients, onClose, onCreated }: { clients: Client[]; onClose: () => void; onCreated: () => void }) {
+  const [saving, setSaving] = useState(false);
+  const [clientId, setClientId] = useState("");
+  const [productId, setProductId] = useState("");
+  const [products, setProducts] = useState<{ id: string; name: string }[]>([]);
+  const [purposes, setPurposes] = useState<string[]>([]);
+  const [form, setForm] = useState({
+    item_description: "", brand: "", size: "",
+    reference_for_other: "", courier: "", tracking_number: "",
+    expected_arrival_date: "", client_notes: "", status: "arrived",
+  });
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setForm((p) => ({ ...p, [k]: e.target.value }));
+
+  useEffect(() => {
+    if (!clientId) { setProducts([]); setProductId(""); return; }
+    supabase.from("products")
+      .select("id, name, projects!inner(client_id)")
+      .eq("projects.client_id", clientId)
+      .then(({ data }) => {
+        setProducts((data ?? []).map((p: any) => ({ id: p.id, name: p.name })));
+        setProductId("");
+      });
+  }, [clientId]);
+
+  function togglePurpose(p: string) {
+    setPurposes((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!clientId || !form.item_description) return;
+    setSaving(true);
+    await createReferenceSample({
+      client_id: clientId,
+      product_id: productId || null,
+      item_description: form.item_description,
+      brand: form.brand || null,
+      size: form.size || null,
+      reference_for: purposes,
+      reference_for_other: form.reference_for_other || null,
+      courier: form.courier || null,
+      tracking_number: form.tracking_number || null,
+      expected_arrival_date: form.expected_arrival_date || null,
+      client_notes: form.client_notes || null,
+      status: form.status,
+    });
+    onCreated();
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      transition={{ duration: 0.2 }}
+      className="flex flex-col h-full bg-[var(--sa-window)] border-l border-[var(--sa-border)]"
+    >
+      <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--sa-border)]">
+        <h2 className="text-[14px] font-semibold text-[var(--sa-text-primary)]">Add reference sample</h2>
+        <button onClick={onClose} className="text-[12px] text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-primary)] px-2 py-1">✕</button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+
+        {/* Client + product */}
+        <div>
+          <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Client</p>
+          <div className="flex flex-col gap-2">
+            <div className="relative">
+              <select required value={clientId} onChange={(e) => setClientId(e.target.value)} className={cn(INPUT, "appearance-none pr-7")}>
+                <option value="">Select client *</option>
+                {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--sa-text-tertiary)] pointer-events-none" />
+            </div>
+            {clientId && (
+              <div className="relative">
+                <select value={productId} onChange={(e) => setProductId(e.target.value)} className={cn(INPUT, "appearance-none pr-7")}>
+                  <option value="">Link to product (optional)</option>
+                  {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--sa-text-tertiary)] pointer-events-none" />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Item info */}
+        <div>
+          <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Garment</p>
+          <div className="flex flex-col gap-2">
+            <input required placeholder="Item description *" value={form.item_description} onChange={set("item_description")} className={INPUT} />
+            <input placeholder="Brand" value={form.brand} onChange={set("brand")} className={INPUT} />
+            <input placeholder="Size" value={form.size} onChange={set("size")} className={INPUT} />
+          </div>
+        </div>
+
+        {/* Purpose */}
+        <div>
+          <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Reference for</p>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {Object.entries(PURPOSE_CFG).map(([key, cfg]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => togglePurpose(key)}
+                className={cn("rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors",
+                  purposes.includes(key)
+                    ? "border-[var(--sa-accent)] text-[var(--sa-accent)] bg-[var(--sa-selected)]"
+                    : "border-[var(--sa-border)] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
+                )}
+              >
+                {cfg.label}
+              </button>
+            ))}
+          </div>
+          {purposes.includes("other") && (
+            <input placeholder="Describe other purpose…" value={form.reference_for_other} onChange={set("reference_for_other")} className={INPUT} />
+          )}
+        </div>
+
+        {/* Shipping */}
+        <div>
+          <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Shipping</p>
+          <div className="flex flex-col gap-2">
+            <input placeholder="Courier" value={form.courier} onChange={set("courier")} className={INPUT} />
+            <input placeholder="Tracking number" value={form.tracking_number} onChange={set("tracking_number")} className={INPUT} />
+            <input type="date" placeholder="Expected arrival" value={form.expected_arrival_date} onChange={set("expected_arrival_date")} className={INPUT} />
+          </div>
+        </div>
+
+        {/* Status */}
+        <div>
+          <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Initial status</p>
+          <div className="relative">
+            <select value={form.status} onChange={set("status")} className={cn(INPUT, "appearance-none pr-7")}>
+              {Object.entries(STATUS_CFG).map(([s, cfg]) => (
+                <option key={s} value={s}>{cfg.label}</option>
+              ))}
+            </select>
+            <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--sa-text-tertiary)] pointer-events-none" />
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div>
+          <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">Notes</p>
+          <textarea rows={3} placeholder="Any notes…" value={form.client_notes} onChange={set("client_notes")} className={cn(INPUT, "resize-none")} />
+        </div>
+
+        <div className="pt-2 border-t border-[var(--sa-border)] flex gap-2">
+          <button type="button" onClick={onClose} className="flex-1 rounded-xl py-2.5 text-[13px] border border-[var(--sa-border)] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors">
+            Cancel
+          </button>
+          <button type="submit" disabled={saving} className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold bg-[var(--sa-accent)] text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+            {saving ? "Saving…" : "Add sample"}
+          </button>
+        </div>
+      </form>
+    </motion.div>
   );
 }
 
@@ -106,7 +275,6 @@ function ReferenceDetail({
       transition={{ duration: 0.2 }}
       className="flex flex-col h-full bg-[var(--sa-window)] border-l border-[var(--sa-border)]"
     >
-      {/* Header */}
       <div className="flex items-start justify-between px-5 py-4 border-b border-[var(--sa-border)]">
         <div>
           <h2 className="text-[14px] font-semibold text-[var(--sa-text-primary)]">{sample.item_description}</h2>
@@ -119,7 +287,6 @@ function ReferenceDetail({
 
       <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
 
-        {/* Status + purpose */}
         <div className="flex flex-wrap gap-1.5">
           <StatusPill status={sample.status} />
           {sample.reference_for.map((p) => <PurposePill key={p} purpose={p} />)}
@@ -128,7 +295,6 @@ function ReferenceDetail({
           )}
         </div>
 
-        {/* Submission info */}
         <div className="flex flex-col gap-3">
           <DetailRow label="Submitted" value={formatDate(sample.submitted_at)} />
           <DetailRow label="Product linked" value={sample.product_name} />
@@ -140,7 +306,6 @@ function ReferenceDetail({
           <DetailRow label="Client notes" value={sample.client_notes} />
         </div>
 
-        {/* Client photos */}
         {sample.client_images.length > 0 && (
           <div>
             <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Client photos</p>
@@ -152,7 +317,6 @@ function ReferenceDetail({
           </div>
         )}
 
-        {/* Status update */}
         <div className="border-t border-[var(--sa-border)] pt-4">
           <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Update status</p>
           <div className="flex flex-wrap gap-1.5">
@@ -173,7 +337,6 @@ function ReferenceDetail({
           </div>
         </div>
 
-        {/* Location */}
         <div>
           <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Location</p>
           <div className="flex gap-2 mb-2">
@@ -208,7 +371,6 @@ function ReferenceDetail({
           )}
         </div>
 
-        {/* Agency fields */}
         <div className="flex flex-col gap-3">
           {[
             { label: "Received date", key: "received_date" as const, placeholder: "e.g. 2025-06-01" },
@@ -230,7 +392,6 @@ function ReferenceDetail({
           ))}
         </div>
 
-        {/* Agency photos */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)]">Agency photos (on arrival)</p>
@@ -276,9 +437,11 @@ function ReferenceDetail({
 
 const ALL_STATUSES = ["all", ...Object.keys(STATUS_CFG)] as const;
 
-export function ReferencesClient({ samples: initial, factories }: Props) {
+export function ReferencesClient({ samples: initial, factories, clients }: Props) {
+  const router = useRouter();
   const [samples, setSamples] = useState(initial);
   const [selected, setSelected] = useState<ReferenceSample | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
   const [filter, setFilter] = useState<string>("all");
 
   const filtered = filter === "all" ? samples : samples.filter((s) => s.status === filter);
@@ -292,19 +455,25 @@ export function ReferencesClient({ samples: initial, factories }: Props) {
     setSelected(updated);
   }
 
+  const rightPanel = showAdd ? "add" : selected ? "detail" : null;
+
   return (
     <div className="flex h-full overflow-hidden">
-      <div className={cn("flex flex-col overflow-hidden transition-all", selected ? "flex-1" : "w-full")}>
+      <div className={cn("flex flex-col overflow-hidden transition-all", rightPanel ? "flex-1" : "w-full")}>
 
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 panel-border-b bg-[var(--sa-window)]">
           <div>
             <h1 className="text-[15px] font-semibold text-[var(--sa-text-primary)]">Reference Samples</h1>
             <p className="text-[12px] text-[var(--sa-text-tertiary)]">{samples.length} total</p>
           </div>
+          <button
+            onClick={() => { setShowAdd(true); setSelected(null); }}
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-3 py-1.5 text-[12px] font-medium text-white hover:opacity-90 transition-opacity"
+          >
+            <Plus size={12} /> Add sample
+          </button>
         </div>
 
-        {/* Status filter bar */}
         <div className="flex items-center gap-3 px-6 py-3 panel-border-b bg-[var(--sa-window)] overflow-x-auto">
           {ALL_STATUSES.map((s) => {
             const cfg = s === "all" ? null : STATUS_CFG[s];
@@ -326,26 +495,24 @@ export function ReferencesClient({ samples: initial, factories }: Props) {
           })}
         </div>
 
-        {/* Column headers */}
         <div className="grid grid-cols-[1fr_140px_160px_140px_110px] gap-3 px-5 py-2 bg-[var(--sa-bg)] border-b border-[var(--sa-border)]">
           {["Item / Client", "Brand", "Purpose", "Status", "Submitted"].map((h) => (
             <span key={h} className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{h}</span>
           ))}
         </div>
 
-        {/* List */}
         <div className="flex-1 overflow-y-auto bg-[var(--sa-window)]">
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-2 text-[var(--sa-text-tertiary)]">
               <p className="text-[13px]">No reference samples yet</p>
-              <p className="text-[11px]">Clients submit them from their portal</p>
+              <p className="text-[11px]">Add one manually or clients submit from their portal</p>
             </div>
           ) : filtered.map((s) => (
             <motion.button
               key={s.id}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              onClick={() => setSelected(selected?.id === s.id ? null : s)}
+              onClick={() => { setSelected(selected?.id === s.id ? null : s); setShowAdd(false); }}
               className={cn(
                 "grid grid-cols-[1fr_140px_160px_140px_110px] gap-3 w-full items-center px-5 py-3 border-b border-[var(--sa-border)] text-left transition-colors",
                 selected?.id === s.id ? "bg-[var(--sa-selected)]" : "hover:bg-[var(--sa-hover)]"
@@ -367,7 +534,16 @@ export function ReferencesClient({ samples: initial, factories }: Props) {
       </div>
 
       <AnimatePresence>
-        {selected && (
+        {rightPanel === "add" && (
+          <div className="w-96 shrink-0 overflow-hidden">
+            <AddSamplePanel
+              clients={clients}
+              onClose={() => setShowAdd(false)}
+              onCreated={() => { setShowAdd(false); router.refresh(); }}
+            />
+          </div>
+        )}
+        {rightPanel === "detail" && selected && (
           <div className="w-96 shrink-0 overflow-hidden">
             <ReferenceDetail
               key={selected.id}

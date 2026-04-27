@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ExternalLink, ArrowRight, Check } from "lucide-react";
+import { ExternalLink, ArrowRight, Check, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { updateLeadStatus, convertLeadToClient } from "./actions";
+import { updateLeadStatus, convertLeadToClient, createLead, deleteLead } from "./actions";
 import type { Lead } from "@/lib/data";
 
 interface Props { leads: Lead[] }
@@ -17,6 +18,10 @@ const STATUS_CFG: Record<string, { label: string; cls: string }> = {
   converted:     { label: "Converted",     cls: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" },
   lost:          { label: "Lost",          cls: "bg-gray-100 text-gray-500 dark:bg-gray-500/20 dark:text-gray-400" },
 };
+
+const SOURCE_OPTIONS = ["brief_form", "referral", "direct", "cold_outreach", "event", "social", "other"];
+
+const INPUT = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[12px] text-[var(--sa-text-primary)] placeholder:text-[var(--sa-text-tertiary)] focus:outline-none focus:ring-1 focus:ring-[var(--sa-accent)]";
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
@@ -32,29 +37,137 @@ function Field({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
-function LeadDetail({ lead: initial, onClose }: { lead: Lead; onClose: () => void }) {
+function AddLeadPanel({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    company_name: "", contact_name: "", contact_email: "",
+    phone: "", country: "", industry: "",
+    estimated_budget: "", source: "", message: "",
+  });
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setForm((p) => ({ ...p, [k]: e.target.value }));
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.company_name || !form.contact_name || !form.contact_email) return;
+    setSaving(true);
+    await createLead({
+      company_name: form.company_name,
+      contact_name: form.contact_name,
+      contact_email: form.contact_email,
+      phone: form.phone || null,
+      country: form.country || null,
+      industry: form.industry || null,
+      estimated_budget: form.estimated_budget || null,
+      source: form.source || null,
+      message: form.message || null,
+    });
+    onCreated();
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      transition={{ duration: 0.2 }}
+      className="flex flex-col h-full bg-[var(--sa-window)] border-l border-[var(--sa-border)]"
+    >
+      <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--sa-border)]">
+        <h2 className="text-[14px] font-semibold text-[var(--sa-text-primary)]">Add lead</h2>
+        <button onClick={onClose} className="text-[12px] text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-primary)] px-2 py-1">✕</button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+        <div>
+          <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Company</p>
+          <div className="flex flex-col gap-2">
+            <input required placeholder="Company name *" value={form.company_name} onChange={set("company_name")} className={INPUT} />
+            <input placeholder="Industry" value={form.industry} onChange={set("industry")} className={INPUT} />
+            <input placeholder="Country" value={form.country} onChange={set("country")} className={INPUT} />
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Contact</p>
+          <div className="flex flex-col gap-2">
+            <input required placeholder="Contact name *" value={form.contact_name} onChange={set("contact_name")} className={INPUT} />
+            <input required type="email" placeholder="Email *" value={form.contact_email} onChange={set("contact_email")} className={INPUT} />
+            <input placeholder="Phone" value={form.phone} onChange={set("phone")} className={INPUT} />
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Details</p>
+          <div className="flex flex-col gap-2">
+            <input placeholder="Estimated budget" value={form.estimated_budget} onChange={set("estimated_budget")} className={INPUT} />
+            <div className="relative">
+              <select value={form.source} onChange={set("source")} className={cn(INPUT, "appearance-none pr-7")}>
+                <option value="">Source…</option>
+                {SOURCE_OPTIONS.map((s) => (
+                  <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">Notes</p>
+          <textarea
+            rows={3}
+            placeholder="Any context or notes…"
+            value={form.message}
+            onChange={set("message")}
+            className={cn(INPUT, "resize-none")}
+          />
+        </div>
+
+        <div className="pt-2 border-t border-[var(--sa-border)] flex gap-2">
+          <button type="button" onClick={onClose} className="flex-1 rounded-xl py-2.5 text-[13px] border border-[var(--sa-border)] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors">
+            Cancel
+          </button>
+          <button type="submit" disabled={saving} className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold bg-[var(--sa-accent)] text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+            {saving ? "Saving…" : "Add lead"}
+          </button>
+        </div>
+      </form>
+    </motion.div>
+  );
+}
+
+function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose: () => void; onDelete: () => void }) {
   const [lead, setLead] = useState(initial);
   const [isPending, startTransition] = useTransition();
   const [converting, setConverting] = useState(false);
   const [convertedClientId, setConvertedClientId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   function setStatus(status: string) {
     startTransition(async () => {
       await updateLeadStatus(lead.id, status);
-      setLead((prev) => ({ ...prev, status: status as any }));
+      setLead((prev) => ({ ...prev, status: status as Lead["status"] }));
     });
   }
 
   async function handleConvert() {
     setConverting(true);
     const { clientId } = await convertLeadToClient(lead.id);
-    setLead((prev) => ({ ...prev, status: "converted" as any }));
+    setLead((prev) => ({ ...prev, status: "converted" }));
     setConvertedClientId(clientId);
     setConverting(false);
   }
 
-  const products = (lead as any).brief_products as any[] | null;
-  const moodboardLinks = ((lead as any).moodboard_links as string | null)?.split("\n").filter(Boolean) ?? [];
+  async function handleDelete() {
+    if (!confirm(`Delete the lead for ${lead.company_name}? This cannot be undone.`)) return;
+    setDeleting(true);
+    await deleteLead(lead.id);
+    onDelete();
+  }
+
+  const products = lead.brief_products as any[] | undefined;
+  const moodboardLinks = (lead.moodboard_links as string | null)?.split("\n").filter(Boolean) ?? [];
   const isConverted = lead.status === "converted";
 
   return (
@@ -70,47 +183,53 @@ function LeadDetail({ lead: initial, onClose }: { lead: Lead; onClose: () => voi
           <h2 className="text-[14px] font-semibold text-[var(--sa-text-primary)]">{lead.company_name}</h2>
           <p className="text-[12px] text-[var(--sa-text-tertiary)]">{lead.contact_name} · {formatDate(lead.created_at)}</p>
         </div>
-        <button onClick={onClose} className="text-[12px] text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-primary)] px-2 py-1">✕</button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="p-1.5 rounded-lg text-[var(--sa-text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors disabled:opacity-40"
+            title="Delete lead"
+          >
+            <Trash2 size={14} />
+          </button>
+          <button onClick={onClose} className="text-[12px] text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-primary)] px-2 py-1">✕</button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
 
-        {/* Status */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-medium", STATUS_CFG[lead.status]?.cls)}>{STATUS_CFG[lead.status]?.label}</span>
-          {(lead as any).brand_stage && (
-            <span className="rounded-full px-2.5 py-1 text-[11px] font-medium bg-[var(--sa-bg)] border border-[var(--sa-border)] text-[var(--sa-text-secondary)] capitalize">{(lead as any).brand_stage}</span>
+          {lead.brand_stage && (
+            <span className="rounded-full px-2.5 py-1 text-[11px] font-medium bg-[var(--sa-bg)] border border-[var(--sa-border)] text-[var(--sa-text-secondary)] capitalize">{lead.brand_stage}</span>
           )}
-          {(lead as any).how_found_us && (
-            <span className="rounded-full px-2.5 py-1 text-[11px] text-[var(--sa-text-tertiary)]">via {(lead as any).how_found_us}</span>
+          {lead.how_found_us && (
+            <span className="rounded-full px-2.5 py-1 text-[11px] text-[var(--sa-text-tertiary)]">via {lead.how_found_us}</span>
           )}
         </div>
 
-        {/* Contact */}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Email" value={lead.contact_email} />
-          <Field label="Phone" value={(lead as any).phone} />
+          <Field label="Phone" value={lead.phone} />
           <Field label="Country" value={lead.country} />
           <Field label="Industry" value={lead.industry} />
-          {(lead as any).website && (
+          {lead.website && (
             <div className="col-span-2">
               <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-0.5">Website</p>
-              <a href={(lead as any).website} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[13px] text-[var(--sa-accent)] hover:underline">
-                {(lead as any).website} <ExternalLink size={11} />
+              <a href={lead.website} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[13px] text-[var(--sa-accent)] hover:underline">
+                {lead.website} <ExternalLink size={11} />
               </a>
             </div>
           )}
         </div>
 
-        {/* Brand context */}
         <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[var(--sa-border)]">
-          <Field label="Manufactured before" value={(lead as any).manufactured_before === true ? "Yes" : (lead as any).manufactured_before === false ? "No" : null} />
-          <Field label="Target timeline" value={(lead as any).timeline} />
+          <Field label="Manufactured before" value={lead.manufactured_before === true ? "Yes" : lead.manufactured_before === false ? "No" : null} />
+          <Field label="Target timeline" value={lead.timeline} />
           <Field label="Budget" value={lead.estimated_budget} />
-          <Field label="Sustainability" value={(lead as any).sustainability_requirements} />
+          <Field label="Sustainability" value={lead.sustainability_requirements} />
         </div>
 
-        {/* Products */}
         {products && products.length > 0 && (
           <div className="pt-2 border-t border-[var(--sa-border)]">
             <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-3">Products ({products.length})</p>
@@ -139,7 +258,6 @@ function LeadDetail({ lead: initial, onClose }: { lead: Lead; onClose: () => voi
           </div>
         )}
 
-        {/* Moodboard links */}
         {moodboardLinks.length > 0 && (
           <div className="pt-2 border-t border-[var(--sa-border)]">
             <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Reference links</p>
@@ -160,7 +278,6 @@ function LeadDetail({ lead: initial, onClose }: { lead: Lead; onClose: () => voi
           </div>
         )}
 
-        {/* Status update */}
         {!isConverted && (
           <div className="pt-2 border-t border-[var(--sa-border)]">
             <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Update status</p>
@@ -183,7 +300,6 @@ function LeadDetail({ lead: initial, onClose }: { lead: Lead; onClose: () => voi
           </div>
         )}
 
-        {/* Convert to client */}
         <div className="pt-2 border-t border-[var(--sa-border)]">
           {isConverted && convertedClientId ? (
             <a
@@ -214,7 +330,9 @@ function LeadDetail({ lead: initial, onClose }: { lead: Lead; onClose: () => voi
 }
 
 export function LeadsClient({ leads }: Props) {
+  const router = useRouter();
   const [selected, setSelected] = useState<Lead | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
 
   const counts = (Object.keys(STATUS_CFG) as string[]).reduce((acc, s) => {
     acc[s] = leads.filter((l) => l.status === s).length;
@@ -222,23 +340,32 @@ export function LeadsClient({ leads }: Props) {
   }, {} as Record<string, number>);
 
   const briefLink = typeof window !== "undefined" ? `${window.location.origin}/brief` : "/brief";
+  const rightPanel = showAdd ? "add" : selected ? "detail" : null;
 
   return (
     <div className="flex h-full overflow-hidden">
-      <div className={cn("flex flex-col overflow-hidden transition-all", selected ? "flex-1" : "w-full")}>
+      <div className={cn("flex flex-col overflow-hidden transition-all", rightPanel ? "flex-1" : "w-full")}>
         <div className="flex items-center justify-between px-6 py-4 panel-border-b bg-[var(--sa-window)]">
           <div>
             <h1 className="text-[15px] font-semibold text-[var(--sa-text-primary)]">Leads</h1>
             <p className="text-[12px] text-[var(--sa-text-tertiary)]">{leads.length} total · {counts.new ?? 0} new</p>
           </div>
-          <button
-            onClick={() => navigator.clipboard?.writeText(briefLink)}
-            className="flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
-            title="Copy brief form link"
-          >
-            <ExternalLink size={12} />
-            Copy brief link
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigator.clipboard?.writeText(briefLink)}
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
+              title="Copy brief form link"
+            >
+              <ExternalLink size={12} />
+              Copy brief link
+            </button>
+            <button
+              onClick={() => { setShowAdd(true); setSelected(null); }}
+              className="flex items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-3 py-1.5 text-[12px] font-medium text-white hover:opacity-90 transition-opacity"
+            >
+              <Plus size={12} /> Add lead
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 px-6 py-3 panel-border-b bg-[var(--sa-window)] overflow-x-auto">
@@ -264,7 +391,7 @@ export function LeadsClient({ leads }: Props) {
                 key={lead.id}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                onClick={() => setSelected(selected?.id === lead.id ? null : lead)}
+                onClick={() => { setSelected(selected?.id === lead.id ? null : lead); setShowAdd(false); }}
                 className={cn(
                   "grid grid-cols-[1fr_130px_120px_110px_100px] gap-3 w-full items-center px-5 py-3 border-b border-[var(--sa-border)] text-left transition-colors",
                   selected?.id === lead.id ? "bg-[var(--sa-selected)]" : "hover:bg-[var(--sa-hover)]"
@@ -276,7 +403,7 @@ export function LeadsClient({ leads }: Props) {
                 </div>
                 <span className="text-[12px] text-[var(--sa-text-secondary)] truncate">{lead.contact_name}</span>
                 <span className="text-[12px] text-[var(--sa-text-tertiary)] truncate">{lead.estimated_budget || "—"}</span>
-                <span className="text-[12px] text-[var(--sa-text-tertiary)] truncate">{(lead as any).timeline || "—"}</span>
+                <span className="text-[12px] text-[var(--sa-text-tertiary)] truncate">{lead.timeline || "—"}</span>
                 <span className={cn("rounded-full px-2.5 py-0.5 text-[10px] font-medium w-fit", cfg?.cls)}>{cfg?.label}</span>
               </motion.button>
             );
@@ -284,16 +411,29 @@ export function LeadsClient({ leads }: Props) {
           {leads.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full gap-2 text-[var(--sa-text-tertiary)]">
               <p className="text-[13px]">No leads yet</p>
-              <p className="text-[11px]">Share the brief link to start collecting enquiries</p>
+              <p className="text-[11px]">Share the brief link or add one manually</p>
             </div>
           )}
         </div>
       </div>
 
       <AnimatePresence>
-        {selected && (
+        {rightPanel === "add" && (
           <div className="w-96 shrink-0 overflow-hidden">
-            <LeadDetail lead={selected} onClose={() => setSelected(null)} />
+            <AddLeadPanel
+              onClose={() => setShowAdd(false)}
+              onCreated={() => { setShowAdd(false); router.refresh(); }}
+            />
+          </div>
+        )}
+        {rightPanel === "detail" && selected && (
+          <div className="w-96 shrink-0 overflow-hidden">
+            <LeadDetail
+              key={selected.id}
+              lead={selected}
+              onClose={() => setSelected(null)}
+              onDelete={() => { setSelected(null); router.refresh(); }}
+            />
           </div>
         )}
       </AnimatePresence>

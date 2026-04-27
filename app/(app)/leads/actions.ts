@@ -9,6 +9,30 @@ export async function updateLeadStatus(leadId: string, status: string) {
   revalidatePath("/leads");
 }
 
+export async function createLead(data: {
+  company_name: string;
+  contact_name: string;
+  contact_email: string;
+  phone?: string | null;
+  country?: string | null;
+  industry?: string | null;
+  estimated_budget?: string | null;
+  source?: string | null;
+  message?: string | null;
+}) {
+  await supabase.from("leads").insert({
+    ...data,
+    status: "new",
+    brief_products: [],
+  });
+  revalidatePath("/leads");
+}
+
+export async function deleteLead(leadId: string) {
+  await supabase.from("leads").delete().eq("id", leadId);
+  revalidatePath("/leads");
+}
+
 export async function convertLeadToClient(leadId: string): Promise<{ clientId: string }> {
   const { data: lead } = await supabase.from("leads").select("*").eq("id", leadId).single();
   if (!lead) throw new Error("Lead not found");
