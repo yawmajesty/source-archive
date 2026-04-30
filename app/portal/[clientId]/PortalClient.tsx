@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon } from "lucide-react";
+import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon, Plus, Trash2, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { uploadFile } from "@/lib/storage";
-import type { Client, Contract, PortalFile, AgencySettings } from "@/lib/data";
+import type { Client, Contract, PortalFile, AgencySettings, SavedInvoice, InvoiceLineItem } from "@/lib/data";
+import { createSamplingInvoice, updateInvoiceStatus, deleteInvoice } from "./actions";
 import type { Stage } from "@/lib/mock-data";
 import type { PortalProject, PortalProduct } from "./page";
 
@@ -43,6 +45,8 @@ interface Props {
   contracts: Contract[];
   files: PortalFile[];
   agencySettings: AgencySettings;
+  isAgency: boolean;
+  savedInvoices: SavedInvoice[];
 }
 
 // ── Stage config (from spec Prompt 3) ────────────────────────
@@ -1028,20 +1032,167 @@ ${(() => {
 </body></html>`;
 }
 
-function SamplingInvoice({ projects, client, agencySettings }: { projects: PortalProject[]; client: Client; agencySettings: AgencySettings }) {
-  const date = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+function buildSavedInvoiceHTML(invoice: SavedInvoice, client: Client, agencySettings: AgencySettings): string {
+  const date = new Date(invoice.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  const grandTotal = invoice.line_items.reduce((s, li) => s + li.amount_usd, 0);
+  const rows = invoice.line_items.map((li, i) => `
+    <tr style="background:${i % 2 === 0 ? "#fff" : "#f9f9f7"}">
+      <td style="padding:10px 16px;font-size:11px;color:#888;text-align:right">${i + 1}</td>
+      <td style="padding:10px 16px">
+        <div style="font-size:12px;font-weight:500;color:#1d1d1f">${li.name}</div>
+        <div style="font-size:10px;color:#888;margin-top:2px">${[li.category, li.project_name].filter(Boolean).join(" · ")}</div>
+      </td>
+      <td style="padding:10px 16px;font-size:11px;color:#555;white-space:nowrap">${li.expected_date ? new Date(li.expected_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}</td>
+      <td style="padding:10px 16px;font-size:13px;font-weight:600;font-family:monospace;white-space:nowrap;text-align:right">$${li.amount_usd.toFixed(2)}</td>
+    </tr>`).join("");
 
-  const byProject = projects
-    .map((proj) => ({
-      ...proj,
-      products: proj.products.filter((p) => p.sample_fee_usd != null && p.sample_fee_usd > 0),
-    }))
-    .filter((p) => p.products.length > 0);
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const bRow = (label: string, val: string) => val ? `<tr><td style="padding:4px 0;font-size:10px;color:#aaa;white-space:nowrap;width:140px">${label}</td><td style="padding:4px 0 4px 12px;font-size:11px;color:#333;font-weight:500">${esc(val)}</td></tr>` : "";
+  const hasBankDetails = [agencySettings.account_name, agencySettings.bank_name, agencySettings.account_number, agencySettings.sort_code, agencySettings.iban, agencySettings.swift_code, agencySettings.account_location, agencySettings.bank_address].some(Boolean);
+  const bankBlock = hasBankDetails ? `<div style="border:1px solid #eee;border-radius:10px;padding:16px;flex:1">
+  <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;margin-bottom:10px">Bank details</div>
+  <table style="border-collapse:collapse;width:100%">
+    ${bRow("Account name", agencySettings.account_name)}
+    ${bRow("Bank name", agencySettings.bank_name)}
+    ${bRow("Account number", agencySettings.account_number)}
+    ${bRow("Sort code", agencySettings.sort_code)}
+    ${bRow("IBAN", agencySettings.iban)}
+    ${bRow("SWIFT / BIC", agencySettings.swift_code)}
+    ${bRow("Account location", agencySettings.account_location)}
+    ${bRow("Bank address", agencySettings.bank_address)}
+  </table>
+</div>` : "";
+  const termsBlock = agencySettings.invoice_terms ? `<div style="border:1px solid #eee;border-radius:10px;padding:16px;flex:1">
+  <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;margin-bottom:10px">Terms &amp; conditions</div>
+  <p style="font-size:11px;color:#333;line-height:1.7">${esc(agencySettings.invoice_terms)}</p>
+</div>` : "";
 
-  const grandTotal = byProject.flatMap((p) => p.products).reduce((s, p) => s + (p.sample_fee_usd ?? 0), 0);
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${invoice.title ?? `Round ${invoice.round} Invoice`} – ${client.name}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;background:#fff;color:#1d1d1f;padding:40px}
+  @media print{body{padding:20px}button{display:none!important}@page{margin:20mm}}
+  table{width:100%;border-collapse:collapse}
+  th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;padding:8px 16px;text-align:left;border-bottom:1px solid #eee}
+  th:last-child{text-align:right}
+  tr{border-bottom:1px solid #eee}
+</style></head><body>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+  <div>
+    <div style="font-size:22px;font-weight:700;letter-spacing:-.5px">${invoice.title ?? `Sampling Invoice – Round ${invoice.round}`}</div>
+    <div style="font-size:13px;color:#888;margin-top:4px">${client.name} · ${date}</div>
+  </div>
+  <div style="text-align:right">
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#aaa">Total due</div>
+    <div style="font-size:28px;font-weight:800;font-family:monospace;margin-top:2px">$${grandTotal.toFixed(2)}</div>
+  </div>
+</div>
+${invoice.notes ? `<p style="font-size:12px;color:#555;margin-bottom:20px;line-height:1.6">${esc(invoice.notes)}</p>` : "<div style='margin-bottom:20px'></div>"}
+<div style="border:1px solid #eee;border-radius:10px;overflow:hidden">
+<table>
+  <thead><tr><th style="width:2rem">#</th><th>Item</th><th>Expected Date</th><th style="text-align:right">Amount</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-top:2px solid #eee">
+  <span style="font-size:13px;font-weight:600">Total</span>
+  <span style="font-size:16px;font-weight:800;font-family:monospace">$${grandTotal.toFixed(2)}</span>
+</div>
+</div>
+${(bankBlock || termsBlock) ? `<div style="margin-top:24px;display:flex;gap:16px;align-items:flex-start">${bankBlock}${termsBlock}</div>` : ""}
+<div style="margin-top:16px;font-size:10px;color:#aaa;text-align:center">Generated by Kōru · ${date}</div>
+</body></html>`;
+}
 
-  function handleDownload() {
-    const html = buildInvoiceHTML(client, byProject, grandTotal, date, agencySettings);
+const STATUS_CFG: Record<string, { label: string; bg: string; fg: string }> = {
+  draft: { label: "Draft",  bg: "#F1EFE8", fg: "#444441" },
+  sent:  { label: "Sent",   bg: "#FAEEDA", fg: "#633806" },
+  paid:  { label: "Paid",   bg: "#EAF3DE", fg: "#27500A" },
+};
+
+function SamplingInvoice({
+  projects, client, agencySettings, isAgency, savedInvoices: initialInvoices,
+}: {
+  projects: PortalProject[];
+  client: Client;
+  agencySettings: AgencySettings;
+  isAgency: boolean;
+  savedInvoices: SavedInvoice[];
+}) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [invoices, setInvoices] = useState<SavedInvoice[]>(initialInvoices);
+  const [activeRound, setActiveRound] = useState<number>(initialInvoices.length > 0 ? initialInvoices[0].round : 1);
+  const [showNewForm, setShowNewForm] = useState(false);
+
+  // Pre-populate from current product fees
+  const autoLineItems: InvoiceLineItem[] = projects.flatMap((proj) =>
+    proj.products
+      .filter((p) => p.sample_fee_usd != null && p.sample_fee_usd > 0)
+      .map((p) => ({
+        name: p.name,
+        category: p.category,
+        project_name: proj.name,
+        amount_usd: p.sample_fee_usd!,
+        expected_date: p.expected_sample_date,
+      }))
+  );
+
+  const nextRound = invoices.length > 0 ? Math.max(...invoices.map((i) => i.round)) + 1 : 1;
+  const [newTitle, setNewTitle] = useState("");
+  const [newNotes, setNewNotes] = useState("");
+  const [newItems, setNewItems] = useState<InvoiceLineItem[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  function openNewForm() {
+    setNewTitle(`Round ${nextRound} Sampling`);
+    setNewNotes("");
+    setNewItems(autoLineItems.map((li) => ({ ...li })));
+    setShowNewForm(true);
+  }
+
+  function updateItem(idx: number, field: keyof InvoiceLineItem, value: string | number | null) {
+    setNewItems((prev) => prev.map((it, i) => i === idx ? { ...it, [field]: value } : it));
+  }
+
+  function removeItem(idx: number) {
+    setNewItems((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function addItem() {
+    setNewItems((prev) => [...prev, { name: "", category: null, project_name: null, amount_usd: 0, expected_date: null }]);
+  }
+
+  async function handleCreate() {
+    setSaving(true);
+    await createSamplingInvoice({
+      client_id: client.id,
+      round: nextRound,
+      title: newTitle.trim() || null,
+      line_items: newItems,
+      notes: newNotes.trim() || null,
+    });
+    setShowNewForm(false);
+    setSaving(false);
+    startTransition(() => router.refresh());
+  }
+
+  async function handleStatusChange(id: string, status: string) {
+    setInvoices((prev) => prev.map((inv) => inv.id === id ? { ...inv, status } : inv));
+    await updateInvoiceStatus(id, client.id, status);
+    startTransition(() => router.refresh());
+  }
+
+  async function handleDelete(id: string, round: number) {
+    if (!window.confirm(`Delete Round ${round} invoice? This cannot be undone.`)) return;
+    setInvoices((prev) => prev.filter((inv) => inv.id !== id));
+    const remaining = invoices.filter((inv) => inv.id !== id);
+    if (remaining.length > 0) setActiveRound(remaining[remaining.length - 1].round);
+    await deleteInvoice(id, client.id);
+    startTransition(() => router.refresh());
+  }
+
+  function handleDownload(invoice: SavedInvoice) {
+    const html = buildSavedInvoiceHTML(invoice, client, agencySettings);
     const win = window.open("", "_blank");
     if (!win) return;
     win.document.write(html);
@@ -1050,95 +1201,267 @@ function SamplingInvoice({ projects, client, agencySettings }: { projects: Porta
     setTimeout(() => win.print(), 400);
   }
 
+  // Sync when prop updates after router.refresh()
+  useEffect(() => { setInvoices(initialInvoices); }, [initialInvoices]);
+  useEffect(() => {
+    if (initialInvoices.length > 0 && !initialInvoices.find((i) => i.round === activeRound)) {
+      setActiveRound(initialInvoices[initialInvoices.length - 1].round);
+    }
+  }, [initialInvoices, activeRound]);
+
+  const activeInvoice = invoices.find((i) => i.round === activeRound) ?? invoices[0] ?? null;
+
   return (
     <div className="mt-8">
+      {/* Header row */}
       <div className="flex items-center justify-between mb-4">
-        <p className="text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>Sampling charges</p>
-        {grandTotal > 0 && (
+        <p className="text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>Sampling invoices</p>
+        {isAgency && !showNewForm && (
           <button
-            onClick={handleDownload}
+            onClick={openNewForm}
             className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors"
             style={{ background: "var(--portal-brand)", color: "#fff" }}
           >
-            <Download size={13} />
-            Download PDF
+            <Plus size={12} />
+            New round
           </button>
         )}
       </div>
-      {grandTotal === 0 ? (
-        <div className="rounded-xl p-8 text-center" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
-          <p className="text-[13px]" style={{ color: "var(--portal-text-secondary)" }}>No sampling charges to show yet</p>
-        </div>
-      ) : (
-        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
-          {/* Invoice header */}
-          <div className="flex items-start justify-between px-6 py-5" style={{ borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
-            <div>
-              <p className="text-[15px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Sampling Summary</p>
-              <p className="text-[12px] mt-0.5" style={{ color: "var(--portal-text-secondary)" }}>{client.name} · As of {date}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[9px] uppercase tracking-wider" style={{ color: "var(--portal-text-muted)" }}>Total</p>
-              <p className="font-mono text-[22px] font-bold mt-0.5" style={{ color: "var(--portal-text-primary)" }}>${grandTotal.toFixed(2)}</p>
-            </div>
+
+      {/* New round form */}
+      {showNewForm && (
+        <div className="rounded-xl mb-5 overflow-hidden" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
+          <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
+            <p className="text-[13px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Round {nextRound} invoice</p>
+            <button onClick={() => setShowNewForm(false)} className="p-1 rounded" style={{ color: "var(--portal-text-muted)" }}><X size={14} /></button>
           </div>
+          <div className="px-5 py-4 flex flex-col gap-4">
+            <div>
+              <label className="text-[10px] font-semibold uppercase tracking-wide mb-1 block" style={{ color: "var(--portal-text-muted)" }}>Title</label>
+              <input
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                className="w-full rounded-lg px-3 py-2 text-[13px] outline-none"
+                style={{ border: "1px solid var(--portal-border)", background: "var(--portal-bg)", color: "var(--portal-text-primary)" }}
+              />
+            </div>
 
-          {/* Per-collection groups */}
-          {byProject.map((proj) => {
-            const projTotal = proj.products.reduce((s, p) => s + (p.sample_fee_usd ?? 0), 0);
-            return (
-              <div key={proj.id} style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
-                {/* Collection header */}
-                <div className="flex items-center justify-between px-6 py-2.5" style={{ background: "var(--portal-row-alt)", borderBottom: "1px solid var(--portal-border-subtle)" }}>
-                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--portal-text-secondary)" }}>{proj.name}</span>
-                  <span className="font-mono text-[12px] font-semibold" style={{ color: "var(--portal-text-secondary)" }}>${projTotal.toFixed(2)}</span>
-                </div>
-
-                {/* Column headers */}
-                <div className="grid px-6 py-1.5" style={{ gridTemplateColumns: "2rem 1fr auto auto", gap: "0.75rem", borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
-                  {["#", "Product", "Date", "Amount"].map((h) => (
+            {/* Line items */}
+            <div>
+              <label className="text-[10px] font-semibold uppercase tracking-wide mb-2 block" style={{ color: "var(--portal-text-muted)" }}>Line items</label>
+              <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--portal-border)" }}>
+                <div className="grid px-3 py-2" style={{ gridTemplateColumns: "1fr 6rem 7rem 1.5rem", gap: "0.5rem", background: "var(--portal-thead)", borderBottom: "1px solid var(--portal-border-subtle)" }}>
+                  {["Item", "Amount (USD)", "Expected date", ""].map((h) => (
                     <span key={h} className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: "var(--portal-text-muted)" }}>{h}</span>
                   ))}
                 </div>
+                {newItems.map((item, idx) => (
+                  <div key={idx} className="grid px-3 py-2 items-center" style={{ gridTemplateColumns: "1fr 6rem 7rem 1.5rem", gap: "0.5rem", borderBottom: "1px solid var(--portal-border-subtle)" }}>
+                    <input
+                      value={item.name}
+                      onChange={(e) => updateItem(idx, "name", e.target.value)}
+                      placeholder="Item name"
+                      className="rounded px-2 py-1 text-[12px] outline-none w-full"
+                      style={{ border: "1px solid var(--portal-border)", background: "var(--portal-bg)", color: "var(--portal-text-primary)" }}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={item.amount_usd}
+                      onChange={(e) => updateItem(idx, "amount_usd", parseFloat(e.target.value) || 0)}
+                      className="rounded px-2 py-1 text-[12px] font-mono outline-none w-full"
+                      style={{ border: "1px solid var(--portal-border)", background: "var(--portal-bg)", color: "var(--portal-text-primary)" }}
+                    />
+                    <input
+                      type="date"
+                      value={item.expected_date ?? ""}
+                      onChange={(e) => updateItem(idx, "expected_date", e.target.value || null)}
+                      className="rounded px-2 py-1 text-[12px] outline-none w-full"
+                      style={{ border: "1px solid var(--portal-border)", background: "var(--portal-bg)", color: "var(--portal-text-primary)" }}
+                    />
+                    <button onClick={() => removeItem(idx)} className="flex items-center justify-center" style={{ color: "var(--portal-text-muted)" }}>
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+                <div className="px-3 py-2" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
+                  <button onClick={addItem} className="flex items-center gap-1 text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>
+                    <Plus size={11} /> Add item
+                  </button>
+                </div>
+                <div className="flex justify-end px-3 py-2">
+                  <span className="text-[12px] font-semibold font-mono" style={{ color: "var(--portal-text-primary)" }}>
+                    Total: ${newItems.reduce((s, li) => s + (li.amount_usd || 0), 0).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
 
-                {/* Product rows */}
-                {proj.products.map((p, i) => (
+            <div>
+              <label className="text-[10px] font-semibold uppercase tracking-wide mb-1 block" style={{ color: "var(--portal-text-muted)" }}>Notes (optional)</label>
+              <textarea
+                value={newNotes}
+                onChange={(e) => setNewNotes(e.target.value)}
+                rows={2}
+                className="w-full rounded-lg px-3 py-2 text-[13px] outline-none resize-none"
+                style={{ border: "1px solid var(--portal-border)", background: "var(--portal-bg)", color: "var(--portal-text-primary)" }}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowNewForm(false)} className="rounded-lg px-4 py-2 text-[12px]" style={{ border: "1px solid var(--portal-border)", color: "var(--portal-text-secondary)" }}>Cancel</button>
+              <button
+                onClick={handleCreate}
+                disabled={saving || newItems.length === 0}
+                className="rounded-lg px-4 py-2 text-[12px] font-medium disabled:opacity-50"
+                style={{ background: "var(--portal-brand)", color: "#fff" }}
+              >
+                {saving ? "Saving…" : "Save invoice"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* No invoices state */}
+      {invoices.length === 0 && !showNewForm && (
+        <div className="rounded-xl p-8 text-center" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
+          <p className="text-[13px]" style={{ color: "var(--portal-text-secondary)" }}>
+            {isAgency ? 'No invoices yet. Click "New round" to create one.' : "No sampling invoices to show yet."}
+          </p>
+        </div>
+      )}
+
+      {/* Saved invoices view */}
+      {invoices.length > 0 && (
+        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
+          {/* Round tabs */}
+          {invoices.length > 1 && (
+            <div className="flex gap-1 px-4 pt-3 pb-0" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
+              {invoices.map((inv) => (
+                <button
+                  key={inv.id}
+                  onClick={() => setActiveRound(inv.round)}
+                  className="px-3 py-2 text-[12px] font-medium rounded-t-lg transition-colors"
+                  style={activeRound === inv.round
+                    ? { color: "var(--portal-brand)", borderBottom: "2px solid var(--portal-brand)", marginBottom: "-1px" }
+                    : { color: "var(--portal-text-secondary)" }}
+                >
+                  Round {inv.round}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {activeInvoice && (() => {
+            const total = activeInvoice.line_items.reduce((s, li) => s + li.amount_usd, 0);
+            const statusCfg = STATUS_CFG[activeInvoice.status] ?? STATUS_CFG.draft;
+            const invoiceDate = new Date(activeInvoice.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+
+            return (
+              <>
+                {/* Invoice header */}
+                <div className="flex items-start justify-between px-6 py-5" style={{ borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
+                  <div>
+                    <p className="text-[15px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>
+                      {activeInvoice.title ?? `Round ${activeInvoice.round} Sampling`}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>{client.name} · {invoiceDate}</p>
+                      <span className="rounded-full px-2 py-0.5 text-[10px] font-medium leading-none" style={{ backgroundColor: statusCfg.bg, color: statusCfg.fg }}>
+                        {statusCfg.label}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[9px] uppercase tracking-wider" style={{ color: "var(--portal-text-muted)" }}>Total</p>
+                    <p className="font-mono text-[22px] font-bold mt-0.5" style={{ color: "var(--portal-text-primary)" }}>${total.toFixed(2)}</p>
+                  </div>
+                </div>
+
+                {/* Line items */}
+                <div className="grid px-6 py-1.5" style={{ gridTemplateColumns: "2rem 1fr auto auto", gap: "0.75rem", borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
+                  {["#", "Item", "Date", "Amount"].map((h) => (
+                    <span key={h} className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: "var(--portal-text-muted)" }}>{h}</span>
+                  ))}
+                </div>
+                {activeInvoice.line_items.map((li, i) => (
                   <div
-                    key={p.id}
+                    key={i}
                     className="grid px-6 py-3 items-center"
                     style={{
                       gridTemplateColumns: "2rem 1fr auto auto",
                       gap: "0.75rem",
-                      borderBottom: i < proj.products.length - 1 ? "1px solid var(--portal-border-subtle)" : undefined,
+                      borderBottom: i < activeInvoice.line_items.length - 1 ? "1px solid var(--portal-border-subtle)" : undefined,
                       background: i % 2 === 0 ? "transparent" : "var(--portal-row-alt)",
                     }}
                   >
                     <span className="text-[11px] text-right" style={{ color: "var(--portal-text-muted)" }}>{i + 1}</span>
                     <div className="min-w-0">
-                      <p className="text-[12px] font-medium truncate" style={{ color: "var(--portal-text-primary)" }}>{p.name}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-[10px]" style={{ color: "var(--portal-text-secondary)" }}>{p.category}</span>
-                        <span style={{ color: "var(--portal-border)" }}>·</span>
-                        <StagePill stage={p.stage} />
-                      </div>
+                      <p className="text-[12px] font-medium truncate" style={{ color: "var(--portal-text-primary)" }}>{li.name}</p>
+                      {(li.category || li.project_name) && (
+                        <p className="text-[10px] mt-0.5" style={{ color: "var(--portal-text-secondary)" }}>
+                          {[li.category, li.project_name].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
                     </div>
                     <span className="text-[11px] whitespace-nowrap" style={{ color: "var(--portal-text-secondary)" }}>
-                      {p.expected_sample_date ? formatDate(p.expected_sample_date) : "—"}
+                      {li.expected_date ? formatDate(li.expected_date) : "—"}
                     </span>
                     <span className="font-mono text-[13px] font-semibold whitespace-nowrap" style={{ color: "var(--portal-text-primary)" }}>
-                      ${p.sample_fee_usd!.toFixed(2)}
+                      ${li.amount_usd.toFixed(2)}
                     </span>
                   </div>
                 ))}
-              </div>
-            );
-          })}
 
-          {/* Grand total footer */}
-          <div className="flex items-center justify-between px-6 py-4" style={{ borderTop: "2px solid var(--portal-border)" }}>
-            <span className="text-[13px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Total sampling charges</span>
-            <span className="font-mono text-[16px] font-bold" style={{ color: "var(--portal-text-primary)" }}>${grandTotal.toFixed(2)}</span>
-          </div>
+                {/* Footer */}
+                <div className="flex items-center justify-between px-6 py-4" style={{ borderTop: "2px solid var(--portal-border)" }}>
+                  <span className="text-[13px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Total</span>
+                  <span className="font-mono text-[16px] font-bold" style={{ color: "var(--portal-text-primary)" }}>${total.toFixed(2)}</span>
+                </div>
+
+                {/* Notes */}
+                {activeInvoice.notes && (
+                  <div className="px-6 pb-4">
+                    <p className="text-[11px] leading-relaxed" style={{ color: "var(--portal-text-secondary)" }}>{activeInvoice.notes}</p>
+                  </div>
+                )}
+
+                {/* Actions bar */}
+                <div className="flex items-center gap-2 px-6 py-3" style={{ borderTop: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
+                  <button
+                    onClick={() => handleDownload(activeInvoice)}
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors"
+                    style={{ background: "var(--portal-brand)", color: "#fff" }}
+                  >
+                    <Download size={12} /> Download PDF
+                  </button>
+                  {isAgency && (
+                    <>
+                      <select
+                        value={activeInvoice.status}
+                        onChange={(e) => handleStatusChange(activeInvoice.id, e.target.value)}
+                        className="rounded-lg px-2.5 py-1.5 text-[12px] outline-none"
+                        style={{ border: "1px solid var(--portal-border)", background: "var(--portal-bg)", color: "var(--portal-text-primary)" }}
+                      >
+                        <option value="draft">Draft</option>
+                        <option value="sent">Sent</option>
+                        <option value="paid">Paid</option>
+                      </select>
+                      <button
+                        onClick={() => handleDelete(activeInvoice.id, activeInvoice.round)}
+                        className="ml-auto flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[12px] transition-colors"
+                        style={{ color: "#c0392b", border: "1px solid #fbc9c6" }}
+                      >
+                        <Trash2 size={11} /> Delete
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -1490,7 +1813,7 @@ function ReferencesTab({ client, projects }: { client: Client; projects: PortalP
 }
 
 // ── Main portal ──────────────────────────────────────────────
-export function PortalClient({ client, locked, projects, contracts, files, agencySettings }: Props) {
+export function PortalClient({ client, locked, projects, contracts, files, agencySettings, isAgency, savedInvoices }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [selectedProduct, setSelectedProduct] = useState<PortalProduct | null>(null);
   const { dark, toggle } = usePortalTheme();
@@ -1521,7 +1844,7 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
 
         {tab === "sampling" && (
           <motion.div key="sampling" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-            <SamplingInvoice projects={projects} client={client} agencySettings={agencySettings} />
+            <SamplingInvoice projects={projects} client={client} agencySettings={agencySettings} isAgency={isAgency} savedInvoices={savedInvoices} />
           </motion.div>
         )}
 

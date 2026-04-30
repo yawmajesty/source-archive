@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronRight, Package, ArrowRight, Plus, X } from "lucide-react";
+import { ChevronRight, Package, ArrowRight, Plus, X, Pencil, Trash2, Check } from "lucide-react";
 import { ResizablePanel } from "@/components/layout/ResizablePanel";
 import { ProductRow } from "@/components/shared/ProductRow";
 import { StageTrack } from "@/components/shared/StageTrack";
@@ -400,6 +400,39 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [panel2Tab, setPanel2Tab] = useState<"products" | "sampling">("products");
 
+  // Rename
+  const [projectName, setProjectName] = useState(project.name);
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState(project.name);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  function startRename() {
+    setNameValue(projectName);
+    setEditingName(true);
+    setTimeout(() => { nameInputRef.current?.focus(); nameInputRef.current?.select(); }, 0);
+  }
+
+  async function commitRename() {
+    const trimmed = nameValue.trim();
+    if (!trimmed || trimmed === projectName) { setEditingName(false); return; }
+    await supabase.from("projects").update({ name: trimmed }).eq("id", project.id);
+    setProjectName(trimmed);
+    setEditingName(false);
+    router.refresh();
+  }
+
+  function onNameKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") commitRename();
+    if (e.key === "Escape") setEditingName(false);
+  }
+
+  // Delete
+  async function handleDelete() {
+    if (!window.confirm(`Delete "${projectName}"? All products in this collection will also be deleted.`)) return;
+    await supabase.from("projects").delete().eq("id", project.id);
+    router.push(client ? `/clients/${client.id}` : "/");
+  }
+
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else { setSortKey(key); setSortDir("asc"); }
@@ -443,10 +476,37 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
           <div className="flex h-full flex-col">
             {/* Header */}
             <div className="flex items-center justify-between gap-2 px-4 py-3 panel-border-b bg-[var(--sa-window)]">
-              <div className="flex items-center gap-1 text-[12px] text-[var(--sa-text-tertiary)] flex-wrap min-w-0">
-                <span className="truncate">{client?.name ?? "Client"}</span>
+              <div className="flex items-center gap-1 text-[12px] text-[var(--sa-text-tertiary)] min-w-0 flex-1">
+                <span className="truncate shrink-0">{client?.name ?? "Client"}</span>
                 <ChevronRight size={11} className="shrink-0" />
-                <span className="text-[var(--sa-text-primary)] font-medium truncate">{project.name}</span>
+                {editingName ? (
+                  <div className="flex items-center gap-1 min-w-0">
+                    <input
+                      ref={nameInputRef}
+                      value={nameValue}
+                      onChange={(e) => setNameValue(e.target.value)}
+                      onKeyDown={onNameKeyDown}
+                      onBlur={commitRename}
+                      className="rounded px-1.5 py-0.5 text-[12px] font-medium outline-none min-w-0 w-40"
+                      style={{ border: "1px solid var(--sa-accent)", background: "var(--sa-bg)", color: "var(--sa-text-primary)" }}
+                    />
+                    <button onClick={commitRename} className="flex items-center justify-center rounded p-0.5 text-green-600 hover:bg-green-50 transition-colors">
+                      <Check size={12} />
+                    </button>
+                    <button onClick={() => setEditingName(false)} className="flex items-center justify-center rounded p-0.5 text-[var(--sa-text-tertiary)] hover:bg-[var(--sa-bg)] transition-colors">
+                      <X size={12} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={startRename}
+                    className="group flex items-center gap-1 rounded px-1 py-0.5 transition-colors hover:bg-[var(--sa-bg)] min-w-0"
+                    title="Rename collection"
+                  >
+                    <span className="text-[var(--sa-text-primary)] font-medium truncate">{projectName}</span>
+                    <Pencil size={10} className="shrink-0 opacity-0 group-hover:opacity-60 transition-opacity" />
+                  </button>
+                )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <div className="flex items-center gap-0.5 rounded-lg bg-[var(--sa-bg)] p-0.5 border border-[var(--sa-border)]">
@@ -468,6 +528,13 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
                     <Plus size={12} /> Add
                   </button>
                 )}
+                <button
+                  onClick={handleDelete}
+                  title="Delete collection"
+                  className="flex items-center justify-center rounded-lg p-1.5 transition-colors hover:bg-red-50 text-[var(--sa-text-tertiary)] hover:text-red-600"
+                >
+                  <Trash2 size={13} />
+                </button>
               </div>
             </div>
 

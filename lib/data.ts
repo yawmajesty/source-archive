@@ -1,7 +1,7 @@
 import { supabaseData as supabase } from "./supabase-data";
 import type {
   Client, Project, Factory, Product, Sample, Milestone,
-  Cost, Update, Task, Contract, PortalFile, Lead,
+  Cost, Update, Task, Contract, PortalFile, Lead, Stage,
 } from "./mock-data";
 
 export type {
@@ -303,6 +303,36 @@ export async function getAgencySettings(): Promise<AgencySettings> {
   };
 }
 
+// ── Sampling Invoices ────────────────────────────────────────
+
+export interface InvoiceLineItem {
+  name: string;
+  category: string | null;
+  project_name: string | null;
+  amount_usd: number;
+  expected_date: string | null;
+}
+
+export interface SavedInvoice {
+  id: string;
+  client_id: string;
+  round: number;
+  title: string | null;
+  line_items: InvoiceLineItem[];
+  notes: string | null;
+  status: string; // draft | sent | paid
+  created_at: string;
+}
+
+export async function getSamplingInvoices(clientId: string): Promise<SavedInvoice[]> {
+  const { data } = await supabase
+    .from("sampling_invoices")
+    .select("*")
+    .eq("client_id", clientId)
+    .order("round", { ascending: true });
+  return (data ?? []).map((r: any) => ({ ...r, line_items: r.line_items ?? [] }));
+}
+
 // ── Techpack Submissions ────────────────────────────────────────
 
 export interface TechpackSubmission {
@@ -380,6 +410,162 @@ export async function getTechpackSubmission(id: string): Promise<TechpackSubmiss
     ...r,
     ...Object.fromEntries(TECHPACK_ARRAY_FIELDS.map((f) => [f, r[f] ?? []])),
   };
+}
+
+// ── Command Center / Dashboard V2 ────────────────────────────────────────
+
+export interface CollectionProduct {
+  product_id: string;
+  product_name: string;
+  product_stage: Stage;
+  last_update_at: string | null;
+  days_since_update: number | null;
+  overdue_milestones: { id: string; title: string; due_date: string }[];
+  next_milestone: { id: string; title: string; due_date: string } | null;
+  urgency: number;
+}
+
+export interface CollectionActionItem {
+  project_id: string;
+  project_name: string;
+  project_season: string;
+  client_id: string;
+  client_name: string;
+  client_initial: string;
+  products: CollectionProduct[];
+  urgency: number;
+  overdue_count: number;
+  stalled_count: number;
+}
+
+export interface DashboardTask {
+  id: string;
+  title: string;
+  status: string;
+  due_date: string | null;
+  project_id: string;
+  project_name: string;
+  client_name: string;
+  assigned_initials: string;
+  is_overdue: boolean;
+}
+
+export async function getDashboardCollections(): Promise<CollectionActionItem[]> {
+  const today = new Date().toISOString().slice(0, 10);
+  const now = Date.now();
+
+  const [
+    { data: products },
+    { data: projects },
+    { data: clients },
+    { data: milestones },
+    { data: recentUpdates },
+  ] = await Promise.all([
+    supabase.from("products").select("id, name, stage, project_id").neq("stage", "shipped"),
+    supabase.from("projects").select("id, name, client_id, season"),
+    supabase.from("clients").select("id, name, logo_initial"),
+    supabase.from("milestones").select("id, product_id, title, due_date").is("completed_at", null).order("due_date"),
+    supabase.from("updates").select("product_id, created_at").order("created_at", { ascending: false }).limit(500),
+  ]);
+
+  const projectMap = Object.fromEntries((projects ?? []).map((p: any) => [p.id, p]));
+  const clientMap = Object.fromEntries((clients ?? []).map((c: any) => [c.id, c]));
+
+  const latestUpdate: Record<string, string> = {};
+  for (const u of (recentUpdates ?? []) as any[]) {
+    if (!latestUpdate[u.product_id]) latestUpdate[u.product_id] = u.created_at;
+  }
+
+  const milestonesByProduct: Record<string, { id: string; title: string; due_date: string }[]> = {};
+  for (const m of (milestones ?? []) as any[]) {
+    if (!milestonesByProduct[m.product_id]) milestonesByProduct[m.product_id] = [];
+    milestonesByProduct[m.product_id].push({ id: m.id, title: m.title, due_date: m.due_date });
+  }
+
+  const byProject: Record<string, CollectionProduct[]> = {};
+
+  for (const product of (products ?? []) as any[]) {
+    const lastUpdateAt = latestUpdate[product.id] ?? null;
+    const daysSinceUpdate = lastUpdateAt ? Math.floor((now - new Date(lastUpdateAt).getTime()) / 86400000) : null;
+    const productMilestones = milestonesByProduct[product.id] ?? [];
+    const overdue = productMilestones.filter((m) => m.due_date < today);
+    const upcoming = productMilestones.filter((m) => m.due_date >= today).sort((a, b) => a.due_date.localeCompare(b.due_date))[0] ?? null;
+
+    let urgency = 1;
+    urgency += overdue.length * 10;
+    if (daysSinceUpdate === null) urgency += 15;
+    else if (daysSinceUpdate > 14) urgency += 12;
+    else if (daysSinceUpdate > 7) urgency += 6;
+    if (product.stage === "sampling") urgency += 4;
+    else if (product.stage === "qc") urgency += 3;
+    else if (product.stage === "production") urgency += 2;
+
+    const cp: CollectionProduct = {
+      product_id: product.id,
+      product_name: product.name,
+      product_stage: product.stage as Stage,
+      last_update_at: lastUpdateAt,
+      days_since_update: daysSinceUpdate,
+      overdue_milestones: overdue,
+      next_milestone: upcoming,
+      urgency,
+    };
+
+    if (!byProject[product.project_id]) byProject[product.project_id] = [];
+    byProject[product.project_id].push(cp);
+  }
+
+  return Object.entries(byProject)
+    .map(([projectId, prods]) => {
+      const project = projectMap[projectId];
+      const client = project ? clientMap[project.client_id] : null;
+      const sortedProds = [...prods].sort((a, b) => b.urgency - a.urgency);
+      return {
+        project_id: projectId,
+        project_name: project?.name ?? "Unknown",
+        project_season: project?.season ?? "",
+        client_id: client?.id ?? "",
+        client_name: client?.name ?? "",
+        client_initial: client?.logo_initial ?? "?",
+        products: sortedProds,
+        urgency: Math.max(...prods.map((p) => p.urgency)),
+        overdue_count: prods.reduce((s, p) => s + p.overdue_milestones.length, 0),
+        stalled_count: prods.filter((p) => p.days_since_update === null || p.days_since_update > 7).length,
+      } as CollectionActionItem;
+    })
+    .sort((a, b) => b.urgency - a.urgency);
+}
+
+export async function getDashboardTasks(): Promise<DashboardTask[]> {
+  const today = new Date().toISOString().slice(0, 10);
+  const inThreeDays = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+
+  const [{ data: tasks }, { data: projects }, { data: clients }] = await Promise.all([
+    supabase.from("tasks").select("*").neq("status", "done").order("due_date"),
+    supabase.from("projects").select("id, name, client_id"),
+    supabase.from("clients").select("id, name"),
+  ]);
+
+  const projectMap = Object.fromEntries((projects ?? []).map((p: any) => [p.id, p]));
+  const clientMap = Object.fromEntries((clients ?? []).map((c: any) => [c.id, c]));
+
+  return ((tasks ?? []) as any[])
+    .filter((t) => !t.due_date || t.due_date <= inThreeDays)
+    .map((t) => {
+      const project = projectMap[t.project_id];
+      const client = project ? clientMap[project.client_id] : null;
+      return {
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        due_date: t.due_date ?? null,
+        project_id: t.project_id,
+        project_name: project?.name ?? "",
+        client_name: client?.name ?? "",
+        assigned_initials: t.assigned_initials,
+        is_overdue: !!t.due_date && t.due_date < today,
+      } as DashboardTask;
+    });
 }
 
 // ── Helpers ────────────────────────────────────────

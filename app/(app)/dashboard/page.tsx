@@ -1,14 +1,22 @@
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import { getDashboardStats, getRecentActivity, getClientSummaries } from "@/lib/data";
+import { getDashboardCollections, getDashboardTasks } from "@/lib/data";
 import { DashboardClient } from "./DashboardClient";
 
 export default async function DashboardPage() {
-  const [stats, activity, clients] = await Promise.all([
-    getDashboardStats(),
-    getRecentActivity(10),
-    getClientSummaries(),
+  const [collections, tasks] = await Promise.all([
+    getDashboardCollections(),
+    getDashboardTasks(),
   ]);
 
-  return <DashboardClient stats={stats} activity={activity} clients={clients} />;
+  const today = new Date().toISOString().slice(0, 10);
+
+  const stats = {
+    overdue: collections.filter((c) => c.overdue_count > 0).length,
+    stalled: collections.reduce((s, c) => s + c.stalled_count, 0),
+    inSampling: collections.reduce((s, c) => s + c.products.filter((p) => p.product_stage === "sampling").length, 0),
+    tasksToday: tasks.filter((t) => t.due_date && t.due_date <= today).length,
+  };
+
+  return <DashboardClient collections={collections} tasks={tasks} stats={stats} />;
 }
