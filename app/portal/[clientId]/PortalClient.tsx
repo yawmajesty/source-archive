@@ -1119,60 +1119,60 @@ function SamplingInvoice({
   savedInvoices: SavedInvoice[];
 }) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const [invoices, setInvoices] = useState<SavedInvoice[]>(initialInvoices);
   const [activeRound, setActiveRound] = useState<number>(initialInvoices.length > 0 ? initialInvoices[0].round : 1);
-  const [showNewForm, setShowNewForm] = useState(false);
-
-  // Pre-populate from current product fees
-  const autoLineItems: InvoiceLineItem[] = projects.flatMap((proj) =>
-    proj.products
-      .filter((p) => p.sample_fee_usd != null && p.sample_fee_usd > 0)
-      .map((p) => ({
-        name: p.name,
-        category: p.category,
-        project_name: proj.name,
-        amount_usd: p.sample_fee_usd!,
-        expected_date: p.expected_sample_date,
-      }))
-  );
-
-  const nextRound = invoices.length > 0 ? Math.max(...invoices.map((i) => i.round)) + 1 : 1;
-  const [newTitle, setNewTitle] = useState("");
-  const [newNotes, setNewNotes] = useState("");
-  const [newItems, setNewItems] = useState<InvoiceLineItem[]>([]);
+  const [showSelector, setShowSelector] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  function openNewForm() {
-    setNewTitle(`Round ${nextRound} Sampling`);
-    setNewNotes("");
-    setNewItems(autoLineItems.map((li) => ({ ...li })));
-    setShowNewForm(true);
+  // Flat list of all products across projects
+  const allProducts = projects.flatMap((proj) =>
+    proj.products.map((p) => ({ ...p, project_name: proj.name }))
+  );
+
+  // Per-product selection + editable amounts
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [amounts, setAmounts] = useState<Record<string, number>>({});
+
+  function openSelector() {
+    const withFees = allProducts.filter((p) => (p.sample_fee_usd ?? 0) > 0);
+    setSelected(new Set(withFees.map((p) => p.id)));
+    setAmounts(Object.fromEntries(allProducts.map((p) => [p.id, p.sample_fee_usd ?? 0])));
+    setShowSelector(true);
   }
 
-  function updateItem(idx: number, field: keyof InvoiceLineItem, value: string | number | null) {
-    setNewItems((prev) => prev.map((it, i) => i === idx ? { ...it, [field]: value } : it));
+  function toggleProduct(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   }
 
-  function removeItem(idx: number) {
-    setNewItems((prev) => prev.filter((_, i) => i !== idx));
-  }
-
-  function addItem() {
-    setNewItems((prev) => [...prev, { name: "", category: null, project_name: null, amount_usd: 0, expected_date: null }]);
-  }
+  const nextRound = invoices.length > 0 ? Math.max(...invoices.map((i) => i.round)) + 1 : 1;
+  const selectedTotal = Array.from(selected).reduce((s, id) => s + (amounts[id] ?? 0), 0);
 
   async function handleCreate() {
+    const items: InvoiceLineItem[] = Array.from(selected).map((id) => {
+      const p = allProducts.find((p) => p.id === id)!;
+      return {
+        name: p.name,
+        category: p.category,
+        project_name: p.project_name,
+        amount_usd: amounts[id] ?? p.sample_fee_usd ?? 0,
+        expected_date: p.expected_sample_date,
+      };
+    });
     setSaving(true);
     await createSamplingInvoice({
       client_id: client.id,
       round: nextRound,
-      title: newTitle.trim() || null,
-      line_items: newItems,
-      notes: newNotes.trim() || null,
+      title: null,
+      line_items: items,
+      notes: null,
     });
-    setShowNewForm(false);
     setSaving(false);
+    setShowSelector(false);
     startTransition(() => router.refresh());
   }
 
@@ -1201,7 +1201,6 @@ function SamplingInvoice({
     setTimeout(() => win.print(), 400);
   }
 
-  // Sync when prop updates after router.refresh()
   useEffect(() => { setInvoices(initialInvoices); }, [initialInvoices]);
   useEffect(() => {
     if (initialInvoices.length > 0 && !initialInvoices.find((i) => i.round === activeRound)) {
@@ -1213,130 +1212,112 @@ function SamplingInvoice({
 
   return (
     <div className="mt-8">
-      {/* Header row */}
+      {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <p className="text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>Sampling invoices</p>
-        {isAgency && !showNewForm && (
+        <p className="text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>Sampling quotes</p>
+        {isAgency && !showSelector && (
           <button
-            onClick={openNewForm}
+            onClick={openSelector}
             className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors"
             style={{ background: "var(--portal-brand)", color: "#fff" }}
           >
-            <Plus size={12} />
-            New round
+            <Plus size={12} /> New quote
           </button>
         )}
       </div>
 
-      {/* New round form */}
-      {showNewForm && (
+      {/* Product selector */}
+      {showSelector && (
         <div className="rounded-xl mb-5 overflow-hidden" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
           <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
-            <p className="text-[13px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Round {nextRound} invoice</p>
-            <button onClick={() => setShowNewForm(false)} className="p-1 rounded" style={{ color: "var(--portal-text-muted)" }}><X size={14} /></button>
-          </div>
-          <div className="px-5 py-4 flex flex-col gap-4">
             <div>
-              <label className="text-[10px] font-semibold uppercase tracking-wide mb-1 block" style={{ color: "var(--portal-text-muted)" }}>Title</label>
-              <input
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                className="w-full rounded-lg px-3 py-2 text-[13px] outline-none"
-                style={{ border: "1px solid var(--portal-border)", background: "var(--portal-bg)", color: "var(--portal-text-primary)" }}
-              />
+              <p className="text-[13px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Round {nextRound} — Select products</p>
+              <p className="text-[11px] mt-0.5" style={{ color: "var(--portal-text-muted)" }}>Check the products to include and set the fee for each</p>
             </div>
+            <button onClick={() => setShowSelector(false)} className="p-1 rounded" style={{ color: "var(--portal-text-muted)" }}>
+              <X size={14} />
+            </button>
+          </div>
 
-            {/* Line items */}
-            <div>
-              <label className="text-[10px] font-semibold uppercase tracking-wide mb-2 block" style={{ color: "var(--portal-text-muted)" }}>Line items</label>
-              <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--portal-border)" }}>
-                <div className="grid px-3 py-2" style={{ gridTemplateColumns: "1fr 6rem 7rem 1.5rem", gap: "0.5rem", background: "var(--portal-thead)", borderBottom: "1px solid var(--portal-border-subtle)" }}>
-                  {["Item", "Amount (USD)", "Expected date", ""].map((h) => (
-                    <span key={h} className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: "var(--portal-text-muted)" }}>{h}</span>
-                  ))}
+          {allProducts.length === 0 ? (
+            <p className="px-5 py-6 text-[13px] text-center" style={{ color: "var(--portal-text-muted)" }}>No products in this collection yet.</p>
+          ) : (
+            allProducts.map((p, i) => (
+              <div
+                key={p.id}
+                className="flex items-center gap-3 px-5 py-3 cursor-pointer"
+                style={{
+                  borderBottom: i < allProducts.length - 1 ? "1px solid var(--portal-border-subtle)" : undefined,
+                  background: selected.has(p.id) ? "var(--portal-row-alt)" : "transparent",
+                }}
+                onClick={() => toggleProduct(p.id)}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(p.id)}
+                  onChange={() => toggleProduct(p.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ accentColor: "var(--portal-brand)", width: 15, height: 15, flexShrink: 0 }}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12px] font-medium truncate" style={{ color: "var(--portal-text-primary)" }}>{p.name}</p>
+                  <p className="text-[10px]" style={{ color: "var(--portal-text-muted)" }}>
+                    {p.project_name}{p.category ? ` · ${p.category}` : ""}{p.sample_round > 1 ? ` · R${p.sample_round}` : ""}
+                  </p>
                 </div>
-                {newItems.map((item, idx) => (
-                  <div key={idx} className="grid px-3 py-2 items-center" style={{ gridTemplateColumns: "1fr 6rem 7rem 1.5rem", gap: "0.5rem", borderBottom: "1px solid var(--portal-border-subtle)" }}>
-                    <input
-                      value={item.name}
-                      onChange={(e) => updateItem(idx, "name", e.target.value)}
-                      placeholder="Item name"
-                      className="rounded px-2 py-1 text-[12px] outline-none w-full"
-                      style={{ border: "1px solid var(--portal-border)", background: "var(--portal-bg)", color: "var(--portal-text-primary)" }}
-                    />
+                {selected.has(p.id) && (
+                  <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <span className="text-[11px]" style={{ color: "var(--portal-text-muted)" }}>$</span>
                     <input
                       type="number"
                       min="0"
                       step="0.01"
-                      value={item.amount_usd}
-                      onChange={(e) => updateItem(idx, "amount_usd", parseFloat(e.target.value) || 0)}
-                      className="rounded px-2 py-1 text-[12px] font-mono outline-none w-full"
+                      value={amounts[p.id] ?? 0}
+                      onChange={(e) => setAmounts((prev) => ({ ...prev, [p.id]: parseFloat(e.target.value) || 0 }))}
+                      className="rounded px-2 py-1 text-[12px] font-mono outline-none w-24 text-right"
                       style={{ border: "1px solid var(--portal-border)", background: "var(--portal-bg)", color: "var(--portal-text-primary)" }}
                     />
-                    <input
-                      type="date"
-                      value={item.expected_date ?? ""}
-                      onChange={(e) => updateItem(idx, "expected_date", e.target.value || null)}
-                      className="rounded px-2 py-1 text-[12px] outline-none w-full"
-                      style={{ border: "1px solid var(--portal-border)", background: "var(--portal-bg)", color: "var(--portal-text-primary)" }}
-                    />
-                    <button onClick={() => removeItem(idx)} className="flex items-center justify-center" style={{ color: "var(--portal-text-muted)" }}>
-                      <X size={12} />
-                    </button>
                   </div>
-                ))}
-                <div className="px-3 py-2" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
-                  <button onClick={addItem} className="flex items-center gap-1 text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>
-                    <Plus size={11} /> Add item
-                  </button>
-                </div>
-                <div className="flex justify-end px-3 py-2">
-                  <span className="text-[12px] font-semibold font-mono" style={{ color: "var(--portal-text-primary)" }}>
-                    Total: ${newItems.reduce((s, li) => s + (li.amount_usd || 0), 0).toFixed(2)}
-                  </span>
-                </div>
+                )}
               </div>
-            </div>
+            ))
+          )}
 
+          <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: "2px solid var(--portal-border)", background: "var(--portal-thead)" }}>
             <div>
-              <label className="text-[10px] font-semibold uppercase tracking-wide mb-1 block" style={{ color: "var(--portal-text-muted)" }}>Notes (optional)</label>
-              <textarea
-                value={newNotes}
-                onChange={(e) => setNewNotes(e.target.value)}
-                rows={2}
-                className="w-full rounded-lg px-3 py-2 text-[13px] outline-none resize-none"
-                style={{ border: "1px solid var(--portal-border)", background: "var(--portal-bg)", color: "var(--portal-text-primary)" }}
-              />
+              <span className="text-[11px]" style={{ color: "var(--portal-text-muted)" }}>{selected.size} product{selected.size !== 1 ? "s" : ""} selected</span>
+              <span className="mx-2 text-[11px]" style={{ color: "var(--portal-border)" }}>·</span>
+              <span className="font-mono text-[13px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>${selectedTotal.toFixed(2)}</span>
             </div>
-
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setShowNewForm(false)} className="rounded-lg px-4 py-2 text-[12px]" style={{ border: "1px solid var(--portal-border)", color: "var(--portal-text-secondary)" }}>Cancel</button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setShowSelector(false)} className="rounded-lg px-3 py-1.5 text-[12px]" style={{ border: "1px solid var(--portal-border)", color: "var(--portal-text-secondary)" }}>
+                Cancel
+              </button>
               <button
                 onClick={handleCreate}
-                disabled={saving || newItems.length === 0}
-                className="rounded-lg px-4 py-2 text-[12px] font-medium disabled:opacity-50"
+                disabled={saving || selected.size === 0}
+                className="rounded-lg px-4 py-1.5 text-[12px] font-medium disabled:opacity-50"
                 style={{ background: "var(--portal-brand)", color: "#fff" }}
               >
-                {saving ? "Saving…" : "Save invoice"}
+                {saving ? "Saving…" : "Add to quote"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* No invoices state */}
-      {invoices.length === 0 && !showNewForm && (
+      {/* Empty state */}
+      {invoices.length === 0 && !showSelector && (
         <div className="rounded-xl p-8 text-center" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
           <p className="text-[13px]" style={{ color: "var(--portal-text-secondary)" }}>
-            {isAgency ? 'No invoices yet. Click "New round" to create one.' : "No sampling invoices to show yet."}
+            {isAgency ? 'No quotes yet. Click "New quote" to create one.' : "No sampling quotes to show yet."}
           </p>
         </div>
       )}
 
-      {/* Saved invoices view */}
+      {/* Saved invoices */}
       {invoices.length > 0 && (
         <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
-          {/* Round tabs */}
           {invoices.length > 1 && (
             <div className="flex gap-1 px-4 pt-3 pb-0" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
               {invoices.map((inv) => (
@@ -1358,10 +1339,8 @@ function SamplingInvoice({
             const total = activeInvoice.line_items.reduce((s, li) => s + li.amount_usd, 0);
             const statusCfg = STATUS_CFG[activeInvoice.status] ?? STATUS_CFG.draft;
             const invoiceDate = new Date(activeInvoice.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-
             return (
               <>
-                {/* Invoice header */}
                 <div className="flex items-start justify-between px-6 py-5" style={{ borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
                   <div>
                     <p className="text-[15px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>
@@ -1380,16 +1359,13 @@ function SamplingInvoice({
                   </div>
                 </div>
 
-                {/* Line items */}
                 <div className="grid px-6 py-1.5" style={{ gridTemplateColumns: "2rem 1fr auto auto", gap: "0.75rem", borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
                   {["#", "Item", "Date", "Amount"].map((h) => (
                     <span key={h} className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: "var(--portal-text-muted)" }}>{h}</span>
                   ))}
                 </div>
                 {activeInvoice.line_items.map((li, i) => (
-                  <div
-                    key={i}
-                    className="grid px-6 py-3 items-center"
+                  <div key={i} className="grid px-6 py-3 items-center"
                     style={{
                       gridTemplateColumns: "2rem 1fr auto auto",
                       gap: "0.75rem",
@@ -1406,32 +1382,24 @@ function SamplingInvoice({
                         </p>
                       )}
                     </div>
-                    <span className="text-[11px] whitespace-nowrap" style={{ color: "var(--portal-text-secondary)" }}>
-                      {li.expected_date ? formatDate(li.expected_date) : "—"}
-                    </span>
-                    <span className="font-mono text-[13px] font-semibold whitespace-nowrap" style={{ color: "var(--portal-text-primary)" }}>
-                      ${li.amount_usd.toFixed(2)}
-                    </span>
+                    <span className="text-[11px] whitespace-nowrap" style={{ color: "var(--portal-text-secondary)" }}>{li.expected_date ? formatDate(li.expected_date) : "—"}</span>
+                    <span className="font-mono text-[13px] font-semibold whitespace-nowrap" style={{ color: "var(--portal-text-primary)" }}>${li.amount_usd.toFixed(2)}</span>
                   </div>
                 ))}
 
-                {/* Footer */}
                 <div className="flex items-center justify-between px-6 py-4" style={{ borderTop: "2px solid var(--portal-border)" }}>
                   <span className="text-[13px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Total</span>
                   <span className="font-mono text-[16px] font-bold" style={{ color: "var(--portal-text-primary)" }}>${total.toFixed(2)}</span>
                 </div>
 
-                {/* Notes */}
                 {activeInvoice.notes && (
                   <div className="px-6 pb-4">
                     <p className="text-[11px] leading-relaxed" style={{ color: "var(--portal-text-secondary)" }}>{activeInvoice.notes}</p>
                   </div>
                 )}
 
-                {/* Actions bar */}
                 <div className="flex items-center gap-2 px-6 py-3" style={{ borderTop: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
-                  <button
-                    onClick={() => handleDownload(activeInvoice)}
+                  <button onClick={() => handleDownload(activeInvoice)}
                     className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors"
                     style={{ background: "var(--portal-brand)", color: "#fff" }}
                   >
@@ -1449,8 +1417,7 @@ function SamplingInvoice({
                         <option value="sent">Sent</option>
                         <option value="paid">Paid</option>
                       </select>
-                      <button
-                        onClick={() => handleDelete(activeInvoice.id, activeInvoice.round)}
+                      <button onClick={() => handleDelete(activeInvoice.id, activeInvoice.round)}
                         className="ml-auto flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[12px] transition-colors"
                         style={{ color: "#c0392b", border: "1px solid #fbc9c6" }}
                       >

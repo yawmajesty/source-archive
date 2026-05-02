@@ -1,16 +1,17 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
-import { Plus, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, ChevronDown, ChevronRight, ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 import type { Cost, Client, Project, Product } from "@/lib/mock-data";
 
 interface Props {
@@ -273,21 +274,28 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
   const grouped = useMemo(() => {
     const map = new Map<string, Cost[]>();
     for (const c of filtered) {
-      const group = map.get(c.project_id) ?? [];
+      const key = c.project_id ?? `client:${c.client_id ?? "unknown"}`;
+      const group = map.get(key) ?? [];
       group.push(c);
-      map.set(c.project_id, group);
+      map.set(key, group);
     }
     return Array.from(map.entries());
   }, [filtered]);
 
-  const totalSpent = filtered.reduce((s, c) => s + c.amount_gbp, 0);
+  const moneyOut = filtered.filter((c) => c.direction === "out").reduce((s, c) => s + c.amount_gbp, 0);
+  const moneyIn  = filtered.filter((c) => c.direction === "in").reduce((s, c) => s + c.amount_gbp, 0);
   const totalBillable = filtered.filter((c) => c.billable_to_client).reduce((s, c) => s + c.amount_gbp, 0);
-  const netOverhead = totalSpent - totalBillable;
+  const netBalance = moneyIn - moneyOut;
 
   function getProjectName(id: string) {
+    if (id.startsWith("client:")) {
+      const cId = id.replace("client:", "");
+      return clients.find((c) => c.id === cId)?.name ?? "Client payments";
+    }
     return projects.find((p) => p.id === id)?.name ?? id;
   }
   function getClientName(projectId: string) {
+    if (projectId.startsWith("client:")) return "";
     const proj = projects.find((p) => p.id === projectId);
     if (!proj) return "";
     return clients.find((c) => c.id === proj.client_id)?.name ?? "";
@@ -321,7 +329,7 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
           onClick={() => setShowModal(true)}
           className="flex items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-3 py-1.5 text-[12px] font-medium text-white hover:opacity-90 transition-opacity"
         >
-          <Plus size={13} strokeWidth={2.5} /> Add Cost
+          <Plus size={13} strokeWidth={2.5} /> Add Entry
         </button>
       </div>
 
@@ -329,12 +337,13 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
 
       <div className={cn("flex-1 overflow-y-auto", view === "pl" && "hidden")}>
         {/* Summary cards */}
-        <div className="grid grid-cols-3 gap-3 px-6 py-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 px-6 py-4">
           {[
-            { label: "Total Spent", value: `£${totalSpent.toLocaleString("en-GB", { maximumFractionDigits: 0 })}` },
-            { label: "Total Billable", value: `£${totalBillable.toLocaleString("en-GB", { maximumFractionDigits: 0 })}` },
-            { label: "Net Overhead", value: `£${netOverhead.toLocaleString("en-GB", { maximumFractionDigits: 0 })}` },
-          ].map(({ label, value }) => (
+            { label: "Money In", value: `£${moneyIn.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`, color: "text-[var(--sa-success)]" },
+            { label: "Money Out", value: `£${moneyOut.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`, color: "text-[var(--sa-danger)]" },
+            { label: "Billable", value: `£${totalBillable.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`, color: "text-[var(--sa-text-primary)]" },
+            { label: "Net Balance", value: `£${netBalance.toLocaleString("en-GB", { maximumFractionDigits: 0, signDisplay: "always" })}`, color: netBalance >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]" },
+          ].map(({ label, value, color }) => (
             <motion.div
               key={label}
               initial={{ opacity: 0, y: 6 }}
@@ -342,7 +351,7 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
               className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] p-4"
             >
               <p className="text-[10px] uppercase tracking-wider text-[var(--sa-text-tertiary)]">{label}</p>
-              <p className="mt-1 font-mono text-[20px] font-semibold text-[var(--sa-text-primary)]">{value}</p>
+              <p className={cn("mt-1 font-mono text-[20px] font-semibold", color)}>{value}</p>
             </motion.div>
           ))}
         </div>
@@ -384,8 +393,8 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
         <div className="px-6 pb-6">
           <div className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-window)]">
             {/* Col headers — desktop only */}
-            <div className="hidden sm:grid grid-cols-[120px_1fr_1fr_100px_100px_80px_60px] gap-3 px-4 py-2 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
-              {["Date", "Product", "Category", "Description", "Amount", "Billable", "Paid by"].map((h) => (
+            <div className="hidden sm:grid grid-cols-[24px_120px_1fr_1fr_100px_110px_80px_60px] gap-3 px-4 py-2 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
+              {["", "Date", "Product", "Category", "Description", "Amount", "Billable", "Paid by"].map((h) => (
                 <span key={h} className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)]">{h}</span>
               ))}
             </div>
@@ -420,8 +429,16 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
                       {/* Mobile card */}
                       <div className="sm:hidden flex flex-col gap-1 px-4 py-3 text-[12px]">
                         <div className="flex items-center justify-between">
-                          <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", CATEGORY_COLORS[cost.category])}>{cost.category}</span>
-                          <span className="font-mono font-semibold text-[var(--sa-text-primary)]">£{cost.amount_gbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</span>
+                          <div className="flex items-center gap-1.5">
+                            {cost.direction === "in"
+                              ? <ArrowDownLeft size={12} className="text-[var(--sa-success)]" />
+                              : <ArrowUpRight size={12} className="text-[var(--sa-danger)]" />
+                            }
+                            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", CATEGORY_COLORS[cost.category])}>{cost.category}</span>
+                          </div>
+                          <span className={cn("font-mono font-semibold", cost.direction === "in" ? "text-[var(--sa-success)]" : "text-[var(--sa-text-primary)]")}>
+                            {cost.direction === "in" ? "+" : ""}£{cost.amount_gbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
+                          </span>
                         </div>
                         <span className="text-[var(--sa-text-primary)] font-medium">{cost.description}</span>
                         <div className="flex items-center gap-2 text-[var(--sa-text-tertiary)]">
@@ -432,13 +449,19 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
                         </div>
                       </div>
                       {/* Desktop row */}
-                      <div className="hidden sm:grid grid-cols-[120px_1fr_1fr_100px_100px_80px_60px] gap-3 items-center px-4 py-2.5 text-[12px]">
+                      <div className="hidden sm:grid grid-cols-[24px_120px_1fr_1fr_100px_110px_80px_60px] gap-3 items-center px-4 py-2.5 text-[12px]">
+                        <span>
+                          {cost.direction === "in"
+                            ? <ArrowDownLeft size={13} className="text-[var(--sa-success)]" />
+                            : <ArrowUpRight size={13} className="text-[var(--sa-danger)]" />
+                          }
+                        </span>
                         <span className="text-[var(--sa-text-tertiary)]">{formatDate(cost.date_paid)}</span>
                         <span className="truncate text-[var(--sa-text-secondary)]">{getProductName(cost.product_id)}</span>
                         <span><span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", CATEGORY_COLORS[cost.category])}>{cost.category}</span></span>
                         <span className="truncate text-[var(--sa-text-primary)]">{cost.description}</span>
-                        <span className="font-mono text-[var(--sa-text-primary)]">
-                          £{cost.amount_gbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
+                        <span className={cn("font-mono", cost.direction === "in" ? "text-[var(--sa-success)] font-semibold" : "text-[var(--sa-text-primary)]")}>
+                          {cost.direction === "in" ? "+" : ""}£{cost.amount_gbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
                           <span className="text-[10px] text-[var(--sa-text-tertiary)] ml-1">{cost.currency !== "GBP" ? `(${cost.currency} ${cost.amount})` : ""}</span>
                         </span>
                         <span>{cost.billable_to_client ? <span className="text-[11px] text-[var(--sa-success)] font-medium">Yes</span> : <span className="text-[11px] text-[var(--sa-text-tertiary)]">No</span>}</span>
@@ -464,23 +487,24 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
             <div className="flex items-center justify-end gap-2 px-4 py-3 bg-[var(--sa-bg)]">
               <span className="text-[12px] font-semibold text-[var(--sa-text-secondary)]">Total</span>
               <span className="font-mono text-[15px] font-bold text-[var(--sa-text-primary)]">
-                £{totalSpent.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
+                £{(moneyOut - moneyIn).toLocaleString("en-GB", { maximumFractionDigits: 0 })}
               </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Add Cost Modal */}
+      {/* Add Entry Modal */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="max-w-lg bg-[var(--sa-window)]">
           <DialogHeader>
-            <DialogTitle className="text-[var(--sa-text-primary)]">Add Cost</DialogTitle>
+            <DialogTitle className="text-[var(--sa-text-primary)]">Add Entry</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 pt-2">
             <AddCostForm
               projects={projects}
               products={products}
+              clients={clients}
               onClose={() => setShowModal(false)}
             />
           </div>
@@ -524,81 +548,189 @@ function SelectField({ children, ...props }: React.SelectHTMLAttributes<HTMLSele
   );
 }
 
-function AddCostForm({ projects, products, onClose }: { projects: Project[]; products: Product[]; onClose: () => void }) {
+function AddCostForm({ projects, products, clients, onClose }: {
+  projects: Project[];
+  products: Product[];
+  clients: Client[];
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [direction, setDirection] = useState<"out" | "in">("out");
   const [projectId, setProjectId] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [productId, setProductId] = useState("");
+  const [category, setCategory] = useState("sampling");
   const [currency, setCurrency] = useState("GBP");
+  const [amount, setAmount] = useState("");
+  const [fxRate, setFxRate] = useState("");
+  const [description, setDescription] = useState("");
+  const [paidBy, setPaidBy] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [billable, setBillable] = useState(false);
+  const [costType, setCostType] = useState<"cogs" | "operating">("operating");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const filteredProducts = products.filter((p) => !projectId || p.project_id === projectId);
 
+  const defaultFx: Record<string, number> = { GBP: 1, USD: 0.79, CNY: 0.11, EUR: 0.86 };
+
+  async function handleSave() {
+    const amt = parseFloat(amount);
+    if (!amt || !description.trim()) { setError("Description and amount are required."); return; }
+    if (direction === "out" && !projectId) { setError("Project is required for expenses."); return; }
+
+    setSaving(true);
+    setError(null);
+
+    const fx = parseFloat(fxRate) || defaultFx[currency] || 1;
+    const amtGbp = Math.round(amt * fx * 100) / 100;
+
+    const { error: err } = await supabase.from("costs").insert({
+      project_id: projectId || null,
+      client_id: clientId || null,
+      product_id: productId || null,
+      category,
+      description: description.trim(),
+      amount: amt,
+      currency,
+      fx_rate: fx,
+      amount_gbp: amtGbp,
+      direction,
+      cost_type: direction === "in" ? "operating" : costType,
+      billable_to_client: direction === "in" ? false : billable,
+      paid_by: paidBy.trim() || (direction === "in" ? "Client" : "Agency"),
+      date_paid: date,
+    });
+
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    router.refresh();
+    onClose();
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Project">
-          <SelectField value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            <option value="">Select project…</option>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </SelectField>
-        </Field>
-        <Field label="Product">
-          <SelectField>
-            <option value="">All products</option>
-            {filteredProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </SelectField>
-        </Field>
+      {/* Direction toggle */}
+      <div className="flex rounded-lg border border-[var(--sa-border)] overflow-hidden">
+        {(["out", "in"] as const).map((d) => (
+          <button
+            key={d}
+            onClick={() => setDirection(d)}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-1.5 py-2 text-[12px] font-medium transition-colors",
+              direction === d
+                ? d === "out" ? "bg-[var(--sa-danger)] text-white" : "bg-[var(--sa-success)] text-white"
+                : "text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
+            )}
+          >
+            {d === "out" ? <ArrowUpRight size={13} /> : <ArrowDownLeft size={13} />}
+            {d === "out" ? "Money Out (Expense)" : "Money In (Payment)"}
+          </button>
+        ))}
       </div>
+
+      {direction === "out" ? (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Project *">
+              <SelectField value={projectId} onChange={(e) => { setProjectId(e.target.value); setProductId(""); }}>
+                <option value="">Select project…</option>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </SelectField>
+            </Field>
+            <Field label="Product">
+              <SelectField value={productId} onChange={(e) => setProductId(e.target.value)}>
+                <option value="">All products</option>
+                {filteredProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </SelectField>
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Category">
+              <SelectField value={category} onChange={(e) => setCategory(e.target.value)}>
+                {["sampling", "shipping", "factory", "travel", "translation", "inspection", "other"].map((c) => (
+                  <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                ))}
+              </SelectField>
+            </Field>
+            <Field label="Type">
+              <SelectField value={costType} onChange={(e) => setCostType(e.target.value as "cogs" | "operating")}>
+                <option value="operating">Operating</option>
+                <option value="cogs">COGS</option>
+              </SelectField>
+            </Field>
+          </div>
+        </>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Client">
+            <SelectField value={clientId} onChange={(e) => setClientId(e.target.value)}>
+              <option value="">Select client…</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </SelectField>
+          </Field>
+          <Field label="Category">
+            <SelectField value={category} onChange={(e) => setCategory(e.target.value)}>
+              {["sampling", "shipping", "factory", "other"].map((c) => (
+                <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+              ))}
+            </SelectField>
+          </Field>
+        </div>
+      )}
+
+      <Field label="Description *">
+        <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder={direction === "in" ? "e.g. Sample invoice R1 payment" : "e.g. DHL sample shipment — R1"} />
+      </Field>
+
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Category">
-          <SelectField>
-            {["sampling", "shipping", "factory", "travel", "translation", "inspection", "other"].map((c) => (
-              <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
-            ))}
-          </SelectField>
-        </Field>
         <Field label="Currency">
-          <SelectField value={currency} onChange={(e) => setCurrency(e.target.value)}>
+          <SelectField value={currency} onChange={(e) => { setCurrency(e.target.value); setFxRate(""); }}>
             {["GBP", "USD", "CNY", "EUR"].map((c) => <option key={c}>{c}</option>)}
           </SelectField>
         </Field>
-      </div>
-      <Field label="Description">
-        <Input placeholder="e.g. DHL sample shipment — R1" />
-      </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Amount">
-          <Input type="number" placeholder="0.00" />
+        <Field label="Amount *">
+          <Input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
         </Field>
-        {currency !== "GBP" && (
-          <Field label="FX Rate (to GBP)">
-            <Input type="number" placeholder="e.g. 0.79" step="0.001" />
-          </Field>
-        )}
       </div>
+
+      {currency !== "GBP" && (
+        <Field label={`FX rate (${currency} → GBP) · default ${defaultFx[currency] ?? 1}`}>
+          <Input type="number" min="0" step="0.0001" value={fxRate} onChange={(e) => setFxRate(e.target.value)} placeholder={String(defaultFx[currency] ?? "")} />
+        </Field>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
+        <Field label="Date">
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </Field>
         <Field label="Paid by">
-          <Input placeholder="Agency or Client" />
-        </Field>
-        <Field label="Date paid">
-          <Input type="date" />
+          <Input value={paidBy} onChange={(e) => setPaidBy(e.target.value)} placeholder={direction === "in" ? "Client" : "Agency"} />
         </Field>
       </div>
-      <div className="flex items-center gap-2">
-        <input type="checkbox" id="billable" className="rounded" />
-        <label htmlFor="billable" className="text-[13px] text-[var(--sa-text-secondary)]">
-          Billable to client
-        </label>
-      </div>
+
+      {direction === "out" && (
+        <div className="flex items-center gap-2">
+          <input type="checkbox" id="billable" checked={billable} onChange={(e) => setBillable(e.target.checked)} className="rounded accent-[var(--sa-accent)]" />
+          <label htmlFor="billable" className="text-[13px] text-[var(--sa-text-secondary)]">Billable to client</label>
+        </div>
+      )}
+
+      {error && <p className="text-[12px] text-[var(--sa-danger)]">{error}</p>}
+
       <div className="flex gap-2 pt-1">
-        <button
-          onClick={onClose}
-          className="flex-1 rounded-lg border border-[var(--sa-border)] py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
-        >
+        <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--sa-border)] py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors">
           Cancel
         </button>
         <button
-          onClick={onClose}
-          className="flex-1 rounded-lg bg-[var(--sa-accent)] py-2 text-[13px] font-medium text-white hover:opacity-90 transition-opacity"
+          onClick={handleSave}
+          disabled={saving}
+          className={cn("flex-1 rounded-lg py-2 text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-50",
+            direction === "in" ? "bg-[var(--sa-success)]" : "bg-[var(--sa-accent)]"
+          )}
         >
-          Add Cost
+          {saving ? "Saving…" : direction === "in" ? "Record Payment" : "Add Expense"}
         </button>
       </div>
     </div>

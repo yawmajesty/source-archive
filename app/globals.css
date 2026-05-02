@@ -378,4 +378,32 @@
   .tl-red    { background-color: var(--sa-danger); }
   .tl-amber  { background-color: var(--sa-warning); }
   .tl-green  { background-color: var(--sa-success); }
+
+  /* Form field utilities */
+  .field-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--sa-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+  }
+  .field-input {
+    width: 100%;
+    border-radius: 6px;
+    border: 1px solid var(--sa-border);
+    background: var(--sa-hover);
+    color: var(--sa-text-primary);
+    font-size: 13px;
+    padding: 6px 10px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .field-input:focus {
+    border-color: var(--sa-accent);
+  }
+  .field-input::placeholder {
+    color: var(--sa-text-tertiary);
+  }
 }

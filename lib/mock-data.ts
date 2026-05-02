@@ -137,6 +137,12 @@ export interface Product {
   sample_fee_usd?: number | null;
   sample_cost_usd?: number | null;
   expected_sample_date?: string | null;
+  sample_lead_time_days?: number | null;
+  // round tracking
+  sample_round?: number | null;
+  parent_product_id?: string | null;
+  // production pricing
+  client_unit_price_usd?: number | null;
   // jsonb columns (added via migration)
   bom_data?: BomItem[] | null;
   documents?: DocumentItem[] | null;
@@ -195,7 +201,9 @@ export interface DocumentItem {
 
 export interface Cost {
   id: string;
-  project_id: string;
+  project_id: string | null;
+  client_id?: string | null;
+  source_ref?: string | null;
   product_id: string | null;
   category: CostCategory;
   description: string;

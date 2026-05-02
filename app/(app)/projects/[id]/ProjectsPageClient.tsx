@@ -1,15 +1,19 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronRight, Package, ArrowRight, Plus, X, Pencil, Trash2, Check } from "lucide-react";
+import {
+  ChevronRight, Package, ArrowRight, Plus, X, Pencil, Trash2, Check,
+  LayoutList, Table2, GitBranch, Copy,
+} from "lucide-react";
 import { ResizablePanel } from "@/components/layout/ResizablePanel";
 import { ProductRow } from "@/components/shared/ProductRow";
 import { StageTrack } from "@/components/shared/StageTrack";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { forkProductsToRound } from "./actions";
 import type { Client, Project, Product, Factory, Stage } from "@/lib/mock-data";
 
 interface ProductWithFactory {
@@ -26,10 +30,36 @@ interface Props {
 
 type SortKey = "name" | "stage" | "cost";
 type SortDir = "asc" | "desc";
+type ViewMode = "list" | "table";
 
 const STAGE_ORDER: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
 const STAGES: Stage[] = STAGE_ORDER;
 
+const STAGE_COLORS: Record<Stage, string> = {
+  brief:      "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+  sourcing:   "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+  sampling:   "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+  approved:   "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+  production: "bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
+  qc:         "bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
+  shipped:    "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300",
+};
+
+function fmt(v: number | null | undefined, prefix = "$") {
+  if (v == null) return "—";
+  return `${prefix}${v.toFixed(2)}`;
+}
+
+function RoundBadge({ round }: { round: number }) {
+  if (round <= 1) return null;
+  return (
+    <span className="inline-flex items-center gap-0.5 rounded-full bg-violet-100 dark:bg-violet-900/40 px-1.5 py-0.5 text-[9px] font-semibold text-violet-700 dark:text-violet-300 leading-none shrink-0">
+      <GitBranch size={8} /> R{round}
+    </span>
+  );
+}
+
+// ── Add Product Modal ─────────────────────────────────────────────────────────
 function AddProductModal({ projectId, factories, onClose }: {
   projectId: string;
   factories: Factory[];
@@ -68,6 +98,7 @@ function AddProductModal({ projectId, factories, onClose }: {
       lead_time_days: 0,
       colorways: [],
       notes: "",
+      sample_round: 1,
     });
 
     setSaving(false);
@@ -96,17 +127,14 @@ function AddProductModal({ projectId, factories, onClose }: {
         <div className="px-5 py-4 space-y-3">
           <div>
             <label className="block text-[11px] font-medium text-[var(--sa-text-secondary)] mb-1">Name *</label>
-            <input
-              ref={nameRef}
-              autoFocus
+            <input ref={nameRef} autoFocus
               className="w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors"
               placeholder="e.g. Ceramic Mug"
             />
           </div>
           <div>
             <label className="block text-[11px] font-medium text-[var(--sa-text-secondary)] mb-1">Category</label>
-            <input
-              ref={categoryRef}
+            <input ref={categoryRef}
               className="w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors"
               placeholder="e.g. Drinkware"
             />
@@ -114,9 +142,7 @@ function AddProductModal({ projectId, factories, onClose }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-medium text-[var(--sa-text-secondary)] mb-1">Stage</label>
-              <select
-                ref={stageRef}
-                defaultValue="brief"
+              <select ref={stageRef} defaultValue="brief"
                 className="w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors"
               >
                 {STAGES.map((s) => (
@@ -126,8 +152,7 @@ function AddProductModal({ projectId, factories, onClose }: {
             </div>
             <div>
               <label className="block text-[11px] font-medium text-[var(--sa-text-secondary)] mb-1">Factory</label>
-              <select
-                ref={factoryRef}
+              <select ref={factoryRef}
                 className="w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors"
               >
                 <option value="">— None —</option>
@@ -140,53 +165,37 @@ function AddProductModal({ projectId, factories, onClose }: {
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-[11px] font-medium text-[var(--sa-text-secondary)] mb-1">MOQ</label>
-              <input
-                ref={moqRef}
-                type="number"
-                min="0"
+              <input ref={moqRef} type="number" min="0"
                 className="w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors"
                 placeholder="500"
               />
             </div>
             <div>
               <label className="block text-[11px] font-medium text-[var(--sa-text-secondary)] mb-1">Target Cost</label>
-              <input
-                ref={targetCostRef}
-                type="number"
-                min="0"
-                step="0.01"
+              <input ref={targetCostRef} type="number" min="0" step="0.01"
                 className="w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors"
                 placeholder="0.00"
               />
             </div>
             <div>
               <label className="block text-[11px] font-medium text-[var(--sa-text-secondary)] mb-1">Client Price</label>
-              <input
-                ref={clientPriceRef}
-                type="number"
-                min="0"
-                step="0.01"
+              <input ref={clientPriceRef} type="number" min="0" step="0.01"
                 className="w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors"
                 placeholder="0.00"
               />
             </div>
           </div>
 
-          {error && (
-            <p className="text-[12px] text-red-500">{error}</p>
-          )}
+          {error && <p className="text-[12px] text-red-500">{error}</p>}
         </div>
 
         <div className="flex justify-end gap-2 px-5 py-4 border-t border-[var(--sa-border)]">
-          <button
-            onClick={onClose}
+          <button onClick={onClose}
             className="rounded-lg px-4 py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
           >
             Cancel
           </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
+          <button onClick={handleSave} disabled={saving}
             className="rounded-lg bg-[var(--sa-accent)] px-4 py-2 text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             {saving ? "Saving…" : "Add Product"}
@@ -197,6 +206,7 @@ function AddProductModal({ projectId, factories, onClose }: {
   );
 }
 
+// ── Product preview (right panel) ────────────────────────────────────────────
 function ProductPreview({ product, factory, onOpen }: { product: Product; factory: Factory | null; onOpen: () => void }) {
   return (
     <motion.div
@@ -208,13 +218,16 @@ function ProductPreview({ product, factory, onOpen }: { product: Product; factor
     >
       <div className="flex items-start justify-between px-5 py-4 panel-border-b bg-[var(--sa-window)]">
         <div className="flex flex-col gap-1 min-w-0">
-          <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)] truncate">
-            {product.name}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)] truncate">{product.name}</h2>
+            <RoundBadge round={product.sample_round ?? 1} />
+          </div>
           <p className="text-[12px] text-[var(--sa-text-tertiary)]">{product.category}</p>
+          {product.parent_product_id && (
+            <p className="text-[11px] text-violet-500">Forked from round {(product.sample_round ?? 2) - 1}</p>
+          )}
         </div>
-        <button
-          onClick={onOpen}
+        <button onClick={onOpen}
           className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-3 py-1.5 text-[12px] font-medium text-white hover:opacity-90 transition-opacity ml-3"
         >
           Open <ArrowRight size={11} />
@@ -223,9 +236,7 @@ function ProductPreview({ product, factory, onOpen }: { product: Product; factor
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
         <div className="rounded-xl border border-[var(--sa-border)] p-4 bg-[var(--sa-window)]">
-          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">
-            Stage
-          </p>
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">Stage</p>
           <StageTrack currentStage={product.stage} showLabels animated />
         </div>
 
@@ -267,7 +278,9 @@ function ProductPreview({ product, factory, onOpen }: { product: Product; factor
                 ].map(({ label, value, neutral, pos }) => (
                   <div key={label} className="rounded-lg border border-[var(--sa-border)] p-2.5 bg-[var(--sa-bg)]">
                     <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{label}</p>
-                    <p className={cn("mt-0.5 font-mono text-[13px] font-semibold", neutral ? "text-[var(--sa-text-primary)]" : pos ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]")}>{value}</p>
+                    <p className={cn("mt-0.5 font-mono text-[13px] font-semibold",
+                      neutral ? "text-[var(--sa-text-primary)]" : pos ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]"
+                    )}>{value}</p>
                   </div>
                 ))}
               </div>
@@ -285,9 +298,7 @@ function ProductPreview({ product, factory, onOpen }: { product: Product; factor
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">Colorways</p>
             <div className="flex flex-wrap gap-1.5">
               {product.colorways.map((c) => (
-                <span key={c} className="rounded-full bg-[var(--sa-hover)] px-2.5 py-1 text-[11px] text-[var(--sa-text-secondary)] border border-[var(--sa-border)]">
-                  {c}
-                </span>
+                <span key={c} className="rounded-full bg-[var(--sa-hover)] px-2.5 py-1 text-[11px] text-[var(--sa-text-secondary)] border border-[var(--sa-border)]">{c}</span>
               ))}
             </div>
           </div>
@@ -297,99 +308,237 @@ function ProductPreview({ product, factory, onOpen }: { product: Product; factor
   );
 }
 
-function SamplingInvoiceView({ productsWithFactory, projectName }: { productsWithFactory: ProductWithFactory[]; projectName: string }) {
-  const items = productsWithFactory.filter(
-    ({ product: p }) => p.sample_fee_usd != null || p.sample_cost_usd != null
-  );
-  const totalFee  = items.reduce((s, { product: p }) => s + (p.sample_fee_usd  ?? 0), 0);
-  const totalCost = items.reduce((s, { product: p }) => s + (p.sample_cost_usd ?? 0), 0);
-  const totalMargin = totalFee - totalCost;
+// ── Table view with multi-select ─────────────────────────────────────────────
+function CollectionTable({
+  productsWithFactory,
+  projectId,
+  projectName,
+  onOpenProduct,
+}: {
+  productsWithFactory: ProductWithFactory[];
+  projectId: string;
+  projectName: string;
+  onOpenProduct: (id: string) => void;
+}) {
+  const router = useRouter();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [forking, startFork] = useTransition();
+  const [viewTab, setViewTab] = useState<"products" | "sampling">("products");
 
-  if (items.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-2 py-20 text-center px-6">
-        <p className="text-[13px] font-medium text-[var(--sa-text-secondary)]">No sampling costs yet</p>
-        <p className="text-[12px] text-[var(--sa-text-tertiary)]">Add sample fees and costs in each product's detail page.</p>
-      </div>
-    );
+  const allIds = productsWithFactory.map((i) => i.product.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
+
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(allIds));
   }
 
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function handleFork() {
+    const ids = Array.from(selected);
+    startFork(async () => {
+      await forkProductsToRound(ids, projectId);
+      setSelected(new Set());
+      router.refresh();
+    });
+  }
+
+  // Sampling totals
+  const samplingItems = productsWithFactory.filter(
+    ({ product: p }) => p.sample_fee_usd != null || p.sample_cost_usd != null
+  );
+  const totalFee    = samplingItems.reduce((s, { product: p }) => s + (p.sample_fee_usd  ?? 0), 0);
+  const totalCost   = samplingItems.reduce((s, { product: p }) => s + (p.sample_cost_usd ?? 0), 0);
+  const totalMargin = totalFee - totalCost;
+
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-4">
-      <div className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-window)]">
-        {/* Invoice header */}
-        <div className="flex items-start justify-between px-5 py-4 bg-[var(--sa-bg)] border-b border-[var(--sa-border)]">
-          <div>
-            <p className="text-[13px] font-semibold text-[var(--sa-text-primary)]">Sampling Invoice</p>
-            <p className="text-[11px] text-[var(--sa-text-tertiary)] mt-0.5">{projectName} · {items.length} product{items.length !== 1 ? "s" : ""}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-[9px] uppercase tracking-wider text-[var(--sa-text-tertiary)]">Total fee (client)</p>
-            <p className="font-mono text-[20px] font-bold text-[var(--sa-text-primary)] mt-0.5">${totalFee.toFixed(2)}</p>
-          </div>
+    <div className="flex flex-col h-full">
+      {/* Sub-tab strip + actions */}
+      <div className="flex items-center justify-between gap-2 px-3 py-2 panel-border-b bg-[var(--sa-window)] shrink-0">
+        <div className="flex items-center gap-0.5 rounded-lg bg-[var(--sa-bg)] p-0.5 border border-[var(--sa-border)]">
+          {(["products", "sampling"] as const).map((t) => (
+            <button key={t} onClick={() => setViewTab(t)}
+              className={cn("rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors capitalize",
+                viewTab === t ? "bg-[var(--sa-window)] text-[var(--sa-text-primary)] shadow-sm" : "text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-secondary)]"
+              )}
+            >
+              {t === "products" ? "Products" : "Sampling P&L"}
+            </button>
+          ))}
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
+        {viewTab === "products" && selected.size > 0 && (
+          <button
+            onClick={handleFork}
+            disabled={forking}
+            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-violet-700 transition-colors disabled:opacity-60"
+          >
+            <Copy size={11} />
+            {forking ? "Creating…" : `Round 2 sampling (${selected.size})`}
+          </button>
+        )}
+      </div>
+
+      {viewTab === "products" ? (
+        <div className="flex-1 overflow-auto">
           <table className="w-full border-collapse text-[12px]">
-            <thead className="bg-[var(--sa-bg)] border-b border-[var(--sa-border)]">
+            <thead className="sticky top-0 z-10 bg-[var(--sa-window)] border-b border-[var(--sa-border)]">
               <tr>
-                {["#", "Product", "Stage", "Sample date", "Fee (client)", "Cost (internal)", "Margin"].map((h) => (
+                <th className="px-3 py-2 text-left w-8">
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                    className="rounded border-[var(--sa-border)] accent-[var(--sa-accent)]"
+                  />
+                </th>
+                {["Product", "Round", "Stage", "Sample cost", "Client sample fee", "Prod. cost", "Client unit price", "Sample lead", "Prod. lead", ""].map((h) => (
                   <th key={h} className="px-3 py-2 text-left text-[9px] font-semibold uppercase tracking-wide text-[var(--sa-text-tertiary)] whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {items.map(({ product: p }, i) => {
-                const fee    = p.sample_fee_usd  ?? 0;
-                const cost   = p.sample_cost_usd ?? 0;
-                const margin = fee - cost;
-                const hasFee = p.sample_fee_usd != null;
-                const hasCost = p.sample_cost_usd != null;
+              {productsWithFactory.map(({ product: p, factory }) => {
+                const isSelected = selected.has(p.id);
+                const round = p.sample_round ?? 1;
                 return (
-                  <tr key={p.id} className={cn("border-b border-[var(--sa-border)] last:border-0 hover:bg-[var(--sa-hover)] transition-colors", i % 2 === 1 && "bg-[var(--sa-bg)]/40")}>
-                    <td className="px-3 py-2.5 text-[var(--sa-text-tertiary)]">{i + 1}</td>
-                    <td className="px-3 py-2.5 font-medium text-[var(--sa-text-primary)] max-w-[160px]">
-                      <p className="truncate">{p.name}</p>
-                      <p className="text-[10px] text-[var(--sa-text-tertiary)] mt-0.5">{p.category}</p>
+                  <tr
+                    key={p.id}
+                    className={cn(
+                      "border-b border-[var(--sa-border)] hover:bg-[var(--sa-hover)] transition-colors cursor-pointer",
+                      isSelected && "bg-violet-50/60 dark:bg-violet-950/20"
+                    )}
+                    onClick={() => toggleOne(p.id)}
+                  >
+                    <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={isSelected} onChange={() => toggleOne(p.id)}
+                        className="rounded border-[var(--sa-border)] accent-[var(--sa-accent)]"
+                      />
                     </td>
-                    <td className="px-3 py-2.5 capitalize text-[var(--sa-text-secondary)] whitespace-nowrap">{p.stage}</td>
-                    <td className="px-3 py-2.5 text-[var(--sa-text-secondary)] whitespace-nowrap">
-                      {(p as any).expected_sample_date
-                        ? new Date((p as any).expected_sample_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
-                        : "—"}
+                    <td className="px-3 py-2.5 max-w-[140px]">
+                      <p className="font-medium text-[var(--sa-text-primary)] truncate">{p.name}</p>
+                      {p.category && <p className="text-[10px] text-[var(--sa-text-tertiary)] truncate">{p.category}</p>}
                     </td>
-                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-primary)] whitespace-nowrap">{hasFee ? `$${fee.toFixed(2)}` : "—"}</td>
-                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-secondary)] whitespace-nowrap">{hasCost ? `$${cost.toFixed(2)}` : "—"}</td>
-                    <td className={cn("px-3 py-2.5 font-mono font-semibold whitespace-nowrap",
-                      !hasFee && !hasCost ? "text-[var(--sa-text-tertiary)]"
-                      : margin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]"
-                    )}>
-                      {hasFee || hasCost ? `${margin >= 0 ? "+" : ""}$${margin.toFixed(2)}` : "—"}
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[var(--sa-text-secondary)]">R{round}</span>
+                        {round > 1 && <GitBranch size={10} className="text-violet-500" />}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", STAGE_COLORS[p.stage])}>
+                        {p.stage}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-secondary)]">{fmt(p.sample_cost_usd)}</td>
+                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-primary)]">{fmt(p.sample_fee_usd)}</td>
+                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-secondary)]">{fmt(p.target_cost_usd)}</td>
+                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-secondary)]">{fmt(p.client_unit_price_usd)}</td>
+                    <td className="px-3 py-2.5 text-[var(--sa-text-secondary)]">
+                      {p.sample_lead_time_days != null ? `${p.sample_lead_time_days}d` : "—"}
+                    </td>
+                    <td className="px-3 py-2.5 text-[var(--sa-text-secondary)]">{p.lead_time_days ? `${p.lead_time_days}d` : "—"}</td>
+                    <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => onOpenProduct(p.id)}
+                        className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-[var(--sa-text-tertiary)] hover:bg-[var(--sa-hover)] hover:text-[var(--sa-accent)] transition-colors whitespace-nowrap"
+                      >
+                        Open <ArrowRight size={10} />
+                      </button>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
-            <tfoot className="border-t-2 border-[var(--sa-border-strong)] bg-[var(--sa-bg)]">
-              <tr>
-                <td colSpan={4} className="px-3 py-3 text-[11px] font-semibold text-[var(--sa-text-secondary)]">Collection total</td>
-                <td className="px-3 py-3 font-mono text-[13px] font-bold text-[var(--sa-text-primary)]">${totalFee.toFixed(2)}</td>
-                <td className="px-3 py-3 font-mono text-[13px] font-bold text-[var(--sa-text-primary)]">${totalCost.toFixed(2)}</td>
-                <td className={cn("px-3 py-3 font-mono text-[13px] font-bold",
-                  totalMargin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]"
-                )}>
-                  {totalFee > 0 || totalCost > 0 ? `${totalMargin >= 0 ? "+" : ""}$${totalMargin.toFixed(2)}` : "—"}
-                </td>
-              </tr>
-            </tfoot>
           </table>
+          {productsWithFactory.length === 0 && (
+            <div className="flex items-center justify-center py-16 text-[13px] text-[var(--sa-text-tertiary)]">No products yet</div>
+          )}
         </div>
-      </div>
+      ) : (
+        /* Sampling P&L table */
+        <div className="flex-1 overflow-auto">
+          <table className="w-full border-collapse text-[12px]">
+            <thead className="sticky top-0 z-10 bg-[var(--sa-window)] border-b border-[var(--sa-border)]">
+              <tr>
+                {["#", "Product", "Round", "Stage", "Expected sample", "Sample cost", "Client fee", "Margin", "Prod. cost", "Client price", "Prod. lead"].map((h) => (
+                  <th key={h} className="px-3 py-2 text-left text-[9px] font-semibold uppercase tracking-wide text-[var(--sa-text-tertiary)] whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {productsWithFactory.map(({ product: p }, i) => {
+                const fee    = p.sample_fee_usd  ?? 0;
+                const cost   = p.sample_cost_usd ?? 0;
+                const margin = fee - cost;
+                const round  = p.sample_round ?? 1;
+                return (
+                  <tr key={p.id} className={cn("border-b border-[var(--sa-border)] hover:bg-[var(--sa-hover)] transition-colors", i % 2 === 1 && "bg-[var(--sa-bg)]/40")}>
+                    <td className="px-3 py-2.5 text-[var(--sa-text-tertiary)]">{i + 1}</td>
+                    <td className="px-3 py-2.5 font-medium text-[var(--sa-text-primary)] max-w-[140px]">
+                      <p className="truncate">{p.name}</p>
+                      {p.category && <p className="text-[10px] text-[var(--sa-text-tertiary)]">{p.category}</p>}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[var(--sa-text-secondary)]">R{round}</span>
+                        {round > 1 && <GitBranch size={10} className="text-violet-500" />}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", STAGE_COLORS[p.stage])}>
+                        {p.stage}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-[var(--sa-text-secondary)] whitespace-nowrap">
+                      {(p as any).expected_sample_date
+                        ? new Date((p as any).expected_sample_date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+                        : "—"}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-secondary)]">{p.sample_cost_usd != null ? `$${cost.toFixed(2)}` : "—"}</td>
+                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-primary)]">{p.sample_fee_usd != null ? `$${fee.toFixed(2)}` : "—"}</td>
+                    <td className={cn("px-3 py-2.5 font-mono font-semibold",
+                      p.sample_fee_usd == null && p.sample_cost_usd == null ? "text-[var(--sa-text-tertiary)]"
+                      : margin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]"
+                    )}>
+                      {p.sample_fee_usd != null || p.sample_cost_usd != null ? `${margin >= 0 ? "+" : ""}$${margin.toFixed(2)}` : "—"}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-secondary)]">{fmt(p.target_cost_usd)}</td>
+                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-secondary)]">{fmt(p.client_unit_price_usd)}</td>
+                    <td className="px-3 py-2.5 text-[var(--sa-text-secondary)]">{p.lead_time_days ? `${p.lead_time_days}d` : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            {(samplingItems.length > 0) && (
+              <tfoot className="border-t-2 border-[var(--sa-border-strong)] bg-[var(--sa-bg)]">
+                <tr>
+                  <td colSpan={5} className="px-3 py-3 text-[11px] font-semibold text-[var(--sa-text-secondary)]">Collection total</td>
+                  <td className="px-3 py-3 font-mono text-[13px] font-bold text-[var(--sa-text-primary)]">${totalCost.toFixed(2)}</td>
+                  <td className="px-3 py-3 font-mono text-[13px] font-bold text-[var(--sa-text-primary)]">${totalFee.toFixed(2)}</td>
+                  <td className={cn("px-3 py-3 font-mono text-[13px] font-bold",
+                    totalMargin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]"
+                  )}>
+                    {totalFee > 0 || totalCost > 0 ? `${totalMargin >= 0 ? "+" : ""}$${totalMargin.toFixed(2)}` : "—"}
+                  </td>
+                  <td colSpan={3} />
+                </tr>
+              </tfoot>
+            )}
+          </table>
+          {productsWithFactory.length === 0 && (
+            <div className="flex items-center justify-center py-16 text-[13px] text-[var(--sa-text-tertiary)]">No products yet</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
+// ── Main page component ───────────────────────────────────────────────────────
 export function ProjectsPageClient({ project, client, productsWithFactory, factories }: Props) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -398,7 +547,7 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [showAddProduct, setShowAddProduct] = useState(false);
-  const [panel2Tab, setPanel2Tab] = useState<"products" | "sampling">("products");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
 
   // Rename
   const [projectName, setProjectName] = useState(project.name);
@@ -426,7 +575,6 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
     if (e.key === "Escape") setEditingName(false);
   }
 
-  // Delete
   async function handleDelete() {
     if (!window.confirm(`Delete "${projectName}"? All products in this collection will also be deleted.`)) return;
     await supabase.from("projects").delete().eq("id", project.id);
@@ -455,8 +603,7 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
   function SortBtn({ k, label }: { k: SortKey; label: string }) {
     const active = sortKey === k;
     return (
-      <button
-        onClick={() => toggleSort(k)}
+      <button onClick={() => toggleSort(k)}
         className={cn(
           "flex items-center gap-0.5 text-[11px] px-1.5 py-0.5 rounded transition-colors",
           active ? "text-[var(--sa-accent)] font-medium" : "text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-secondary)]"
@@ -470,76 +617,87 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
 
   return (
     <>
-      <div className="flex h-full overflow-hidden">
-        {/* Panel 2 */}
-        <ResizablePanel defaultWidth={380} storageKey="koru-project-panel2">
-          <div className="flex h-full flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between gap-2 px-4 py-3 panel-border-b bg-[var(--sa-window)]">
-              <div className="flex items-center gap-1 text-[12px] text-[var(--sa-text-tertiary)] min-w-0 flex-1">
-                <span className="truncate shrink-0">{client?.name ?? "Client"}</span>
-                <ChevronRight size={11} className="shrink-0" />
-                {editingName ? (
-                  <div className="flex items-center gap-1 min-w-0">
-                    <input
-                      ref={nameInputRef}
-                      value={nameValue}
-                      onChange={(e) => setNameValue(e.target.value)}
-                      onKeyDown={onNameKeyDown}
-                      onBlur={commitRename}
-                      className="rounded px-1.5 py-0.5 text-[12px] font-medium outline-none min-w-0 w-40"
-                      style={{ border: "1px solid var(--sa-accent)", background: "var(--sa-bg)", color: "var(--sa-text-primary)" }}
-                    />
-                    <button onClick={commitRename} className="flex items-center justify-center rounded p-0.5 text-green-600 hover:bg-green-50 transition-colors">
-                      <Check size={12} />
-                    </button>
-                    <button onClick={() => setEditingName(false)} className="flex items-center justify-center rounded p-0.5 text-[var(--sa-text-tertiary)] hover:bg-[var(--sa-bg)] transition-colors">
-                      <X size={12} />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={startRename}
-                    className="group flex items-center gap-1 rounded px-1 py-0.5 transition-colors hover:bg-[var(--sa-bg)] min-w-0"
-                    title="Rename collection"
-                  >
-                    <span className="text-[var(--sa-text-primary)] font-medium truncate">{projectName}</span>
-                    <Pencil size={10} className="shrink-0 opacity-0 group-hover:opacity-60 transition-opacity" />
-                  </button>
-                )}
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <div className="flex items-center gap-0.5 rounded-lg bg-[var(--sa-bg)] p-0.5 border border-[var(--sa-border)]">
-                  {(["products", "sampling"] as const).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setPanel2Tab(t)}
-                      className={cn("rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors capitalize", panel2Tab === t ? "bg-[var(--sa-window)] text-[var(--sa-text-primary)] shadow-sm" : "text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-secondary)]")}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-                {panel2Tab === "products" && (
-                  <button
-                    onClick={() => setShowAddProduct(true)}
-                    className="flex items-center gap-1 rounded-lg bg-[var(--sa-accent)] px-2.5 py-1.5 text-[11px] font-medium text-white hover:opacity-90 transition-opacity"
-                  >
-                    <Plus size={12} /> Add
-                  </button>
-                )}
-                <button
-                  onClick={handleDelete}
-                  title="Delete collection"
-                  className="flex items-center justify-center rounded-lg p-1.5 transition-colors hover:bg-red-50 text-[var(--sa-text-tertiary)] hover:text-red-600"
-                >
-                  <Trash2 size={13} />
+      <div className="flex h-full overflow-hidden flex-col">
+        {/* Collection header bar */}
+        <div className="flex items-center justify-between gap-2 px-4 py-3 panel-border-b bg-[var(--sa-window)] shrink-0">
+          <div className="flex items-center gap-1 text-[12px] text-[var(--sa-text-tertiary)] min-w-0 flex-1">
+            <span className="truncate shrink-0">{client?.name ?? "Client"}</span>
+            <ChevronRight size={11} className="shrink-0" />
+            {editingName ? (
+              <div className="flex items-center gap-1 min-w-0">
+                <input
+                  ref={nameInputRef}
+                  value={nameValue}
+                  onChange={(e) => setNameValue(e.target.value)}
+                  onKeyDown={onNameKeyDown}
+                  onBlur={commitRename}
+                  className="rounded px-1.5 py-0.5 text-[12px] font-medium outline-none min-w-0 w-40"
+                  style={{ border: "1px solid var(--sa-accent)", background: "var(--sa-bg)", color: "var(--sa-text-primary)" }}
+                />
+                <button onClick={commitRename} className="flex items-center justify-center rounded p-0.5 text-green-600 hover:bg-green-50 transition-colors">
+                  <Check size={12} />
+                </button>
+                <button onClick={() => setEditingName(false)} className="flex items-center justify-center rounded p-0.5 text-[var(--sa-text-tertiary)] hover:bg-[var(--sa-bg)] transition-colors">
+                  <X size={12} />
                 </button>
               </div>
+            ) : (
+              <button onClick={startRename}
+                className="group flex items-center gap-1 rounded px-1 py-0.5 transition-colors hover:bg-[var(--sa-bg)] min-w-0"
+                title="Rename collection"
+              >
+                <span className="text-[var(--sa-text-primary)] font-medium truncate">{projectName}</span>
+                <Pencil size={10} className="shrink-0 opacity-0 group-hover:opacity-60 transition-opacity" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {/* View mode toggle */}
+            <div className="flex items-center gap-0.5 rounded-lg bg-[var(--sa-bg)] p-0.5 border border-[var(--sa-border)]">
+              <button onClick={() => setViewMode("list")}
+                title="List view"
+                className={cn("rounded-md p-1.5 transition-colors", viewMode === "list" ? "bg-[var(--sa-window)] text-[var(--sa-text-primary)] shadow-sm" : "text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-secondary)]")}
+              >
+                <LayoutList size={13} />
+              </button>
+              <button onClick={() => setViewMode("table")}
+                title="Table view"
+                className={cn("rounded-md p-1.5 transition-colors", viewMode === "table" ? "bg-[var(--sa-window)] text-[var(--sa-text-primary)] shadow-sm" : "text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-secondary)]")}
+              >
+                <Table2 size={13} />
+              </button>
             </div>
 
-            {panel2Tab === "products" && (
-              <>
+            <button
+              onClick={() => setShowAddProduct(true)}
+              className="flex items-center gap-1 rounded-lg bg-[var(--sa-accent)] px-2.5 py-1.5 text-[11px] font-medium text-white hover:opacity-90 transition-opacity"
+            >
+              <Plus size={12} /> Add
+            </button>
+            <button onClick={handleDelete} title="Delete collection"
+              className="flex items-center justify-center rounded-lg p-1.5 transition-colors hover:bg-red-50 text-[var(--sa-text-tertiary)] hover:text-red-600"
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        {viewMode === "table" ? (
+          <div className="flex-1 overflow-hidden bg-[var(--sa-bg)]">
+            <CollectionTable
+              productsWithFactory={sorted}
+              projectId={project.id}
+              projectName={project.name}
+              onOpenProduct={openProduct}
+            />
+          </div>
+        ) : (
+          <div className="flex flex-1 overflow-hidden">
+            {/* Panel 2 — list */}
+            <ResizablePanel defaultWidth={380} storageKey="koru-project-panel2">
+              <div className="flex h-full flex-col">
                 {/* Sort bar */}
                 <div className="flex items-center gap-1 px-3 py-1.5 panel-border-b bg-[var(--sa-window)]">
                   <span className="text-[10px] text-[var(--sa-text-tertiary)] mr-1">Sort:</span>
@@ -574,30 +732,26 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
                     ))
                   )}
                 </div>
-              </>
-            )}
+              </div>
+            </ResizablePanel>
 
-            {panel2Tab === "sampling" && (
-              <SamplingInvoiceView productsWithFactory={sorted} projectName={project.name} />
-            )}
+            {/* Panel 3 — preview */}
+            <div className="flex-1 overflow-hidden bg-[var(--sa-bg)]">
+              <AnimatePresence mode="wait">
+                {selectedItem ? (
+                  <ProductPreview
+                    key={selectedItem.product.id}
+                    product={selectedItem.product}
+                    factory={selectedItem.factory}
+                    onOpen={() => openProduct(selectedItem.product.id)}
+                  />
+                ) : (
+                  <EmptyState title="Select a product" description="Click a product to preview" />
+                )}
+              </AnimatePresence>
+            </div>
           </div>
-        </ResizablePanel>
-
-        {/* Panel 3 */}
-        <div className="flex-1 overflow-hidden bg-[var(--sa-bg)]">
-          <AnimatePresence mode="wait">
-            {selectedItem ? (
-              <ProductPreview
-                key={selectedItem.product.id}
-                product={selectedItem.product}
-                factory={selectedItem.factory}
-                onOpen={() => openProduct(selectedItem.product.id)}
-              />
-            ) : (
-              <EmptyState title="Select a product" description="Click a product to preview" />
-            )}
-          </AnimatePresence>
-        </div>
+        )}
       </div>
 
       <AnimatePresence>

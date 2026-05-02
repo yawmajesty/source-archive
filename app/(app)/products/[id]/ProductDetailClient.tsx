@@ -913,10 +913,10 @@ export function ProductDetailClient({
         <StageTrack currentStage={product.stage} animated showLabels size="md" />
       </motion.div>
 
-      {/* Body — two-column */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left column (70%) */}
-        <div className="flex-[7] overflow-y-auto px-6 py-5 space-y-4">
+      {/* Body — two-column on desktop, single-column scroll on mobile */}
+      <div className="flex-1 overflow-y-auto md:overflow-hidden md:flex">
+        {/* Left column */}
+        <div className="px-4 md:px-6 py-5 space-y-4 md:flex-[7] md:overflow-y-auto">
 
           {/* Details */}
           <CollapsibleSection title="Details">
@@ -1169,8 +1169,8 @@ export function ProductDetailClient({
           )}
         </div>
 
-        {/* Right column (30%) — sticky */}
-        <div className="flex-[3] min-w-64 max-w-80 overflow-y-auto border-l border-[var(--sa-border)] px-4 py-5 space-y-4 bg-[var(--sa-window)]">
+        {/* Right column — below on mobile, sidebar on desktop */}
+        <div className="px-4 py-5 space-y-4 bg-[var(--sa-window)] border-t md:border-t-0 md:border-l border-[var(--sa-border)] md:flex-[3] md:min-w-64 md:max-w-80 md:overflow-y-auto">
 
           {/* Pricing */}
           <PricingCard product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />

@@ -472,9 +472,9 @@ export function DashboardClient({ collections: initialCollections, tasks: initia
       </div>
 
       {/* Body */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex-1 overflow-y-auto md:overflow-hidden md:flex">
         {/* Spotlight */}
-        <div className="flex flex-col overflow-hidden bg-[var(--sa-window)]" style={{ width: "58%", borderRight: "1px solid var(--sa-border)" }}>
+        <div className="flex flex-col overflow-hidden bg-[var(--sa-window)] border-b md:border-b-0 md:w-[58%]" style={{ borderRight: "1px solid var(--sa-border)" }}>
           {total === 0 ? (
             <div className="flex flex-col items-center justify-center flex-1 gap-3 text-center px-10">
               <p className="text-[15px] font-semibold text-[var(--sa-text-primary)]">Everything is on track</p>
@@ -494,7 +494,7 @@ export function DashboardClient({ collections: initialCollections, tasks: initia
         </div>
 
         {/* Action queue */}
-        <div className="flex-1 overflow-hidden flex flex-col bg-[var(--sa-bg)]">
+        <div className="flex-1 md:overflow-hidden flex flex-col bg-[var(--sa-bg)]">
           <div className="px-5 py-3 shrink-0 bg-[var(--sa-window)]" style={{ borderBottom: "1px solid var(--sa-border)" }}>
             <p className="text-[11px] font-semibold text-[var(--sa-text-secondary)]">Action queue</p>
           </div>
