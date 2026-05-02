@@ -587,6 +587,7 @@ function AddCostForm({ projects, products, clients, onClose }: {
     const amtGbp = Math.round(amt * fx * 100) / 100;
 
     const { error: err } = await supabase.from("costs").insert({
+      id: "cost-" + Date.now(),
       project_id: projectId || null,
       client_id: clientId || null,
       product_id: productId || null,

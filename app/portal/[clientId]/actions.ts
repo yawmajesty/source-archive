@@ -40,6 +40,7 @@ export async function updateInvoiceStatus(id: string, clientId: string, status: 
         const label = invoice.title ?? `Round ${invoice.round} Sampling`;
 
         await supabase.from("costs").insert({
+          id: "cost-" + Date.now(),
           client_id: clientId,
           project_id: null,
           product_id: null,
