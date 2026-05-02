@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
-import { Plus, ChevronDown, ChevronRight, ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { Plus, ChevronDown, ChevronRight, ArrowDownLeft, ArrowUpRight, Pencil } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -259,6 +259,7 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
   const [filterBillable, setFilterBillable] = useState<string>("all");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [showModal, setShowModal] = useState(false);
+  const [editingCost, setEditingCost] = useState<Cost | null>(null);
 
   // Filter
   const filtered = useMemo(() => {
@@ -393,8 +394,8 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
         <div className="px-6 pb-6">
           <div className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-window)]">
             {/* Col headers — desktop only */}
-            <div className="hidden sm:grid grid-cols-[24px_120px_1fr_1fr_100px_110px_80px_60px] gap-3 px-4 py-2 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
-              {["", "Date", "Product", "Category", "Description", "Amount", "Billable", "Paid by"].map((h) => (
+            <div className="hidden sm:grid grid-cols-[24px_120px_1fr_1fr_100px_110px_80px_60px_32px] gap-3 px-4 py-2 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
+              {["", "Date", "Product", "Category", "Description", "Amount", "Billable", "Paid by", ""].map((h) => (
                 <span key={h} className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)]">{h}</span>
               ))}
             </div>
@@ -425,7 +426,7 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
 
                   {/* Rows */}
                   {!isCollapsed && rows.map((cost) => (
-                    <div key={cost.id} className="border-b border-[var(--sa-border)] last:border-0 hover:bg-[var(--sa-hover)] transition-colors">
+                    <div key={cost.id} className="border-b border-[var(--sa-border)] last:border-0 hover:bg-[var(--sa-hover)] transition-colors group">
                       {/* Mobile card */}
                       <div className="sm:hidden flex flex-col gap-1 px-4 py-3 text-[12px]">
                         <div className="flex items-center justify-between">
@@ -436,9 +437,14 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
                             }
                             <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", CATEGORY_COLORS[cost.category])}>{cost.category}</span>
                           </div>
-                          <span className={cn("font-mono font-semibold", cost.direction === "in" ? "text-[var(--sa-success)]" : "text-[var(--sa-text-primary)]")}>
-                            {cost.direction === "in" ? "+" : ""}£{cost.amount_gbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={cn("font-mono font-semibold", cost.direction === "in" ? "text-[var(--sa-success)]" : "text-[var(--sa-text-primary)]")}>
+                              {cost.direction === "in" ? "+" : ""}£{cost.amount_gbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
+                            </span>
+                            <button onClick={() => setEditingCost(cost)} className="p-1 rounded text-[var(--sa-text-tertiary)] hover:text-[var(--sa-accent)]">
+                              <Pencil size={12} />
+                            </button>
+                          </div>
                         </div>
                         <span className="text-[var(--sa-text-primary)] font-medium">{cost.description}</span>
                         <div className="flex items-center gap-2 text-[var(--sa-text-tertiary)]">
@@ -449,7 +455,7 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
                         </div>
                       </div>
                       {/* Desktop row */}
-                      <div className="hidden sm:grid grid-cols-[24px_120px_1fr_1fr_100px_110px_80px_60px] gap-3 items-center px-4 py-2.5 text-[12px]">
+                      <div className="hidden sm:grid grid-cols-[24px_120px_1fr_1fr_100px_110px_80px_60px_32px] gap-3 items-center px-4 py-2.5 text-[12px]">
                         <span>
                           {cost.direction === "in"
                             ? <ArrowDownLeft size={13} className="text-[var(--sa-success)]" />
@@ -466,6 +472,12 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
                         </span>
                         <span>{cost.billable_to_client ? <span className="text-[11px] text-[var(--sa-success)] font-medium">Yes</span> : <span className="text-[11px] text-[var(--sa-text-tertiary)]">No</span>}</span>
                         <span className="truncate text-[var(--sa-text-secondary)]">{cost.paid_by}</span>
+                        <button
+                          onClick={() => setEditingCost(cost)}
+                          className="opacity-0 group-hover:opacity-100 flex items-center justify-center rounded p-1 text-[var(--sa-text-tertiary)] hover:text-[var(--sa-accent)] hover:bg-[var(--sa-hover)] transition-all"
+                        >
+                          <Pencil size={12} />
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -507,6 +519,26 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
               clients={clients}
               onClose={() => setShowModal(false)}
             />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Entry Modal */}
+      <Dialog open={!!editingCost} onOpenChange={(open) => { if (!open) setEditingCost(null); }}>
+        <DialogContent className="max-w-lg bg-[var(--sa-window)]">
+          <DialogHeader>
+            <DialogTitle className="text-[var(--sa-text-primary)]">Edit Entry</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 pt-2">
+            {editingCost && (
+              <EditCostForm
+                cost={editingCost}
+                projects={projects}
+                products={products}
+                clients={clients}
+                onClose={() => setEditingCost(null)}
+              />
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -732,6 +764,128 @@ function AddCostForm({ projects, products, clients, onClose }: {
           )}
         >
           {saving ? "Saving…" : direction === "in" ? "Record Payment" : "Add Expense"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EditCostForm({ cost, projects, products, clients, onClose }: {
+  cost: Cost;
+  projects: Project[];
+  products: Product[];
+  clients: Client[];
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [category, setCategory] = useState<string>(cost.category);
+  const [description, setDescription] = useState(cost.description);
+  const [amount, setAmount] = useState(String(cost.amount));
+  const [currency, setCurrency] = useState<string>(cost.currency);
+  const [fxRate, setFxRate] = useState(String(cost.fx_rate));
+  const [paidBy, setPaidBy] = useState(cost.paid_by);
+  const [date, setDate] = useState(cost.date_paid);
+  const [billable, setBillable] = useState(cost.billable_to_client);
+  const [costType, setCostType] = useState<"cogs" | "operating">(cost.cost_type);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const filteredProducts = products.filter((p) => !cost.project_id || p.project_id === cost.project_id);
+
+  async function handleSave() {
+    const amt = parseFloat(amount);
+    if (!amt || !description.trim()) { setError("Description and amount are required."); return; }
+
+    setSaving(true);
+    setError(null);
+
+    const fx = parseFloat(fxRate) || 1;
+    const amtGbp = Math.round(amt * fx * 100) / 100;
+
+    const { error: err } = await supabase.from("costs").update({
+      category,
+      description: description.trim(),
+      amount: amt,
+      currency,
+      fx_rate: fx,
+      amount_gbp: amtGbp,
+      cost_type: costType,
+      billable_to_client: billable,
+      paid_by: paidBy.trim(),
+      date_paid: date,
+    }).eq("id", cost.id);
+
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    router.refresh();
+    onClose();
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Category">
+          <SelectField value={category} onChange={(e) => setCategory(e.target.value)}>
+            {["sampling", "shipping", "factory", "travel", "translation", "inspection", "other"].map((c) => (
+              <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+            ))}
+          </SelectField>
+        </Field>
+        {cost.direction === "out" && (
+          <Field label="Type">
+            <SelectField value={costType} onChange={(e) => setCostType(e.target.value as "cogs" | "operating")}>
+              <option value="operating">Operating</option>
+              <option value="cogs">COGS</option>
+            </SelectField>
+          </Field>
+        )}
+      </div>
+
+      <Field label="Description">
+        <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Currency">
+          <SelectField value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            {["GBP", "USD", "CNY", "EUR"].map((c) => <option key={c}>{c}</option>)}
+          </SelectField>
+        </Field>
+        <Field label="Amount">
+          <Input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </Field>
+      </div>
+
+      {currency !== "GBP" && (
+        <Field label={`FX rate (${currency} → GBP)`}>
+          <Input type="number" min="0" step="0.0001" value={fxRate} onChange={(e) => setFxRate(e.target.value)} />
+        </Field>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Date">
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <Field label="Paid by">
+          <Input value={paidBy} onChange={(e) => setPaidBy(e.target.value)} />
+        </Field>
+      </div>
+
+      {cost.direction === "out" && (
+        <div className="flex items-center gap-2">
+          <input type="checkbox" id="edit-billable" checked={billable} onChange={(e) => setBillable(e.target.checked)} className="rounded accent-[var(--sa-accent)]" />
+          <label htmlFor="edit-billable" className="text-[13px] text-[var(--sa-text-secondary)]">Billable to client</label>
+        </div>
+      )}
+
+      {error && <p className="text-[12px] text-[var(--sa-danger)]">{error}</p>}
+
+      <div className="flex gap-2 pt-1">
+        <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--sa-border)] py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors">
+          Cancel
+        </button>
+        <button onClick={handleSave} disabled={saving} className="flex-1 rounded-lg bg-[var(--sa-accent)] py-2 text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-50">
+          {saving ? "Saving…" : "Save Changes"}
         </button>
       </div>
     </div>
