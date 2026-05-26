@@ -155,6 +155,20 @@ export interface RfqTier {
   notes: string | null;
 }
 
+export interface RfqQuotedProduct {
+  id: string;
+  submission_id: string;
+  name: string;
+  description: string | null;
+  moq: number | null;
+  unit_price_usd: number | null;
+  sample_fee_usd: number | null;
+  lead_time_days: number | null;
+  notes: string | null;
+  sort_order: number;
+  assigned_product_id: string | null;
+}
+
 export interface Product {
   id: string;
   project_id: string;

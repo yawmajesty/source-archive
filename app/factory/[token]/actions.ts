@@ -10,20 +10,24 @@ export async function markInviteViewed(inviteId: string): Promise<void> {
     .is("viewed_at", null);
 }
 
+export interface QuotedProductInput {
+  name: string;
+  description: string;
+  moq: number | null;
+  unit_price_usd: number | null;
+  sample_fee_usd: number | null;
+  lead_time_days: number | null;
+  notes: string;
+}
+
 export async function submitQuote(data: {
   invite_id: string;
   factory_name: string;
   notes: string;
   images: string[];
-  tiers: Array<{
-    moq: number;
-    unit_price_usd: number;
-    lead_time_days: number | null;
-    sample_fee_usd: number | null;
-    notes: string;
-  }>;
+  products: QuotedProductInput[];
 }): Promise<{ success: boolean; error?: string }> {
-  // Idempotent: delete any existing submission first
+  // Delete any existing submission (re-submit)
   const { data: existing } = await supabase
     .from("rfq_submissions")
     .select("id")
@@ -31,7 +35,7 @@ export async function submitQuote(data: {
     .maybeSingle();
 
   if (existing) {
-    await supabase.from("rfq_tiers").delete().eq("submission_id", existing.id);
+    await supabase.from("rfq_quoted_products").delete().eq("submission_id", existing.id);
     await supabase.from("rfq_submissions").delete().eq("id", existing.id);
   }
 
@@ -47,16 +51,19 @@ export async function submitQuote(data: {
 
   if (error) return { success: false, error: error.message };
 
-  for (let i = 0; i < data.tiers.length; i++) {
-    const tier = data.tiers[i];
-    await supabase.from("rfq_tiers").insert({
-      id: `tier-${Date.now()}-${i}`,
+  for (let i = 0; i < data.products.length; i++) {
+    const p = data.products[i];
+    await supabase.from("rfq_quoted_products").insert({
+      id: `qp-${Date.now()}-${i}`,
       submission_id: submissionId,
-      moq: tier.moq,
-      unit_price_usd: tier.unit_price_usd,
-      lead_time_days: tier.lead_time_days,
-      sample_fee_usd: tier.sample_fee_usd,
-      notes: tier.notes || null,
+      name: p.name,
+      description: p.description || null,
+      moq: p.moq,
+      unit_price_usd: p.unit_price_usd,
+      sample_fee_usd: p.sample_fee_usd,
+      lead_time_days: p.lead_time_days,
+      notes: p.notes || null,
+      sort_order: i,
     });
   }
 

@@ -2,13 +2,13 @@ import { supabaseData as supabase } from "./supabase-data";
 import type {
   Client, Project, Factory, Product, Sample, Milestone,
   Cost, Update, Task, Contract, PortalFile, Lead, Stage,
-  Rfq, RfqInvite, RfqSubmission, RfqTier,
+  Rfq, RfqInvite, RfqSubmission, RfqTier, RfqQuotedProduct,
 } from "./mock-data";
 
 export type {
   Client, Project, Factory, Product, Sample, Milestone,
   Cost, Update, Task, Contract, PortalFile, Lead,
-  Rfq, RfqInvite, RfqSubmission, RfqTier,
+  Rfq, RfqInvite, RfqSubmission, RfqTier, RfqQuotedProduct,
 };
 
 // ── Clients ────────────────────────────────────────
@@ -642,17 +642,17 @@ export async function getRfqSubmissions(rfqId: string): Promise<Array<{
   });
 }
 
-export async function getExistingSubmission(inviteId: string): Promise<(RfqSubmission & { tiers: RfqTier[] }) | null> {
+export async function getExistingSubmission(inviteId: string): Promise<(RfqSubmission & { products: RfqQuotedProduct[] }) | null> {
   const { data } = await supabase
     .from("rfq_submissions")
-    .select("*, rfq_tiers(*)")
+    .select("*, rfq_quoted_products(*)")
     .eq("rfq_invite_id", inviteId)
     .maybeSingle();
   if (!data) return null;
   return {
     id: data.id, rfq_invite_id: data.rfq_invite_id, factory_name: data.factory_name,
     notes: data.notes, images: data.images ?? [], submitted_at: data.submitted_at,
-    tiers: ((data.rfq_tiers ?? []) as RfqTier[]).sort((a, b) => a.moq - b.moq),
+    products: ((data.rfq_quoted_products ?? []) as RfqQuotedProduct[]).sort((a, b) => a.sort_order - b.sort_order),
   };
 }
 

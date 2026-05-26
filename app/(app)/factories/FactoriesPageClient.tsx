@@ -10,13 +10,14 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
-import type { Factory, Product, Rfq } from "@/lib/mock-data";
-import { createRfq, closeRfq, getRfqDetail } from "./actions";
+import type { Factory, Product, Project, Rfq } from "@/lib/mock-data";
+import { createRfq, closeRfq, getRfqDetail, assignQuotedProduct } from "./actions";
 
 interface Props {
   factories: Factory[];
   products: Product[];
   rfqs: Rfq[];
+  projects: Project[];
 }
 
 // ── Shared styles ────────────────────────────────────────
@@ -177,14 +178,105 @@ function NewRfqDrawer({ factories, onClose }: { factories: Factory[]; onClose: (
   );
 }
 
+// ── Assign modal ────────────────────────────────────────
+function AssignModal({
+  quotedProductId,
+  quotedProductName,
+  factoryId,
+  projects,
+  products,
+  onClose,
+}: {
+  quotedProductId: string;
+  quotedProductName: string;
+  factoryId: string | null;
+  projects: Project[];
+  products: Product[];
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [assigning, setAssigning] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  async function handleAssign(targetProductId: string) {
+    setAssigning(targetProductId);
+    setError("");
+    const result = await assignQuotedProduct({
+      quoted_product_id: quotedProductId,
+      target_product_id: targetProductId,
+      factory_id: factoryId,
+    });
+    setAssigning(null);
+    if (!result.success) { setError(result.error ?? "Failed to assign"); return; }
+    router.refresh();
+    onClose();
+  }
+
+  const projectsWithProducts = projects.filter((proj) =>
+    products.some((p) => p.project_id === proj.id)
+  );
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}
+        className="relative z-10 w-full max-w-md rounded-2xl bg-[var(--sa-window)] border border-[var(--sa-border)] shadow-2xl flex flex-col max-h-[80vh]"
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--sa-border)] shrink-0">
+          <div>
+            <h3 className="text-[14px] font-semibold text-[var(--sa-text-primary)]">Assign quote to product</h3>
+            <p className="text-[11px] text-[var(--sa-text-tertiary)] mt-0.5">"{quotedProductName}" · pricing will be applied</p>
+          </div>
+          <button onClick={onClose} className="rounded-md p-1.5 text-[var(--sa-text-tertiary)] hover:bg-[var(--sa-hover)]"><X size={15} /></button>
+        </div>
+        <div className="overflow-y-auto flex-1 px-5 py-3 space-y-4">
+          {projectsWithProducts.length === 0 ? (
+            <p className="text-[13px] text-[var(--sa-text-tertiary)] text-center py-6">No products in any collection yet.</p>
+          ) : projectsWithProducts.map((proj) => {
+            const projProducts = products.filter((p) => p.project_id === proj.id);
+            return (
+              <div key={proj.id}>
+                <p className="text-[10px] uppercase tracking-widest font-semibold text-[var(--sa-text-tertiary)] mb-2">{proj.name}</p>
+                <div className="flex flex-col gap-1">
+                  {projProducts.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => handleAssign(p.id)}
+                      disabled={!!assigning}
+                      className="flex items-center justify-between rounded-lg border border-[var(--sa-border)] px-3 py-2.5 text-left hover:border-[var(--sa-accent)] hover:bg-[var(--sa-accent)]/5 disabled:opacity-60 transition-colors group"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-[var(--sa-text-primary)] truncate">{p.name}</p>
+                        {p.quoted_cost_usd != null && (
+                          <p className="text-[11px] text-[var(--sa-text-tertiary)]">Current: ${p.quoted_cost_usd.toFixed(2)}</p>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-[var(--sa-accent)] font-medium opacity-0 group-hover:opacity-100 shrink-0 ml-3 transition-opacity">
+                        {assigning === p.id ? "Assigning…" : "Assign →"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {error && <p className="text-[12px] text-red-500">{error}</p>}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 // ── RFQ detail panel ────────────────────────────────────────
 type RfqDetailData = Awaited<ReturnType<typeof getRfqDetail>>;
 
-function RfqDetailPanel({ rfq, onClose }: { rfq: Rfq; onClose: () => void }) {
+function RfqDetailPanel({ rfq, projects, products, onClose }: { rfq: Rfq; projects: Project[]; products: Product[]; onClose: () => void }) {
   const router = useRouter();
   const [data, setData] = useState<RfqDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [closing, startClose] = useTransition();
+  const [assignTarget, setAssignTarget] = useState<{ id: string; name: string; factoryId: string | null } | null>(null);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
   useEffect(() => {
@@ -210,7 +302,7 @@ function RfqDetailPanel({ rfq, onClose }: { rfq: Rfq; onClose: () => void }) {
       <motion.aside
         initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col bg-[var(--sa-window)] shadow-xl"
+        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-3xl flex-col bg-[var(--sa-window)] shadow-xl"
       >
         <div className="flex items-start justify-between px-5 py-4 border-b border-[var(--sa-border)]">
           <div>
@@ -278,60 +370,102 @@ function RfqDetailPanel({ rfq, onClose }: { rfq: Rfq; onClose: () => void }) {
                 </div>
               </div>
 
-              {/* Comparison */}
-              {data!.submissions.length > 0 && (
-                <div className="px-5 py-4">
-                  <div className="flex items-center gap-2 mb-4">
+              {/* Submissions */}
+              {data!.submissions.length > 0 ? (
+                <div className="px-5 py-4 space-y-5">
+                  <div className="flex items-center gap-2">
                     <BarChart3 size={14} className="text-[var(--sa-accent)]" />
                     <p className="text-[10px] uppercase tracking-widest font-semibold text-[var(--sa-text-tertiary)]">
                       Pricing comparison ({data!.submissions.length} response{data!.submissions.length !== 1 ? "s" : ""})
                     </p>
                   </div>
-                  <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.min(data!.submissions.length, 2)}, 1fr)` }}>
-                    {data!.submissions.map((sub, si) => (
-                      <div key={si} className="rounded-xl border border-[var(--sa-border)] overflow-hidden">
-                        <div className="px-4 py-3 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
+
+                  {data!.submissions.map((sub, si) => (
+                    <div key={si} className="rounded-xl border border-[var(--sa-border)] overflow-hidden">
+                      {/* Factory header */}
+                      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
+                        <div>
                           <p className="text-[13px] font-semibold text-[var(--sa-text-primary)]">{sub.factory_name}</p>
                           <p className="text-[11px] text-[var(--sa-text-tertiary)]">
                             {new Date(sub.submitted_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
                           </p>
                         </div>
-                        <div className="divide-y divide-[var(--sa-border)]">
-                          {sub.tiers.map((tier, ti) => (
-                            <div key={ti} className="px-4 py-3">
-                              <div className="flex items-baseline justify-between mb-1.5">
-                                <span className="text-[11px] text-[var(--sa-text-tertiary)]">MOQ {tier.moq.toLocaleString()} units</span>
-                                <span className="font-mono text-[15px] font-bold text-[var(--sa-text-primary)]">${tier.unit_price_usd.toFixed(2)}</span>
-                              </div>
-                              <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-[var(--sa-text-tertiary)]">
-                                {tier.lead_time_days != null && <span>{tier.lead_time_days}d lead time</span>}
-                                {tier.sample_fee_usd != null && <span>${tier.sample_fee_usd} sample fee</span>}
-                              </div>
-                              {tier.notes && <p className="mt-1 text-[11px] text-[var(--sa-text-secondary)] italic">{tier.notes}</p>}
-                            </div>
-                          ))}
-                        </div>
                         {sub.notes && (
-                          <div className="px-4 py-3 border-t border-[var(--sa-border)] bg-[var(--sa-bg)]">
-                            <p className="text-[11px] text-[var(--sa-text-secondary)] leading-relaxed">{sub.notes}</p>
-                          </div>
-                        )}
-                        {sub.images.length > 0 && (
-                          <div className="px-4 py-3 border-t border-[var(--sa-border)] flex gap-2 flex-wrap">
-                            {sub.images.map((url) => (
-                              <a key={url} href={url} target="_blank" rel="noreferrer">
-                                <img src={url} alt="" className="h-12 w-12 rounded-lg object-cover border border-[var(--sa-border)]" />
-                              </a>
-                            ))}
-                          </div>
+                          <p className="text-[11px] text-[var(--sa-text-secondary)] italic max-w-xs text-right leading-relaxed">{sub.notes}</p>
                         )}
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
-              {data!.submissions.length === 0 && (
+                      {/* Products table */}
+                      {sub.products.length > 0 ? (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-[12px]">
+                            <thead>
+                              <tr className="border-b border-[var(--sa-border)]">
+                                {["Product", "MOQ", "Unit price", "Sample fee", "Lead time", "Notes", ""].map((h) => (
+                                  <th key={h} className="px-3 py-2 text-left text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] whitespace-nowrap">{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[var(--sa-border)]">
+                              {sub.products.map((p) => (
+                                <tr key={p.id} className="hover:bg-[var(--sa-hover)] transition-colors">
+                                  <td className="px-3 py-2.5 min-w-[140px]">
+                                    <p className="font-medium text-[var(--sa-text-primary)] leading-tight">{p.name}</p>
+                                    {p.description && <p className="text-[11px] text-[var(--sa-text-tertiary)] leading-tight mt-0.5 line-clamp-2">{p.description}</p>}
+                                    {p.assigned_product_id && (
+                                      <span className="inline-flex items-center gap-1 mt-1 text-[10px] text-emerald-600 font-medium">
+                                        <CheckCircle2 size={10} /> Assigned
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2.5 font-mono text-[var(--sa-text-primary)] whitespace-nowrap">
+                                    {p.moq != null ? p.moq.toLocaleString() : "—"}
+                                  </td>
+                                  <td className="px-3 py-2.5 font-mono font-semibold text-[var(--sa-text-primary)] whitespace-nowrap">
+                                    {p.unit_price_usd != null ? `$${p.unit_price_usd.toFixed(2)}` : "—"}
+                                  </td>
+                                  <td className="px-3 py-2.5 font-mono text-[var(--sa-text-primary)] whitespace-nowrap">
+                                    {p.sample_fee_usd != null ? `$${p.sample_fee_usd.toFixed(2)}` : "—"}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-[var(--sa-text-secondary)] whitespace-nowrap">
+                                    {p.lead_time_days != null ? `${p.lead_time_days}d` : "—"}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-[var(--sa-text-tertiary)] max-w-[160px]">
+                                    <span className="line-clamp-2">{p.notes || "—"}</span>
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    {!p.assigned_product_id && (
+                                      <button
+                                        onClick={() => setAssignTarget({ id: p.id, name: p.name, factoryId: sub.factory_id })}
+                                        className="rounded-md border border-[var(--sa-accent)] px-2.5 py-1 text-[11px] font-medium text-[var(--sa-accent)] hover:bg-[var(--sa-accent)] hover:text-white transition-colors whitespace-nowrap"
+                                      >
+                                        Assign
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p className="px-4 py-3 text-[12px] text-[var(--sa-text-tertiary)] italic">No products submitted.</p>
+                      )}
+
+                      {/* Images */}
+                      {sub.images && sub.images.length > 0 && (
+                        <div className="px-4 py-3 border-t border-[var(--sa-border)] flex gap-2 flex-wrap">
+                          {sub.images.map((url: string) => (
+                            <a key={url} href={url} target="_blank" rel="noreferrer">
+                              <img src={url} alt="" className="h-12 w-12 rounded-lg object-cover border border-[var(--sa-border)]" />
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
                 <div className="flex flex-col items-center justify-center py-12 gap-2">
                   <Clock size={24} className="text-[var(--sa-text-tertiary)]" />
                   <p className="text-[13px] text-[var(--sa-text-tertiary)]">Waiting for factory responses</p>
@@ -342,6 +476,19 @@ function RfqDetailPanel({ rfq, onClose }: { rfq: Rfq; onClose: () => void }) {
           )}
         </div>
       </motion.aside>
+
+      <AnimatePresence>
+        {assignTarget && (
+          <AssignModal
+            quotedProductId={assignTarget.id}
+            quotedProductName={assignTarget.name}
+            factoryId={assignTarget.factoryId}
+            projects={projects}
+            products={products}
+            onClose={() => setAssignTarget(null)}
+          />
+        )}
+      </AnimatePresence>
     </>
   );
 }
@@ -572,7 +719,7 @@ function FactoryCard({ factory, activeProductCount, onDelete }: { factory: Facto
 }
 
 // ── Main page ────────────────────────────────────────
-export function FactoriesPageClient({ factories, products, rfqs }: Props) {
+export function FactoriesPageClient({ factories, products, rfqs, projects }: Props) {
   const [tab, setTab] = useState<"factories" | "rfqs">("factories");
   const [showAdd, setShowAdd] = useState(false);
   const [showNewRfq, setShowNewRfq] = useState(false);
@@ -680,7 +827,7 @@ export function FactoriesPageClient({ factories, products, rfqs }: Props) {
         {showAdd && <AddFactoryDrawer onClose={() => setShowAdd(false)} />}
         {showNewRfq && <NewRfqDrawer factories={factories} onClose={() => setShowNewRfq(false)} />}
         {deleteFactory && <DeleteFactoryModal factory={deleteFactory} onClose={() => setDeleteFactory(null)} />}
-        {selectedRfq && <RfqDetailPanel rfq={selectedRfq} onClose={() => setSelectedRfq(null)} />}
+        {selectedRfq && <RfqDetailPanel rfq={selectedRfq} projects={projects} products={products} onClose={() => setSelectedRfq(null)} />}
       </AnimatePresence>
     </div>
   );
