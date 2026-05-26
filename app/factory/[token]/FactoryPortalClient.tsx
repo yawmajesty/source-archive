@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Plus, Trash2, CheckCircle, AlertCircle, ImagePlus, X, Loader2 } from "lucide-react";
 import { submitQuote } from "./actions";
@@ -195,6 +195,21 @@ interface Props {
 export function FactoryPortalClient({ rfq, invite, factoryName, existingSubmission }: Props) {
   const isClosed = rfq.status === "closed";
   const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    html.style.overflow = "auto";
+    html.style.height = "auto";
+    body.style.overflow = "auto";
+    body.style.height = "auto";
+    return () => {
+      html.style.overflow = "";
+      html.style.height = "";
+      body.style.overflow = "";
+      body.style.height = "";
+    };
+  }, []);
   const [showForm, setShowForm] = useState(!existingSubmission);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
