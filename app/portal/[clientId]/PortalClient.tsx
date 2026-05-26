@@ -502,6 +502,12 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
                   <p className="text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>{v}</p>
                 </div>
               ))}
+              {product.sample_fee_usd != null && (
+                <div className="col-span-2 rounded-lg p-3" style={{ background: "var(--portal-surface-raised)", border: "1px solid var(--portal-border)" }}>
+                  <p className="text-[10px] mb-0.5" style={{ color: "var(--portal-text-muted)" }}>Sample cost</p>
+                  <p className="text-[16px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>${product.sample_fee_usd.toFixed(2)}</p>
+                </div>
+              )}
             </div>
             {product.colorways.length > 0 && (
               <div className="mt-3">
@@ -652,7 +658,14 @@ function ProductCard({ product, onClick }: { product: PortalProduct; onClick: ()
         <p className="text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>
           MOQ {product.moq.toLocaleString()} · {product.quoted_cost_usd ? `$${product.quoted_cost_usd}/unit` : "Price TBC"}
         </p>
-        <StagePill stage={product.stage} />
+        <div className="flex items-center justify-between">
+          <StagePill stage={product.stage} />
+          {product.sample_fee_usd != null && (
+            <span className="text-[11px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>
+              ${product.sample_fee_usd.toFixed(2)} sample
+            </span>
+          )}
+        </div>
       </div>
     </button>
   );

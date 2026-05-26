@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle, Plus, Trash2, ChevronRight, ChevronLeft, ExternalLink } from "lucide-react";
+import { CheckCircle, Plus, Trash2, ChevronRight, ChevronLeft, ExternalLink, Upload, X, FileText } from "lucide-react";
 import { submitBrief } from "./actions";
+import { uploadFile } from "@/lib/storage";
 import type { BriefProduct } from "@/lib/mock-data";
 
 const CATEGORIES = ["Tops", "Bottoms", "Outerwear", "Dresses & Skirts", "Knitwear", "Activewear", "Accessories", "Footwear", "Homeware", "Beauty", "Other"];
@@ -34,9 +35,106 @@ function ToggleGroup({ options, value, onChange }: { options: { value: string; l
   );
 }
 
+function getFilename(url: string) {
+  return decodeURIComponent(url.split("/").pop() ?? "file").replace(/^\d+-/, "");
+}
+
+function isImageUrl(url: string) {
+  return /\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i.test(url);
+}
+
+function FileUploadZone({ urls, onChange, label }: {
+  urls: string[];
+  onChange: (urls: string[]) => void;
+  label?: string;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    setUploading(true);
+    const results = await Promise.all(
+      Array.from(fileList).map(async (file) => {
+        const safeName = file.name.replace(/\s+/g, "_");
+        const path = `brief/${Date.now()}-${safeName}`;
+        const { url } = await uploadFile("brief-attachments", path, file);
+        return url;
+      })
+    );
+    onChange([...urls, ...(results.filter(Boolean) as string[])]);
+    setUploading(false);
+  }
+
+  function removeUrl(url: string) {
+    onChange(urls.filter((u) => u !== url));
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {label && <label className={labelCls}>{label}</label>}
+      <div
+        className={`rounded-xl border-2 border-dashed transition-colors cursor-pointer ${
+          dragging ? "border-[#1A1A2E] bg-[#F0F0F8]" : "border-[#D1D1D6] bg-white hover:border-[#AEAEB2]"
+        } p-5 text-center`}
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
+        onClick={() => inputRef.current?.click()}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          className="hidden"
+          accept="image/*,application/pdf"
+          multiple
+          onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }}
+        />
+        <Upload size={20} className="mx-auto mb-2 text-[#AEAEB2]" />
+        {uploading ? (
+          <p className="text-[13px] text-[#6E6E73]">Uploading…</p>
+        ) : (
+          <>
+            <p className="text-[13px] text-[#6E6E73]">Drop PDFs or images here</p>
+            <p className="text-[11px] text-[#AEAEB2] mt-0.5">or click to browse</p>
+          </>
+        )}
+      </div>
+
+      {urls.length > 0 && (
+        <div className="flex flex-wrap gap-2 mt-1">
+          {urls.map((url) => (
+            <div key={url} className="relative group">
+              {isImageUrl(url) ? (
+                <img src={url} alt="" className="h-16 w-16 rounded-lg object-cover border border-[#E5E5EA]" />
+              ) : (
+                <div className="h-16 w-16 rounded-lg border border-[#E5E5EA] bg-[#F5F5F7] flex flex-col items-center justify-center gap-1 px-1">
+                  <FileText size={20} className="text-[#6E6E73] shrink-0" />
+                  <span className="text-[9px] text-[#AEAEB2] text-center leading-tight w-full truncate">
+                    {getFilename(url)}
+                  </span>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); removeUrl(url); }}
+                className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-white border border-[#D1D1D6] text-[#6E6E73] hover:text-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const EMPTY_PRODUCT: BriefProduct = {
   name: "", category: "", description: "", target_qty: null,
-  target_price_usd: null, colorways: null, moodboard_link: "", sustainability: "",
+  target_price_usd: null, colorways: null, moodboard_link: "",
+  moodboard_files: [], sustainability: "",
 };
 
 function ProductForm({ product, onChange, onRemove, index }: {
@@ -116,6 +214,12 @@ function ProductForm({ product, onChange, onRemove, index }: {
               <input className={inputCls} placeholder="e.g. GOTS cotton, recycled nylon" value={product.sustainability} onChange={(e) => set("sustainability", e.target.value)} />
             </div>
           </div>
+
+          <FileUploadZone
+            label="Upload references (PDF or images)"
+            urls={product.moodboard_files ?? []}
+            onChange={(urls) => set("moodboard_files", urls)}
+          />
         </div>
       )}
     </div>
@@ -146,15 +250,6 @@ export function BriefForm() {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    document.documentElement.style.overflow = "auto";
-    document.body.style.overflow = "auto";
-    return () => {
-      document.documentElement.style.overflow = "";
-      document.body.style.overflow = "";
-    };
-  }, []);
-
   // Step 1: Brand
   const [brand, setBrand] = useState({
     company_name: "", website: "", contact_name: "", contact_email: "",
@@ -168,13 +263,14 @@ export function BriefForm() {
   // Step 3: References
   const [refs, setRefs] = useState({
     estimated_budget: "", timeline: "", moodboard_links: "",
+    moodboard_files: [] as string[],
     sustainability_requirements: "", message: "",
   });
 
   function setBrandField(k: keyof typeof brand, v: string) {
     setBrand((prev) => ({ ...prev, [k]: v }));
   }
-  function setRefsField(k: keyof typeof refs, v: string) {
+  function setRefsField(k: keyof typeof refs, v: any) {
     setRefs((prev) => ({ ...prev, [k]: v }));
   }
 
@@ -193,6 +289,13 @@ export function BriefForm() {
 
   async function handleSubmit() {
     setSubmitting(true);
+
+    // Merge typed links + uploaded file URLs into a single newline-separated string
+    const allMoodboardLinks = [
+      refs.moodboard_links,
+      ...refs.moodboard_files,
+    ].filter(Boolean).join("\n");
+
     await submitBrief({
       company_name: brand.company_name,
       website: brand.website || null,
@@ -206,7 +309,7 @@ export function BriefForm() {
       how_found_us: brand.how_found_us || null,
       estimated_budget: refs.estimated_budget || null,
       timeline: refs.timeline || null,
-      moodboard_links: refs.moodboard_links || null,
+      moodboard_links: allMoodboardLinks || null,
       sustainability_requirements: refs.sustainability_requirements || null,
       message: refs.message || null,
       brief_products: products.filter((p) => p.name.trim()),
@@ -379,9 +482,15 @@ export function BriefForm() {
 
                 <div>
                   <label className={labelCls}>Moodboard & reference links</label>
-                  <textarea rows={4} className={`${inputCls} resize-none`} placeholder={"https://pinterest.com/yourboard\nhttps://drive.google.com/…\nhttps://notion.so/…\n\nOne link per line"} value={refs.moodboard_links} onChange={(e) => setRefsField("moodboard_links", e.target.value)} />
-                  <p className="mt-1 text-[11px] text-[#AEAEB2]">Paste links to Pinterest boards, Google Drive folders, Notion docs, Dropbox, or anything else. One per line.</p>
+                  <textarea rows={3} className={`${inputCls} resize-none`} placeholder={"https://pinterest.com/yourboard\nhttps://drive.google.com/…\n\nOne link per line"} value={refs.moodboard_links} onChange={(e) => setRefsField("moodboard_links", e.target.value)} />
+                  <p className="mt-1 text-[11px] text-[#AEAEB2]">Paste links to Pinterest boards, Google Drive folders, Notion docs, or Dropbox.</p>
                 </div>
+
+                <FileUploadZone
+                  label="Upload moodboards, reference images or PDFs"
+                  urls={refs.moodboard_files}
+                  onChange={(urls) => setRefsField("moodboard_files", urls)}
+                />
 
                 <div>
                   <label className={labelCls}>Sustainability & ethical requirements</label>
@@ -432,24 +541,35 @@ export function BriefForm() {
                   <p className="text-[11px] uppercase tracking-widest font-semibold text-[#AEAEB2] mb-3">Products ({products.filter((p) => p.name).length})</p>
                   <div className="flex flex-col gap-3">
                     {products.filter((p) => p.name).map((p, i) => (
-                      <div key={i} className="flex items-start justify-between py-2 border-b border-[#F2F2F7] last:border-0">
-                        <div>
-                          <p className="text-[13px] font-semibold text-[#1D1D1F]">{p.name}</p>
-                          <p className="text-[11px] text-[#6E6E73] mt-0.5">
-                            {[p.category, p.target_qty ? `${p.target_qty.toLocaleString()} units` : null, p.target_price_usd ? `$${p.target_price_usd}/unit` : null, p.colorways ? `${p.colorways} colourways` : null].filter(Boolean).join(" · ")}
-                          </p>
+                      <div key={i} className="py-2 border-b border-[#F2F2F7] last:border-0">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="text-[13px] font-semibold text-[#1D1D1F]">{p.name}</p>
+                            <p className="text-[11px] text-[#6E6E73] mt-0.5">
+                              {[p.category, p.target_qty ? `${p.target_qty.toLocaleString()} units` : null, p.target_price_usd ? `$${p.target_price_usd}/unit` : null, p.colorways ? `${p.colorways} colourways` : null].filter(Boolean).join(" · ")}
+                            </p>
+                          </div>
+                          <button type="button" onClick={() => setStep(2)} className="text-[11px] text-[#6E6E73] hover:text-[#1A1A2E] underline">Edit</button>
                         </div>
-                        <button type="button" onClick={() => setStep(2)} className="text-[11px] text-[#6E6E73] hover:text-[#1A1A2E] underline">Edit</button>
+                        {(p.moodboard_files?.length ?? 0) > 0 && (
+                          <div className="flex gap-1.5 mt-2 flex-wrap">
+                            {p.moodboard_files!.map((url) => (
+                              isImageUrl(url)
+                                ? <img key={url} src={url} alt="" className="h-10 w-10 rounded-md object-cover border border-[#E5E5EA]" />
+                                : <div key={url} className="h-10 w-10 rounded-md border border-[#E5E5EA] bg-[#F5F5F7] flex items-center justify-center"><FileText size={14} className="text-[#6E6E73]" /></div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
                 </div>
 
                 {/* References summary */}
-                {(refs.estimated_budget || refs.timeline || refs.moodboard_links) && (
+                {(refs.estimated_budget || refs.timeline || refs.moodboard_links || refs.moodboard_files.length > 0) && (
                   <div className="rounded-2xl bg-white border border-[#E5E5EA] p-5">
                     <p className="text-[11px] uppercase tracking-widest font-semibold text-[#AEAEB2] mb-3">References & budget</p>
-                    <div className="flex flex-col gap-1.5 text-[13px]">
+                    <div className="flex flex-col gap-2 text-[13px]">
                       {refs.estimated_budget && <p><span className="text-[#AEAEB2]">Budget: </span><span className="font-medium text-[#1D1D1F]">{refs.estimated_budget}</span></p>}
                       {refs.timeline && <p><span className="text-[#AEAEB2]">Timeline: </span><span className="font-medium text-[#1D1D1F]">{refs.timeline}</span></p>}
                       {refs.moodboard_links && (
@@ -460,6 +580,18 @@ export function BriefForm() {
                               <ExternalLink size={10} /> {link}
                             </a>
                           ))}
+                        </div>
+                      )}
+                      {refs.moodboard_files.length > 0 && (
+                        <div>
+                          <p className="text-[#AEAEB2] mb-1.5">Uploaded files ({refs.moodboard_files.length}):</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {refs.moodboard_files.map((url) => (
+                              isImageUrl(url)
+                                ? <img key={url} src={url} alt="" className="h-12 w-12 rounded-lg object-cover border border-[#E5E5EA]" />
+                                : <div key={url} className="h-12 w-12 rounded-lg border border-[#E5E5EA] bg-[#F5F5F7] flex items-center justify-center"><FileText size={16} className="text-[#6E6E73]" /></div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>

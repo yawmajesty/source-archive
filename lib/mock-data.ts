@@ -66,6 +66,7 @@ export interface BriefProduct {
   target_price_usd: number | null;
   colorways: number | null;
   moodboard_link: string;
+  moodboard_files?: string[];
   sustainability: string;
 }
 
@@ -113,6 +114,45 @@ export interface Factory {
   established_year: number;
   notes: string;
   created_at: string;
+}
+
+export interface Rfq {
+  id: string;
+  title: string;
+  description: string | null;
+  images: string[];
+  deadline: string | null;
+  status: "draft" | "sent" | "closed";
+  created_at: string;
+}
+
+export interface RfqInvite {
+  id: string;
+  rfq_id: string;
+  factory_id: string;
+  token: string;
+  viewed_at: string | null;
+  submitted_at: string | null;
+  created_at: string;
+}
+
+export interface RfqSubmission {
+  id: string;
+  rfq_invite_id: string;
+  factory_name: string | null;
+  notes: string | null;
+  images: string[];
+  submitted_at: string;
+}
+
+export interface RfqTier {
+  id: string;
+  submission_id: string;
+  moq: number;
+  unit_price_usd: number;
+  lead_time_days: number | null;
+  sample_fee_usd: number | null;
+  notes: string | null;
 }
 
 export interface Product {

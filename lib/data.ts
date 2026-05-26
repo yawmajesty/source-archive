@@ -2,11 +2,13 @@ import { supabaseData as supabase } from "./supabase-data";
 import type {
   Client, Project, Factory, Product, Sample, Milestone,
   Cost, Update, Task, Contract, PortalFile, Lead, Stage,
+  Rfq, RfqInvite, RfqSubmission, RfqTier,
 } from "./mock-data";
 
 export type {
   Client, Project, Factory, Product, Sample, Milestone,
   Cost, Update, Task, Contract, PortalFile, Lead,
+  Rfq, RfqInvite, RfqSubmission, RfqTier,
 };
 
 // ── Clients ────────────────────────────────────────
@@ -566,6 +568,92 @@ export async function getDashboardTasks(): Promise<DashboardTask[]> {
         is_overdue: !!t.due_date && t.due_date < today,
       } as DashboardTask;
     });
+}
+
+// ── RFQs ────────────────────────────────────────
+
+export async function getRfqs(): Promise<Rfq[]> {
+  try {
+    const { data } = await supabase.from("rfqs").select("*").order("created_at", { ascending: false });
+    return (data ?? []) as Rfq[];
+  } catch {
+    return [];
+  }
+}
+
+export async function getRfqInvites(rfqId: string): Promise<Array<RfqInvite & { factory_name: string; factory_email: string }>> {
+  const { data } = await supabase
+    .from("rfq_invites")
+    .select("*, factories(name, contact_email)")
+    .eq("rfq_id", rfqId)
+    .order("created_at");
+  return (data ?? []).map((row: any) => ({
+    ...row,
+    factory_name: row.factories?.name ?? "Unknown",
+    factory_email: row.factories?.contact_email ?? "",
+    factories: undefined,
+  }));
+}
+
+export async function getRfqByToken(token: string): Promise<{
+  rfq: Rfq;
+  invite: RfqInvite;
+  factoryName: string;
+} | null> {
+  const { data } = await supabase
+    .from("rfq_invites")
+    .select("*, rfqs(*), factories(name)")
+    .eq("token", token)
+    .maybeSingle();
+  if (!data || !data.rfqs) return null;
+  return {
+    rfq: data.rfqs as Rfq,
+    invite: { id: data.id, rfq_id: data.rfq_id, factory_id: data.factory_id, token: data.token, viewed_at: data.viewed_at, submitted_at: data.submitted_at, created_at: data.created_at },
+    factoryName: (data.factories as any)?.name ?? "Your factory",
+  };
+}
+
+export async function getRfqSubmissions(rfqId: string): Promise<Array<{
+  submission: RfqSubmission;
+  tiers: RfqTier[];
+  factory_name: string;
+}>> {
+  const { data: invites } = await supabase
+    .from("rfq_invites")
+    .select("id, factories(name)")
+    .eq("rfq_id", rfqId)
+    .not("submitted_at", "is", null);
+
+  if (!invites?.length) return [];
+
+  const inviteIds = invites.map((i: any) => i.id);
+  const { data: submissions } = await supabase
+    .from("rfq_submissions")
+    .select("*, rfq_tiers(*)")
+    .in("rfq_invite_id", inviteIds);
+
+  return (submissions ?? []).map((sub: any) => {
+    const invite = (invites as any[]).find((i) => i.id === sub.rfq_invite_id);
+    return {
+      submission: { id: sub.id, rfq_invite_id: sub.rfq_invite_id, factory_name: sub.factory_name, notes: sub.notes, images: sub.images ?? [], submitted_at: sub.submitted_at },
+      tiers: ((sub.rfq_tiers ?? []) as RfqTier[]).sort((a, b) => a.moq - b.moq),
+      factory_name: (invite as any)?.factories?.name ?? sub.factory_name ?? "Unknown",
+    };
+  });
+}
+
+export async function getExistingSubmission(inviteId: string): Promise<(RfqSubmission & { tiers: RfqTier[] }) | null> {
+  const { data } = await supabase
+    .from("rfq_submissions")
+    .select("*, rfq_tiers(*)")
+    .eq("rfq_invite_id", inviteId)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    id: data.id, rfq_invite_id: data.rfq_invite_id, factory_name: data.factory_name,
+    notes: data.notes, images: data.images ?? [], submitted_at: data.submitted_at,
+    tiers: ((data.rfq_tiers ?? []) as RfqTier[]).sort((a, b) => a.moq - b.moq),
+  };
 }
 
 // ── Helpers ────────────────────────────────────────
