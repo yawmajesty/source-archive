@@ -167,6 +167,7 @@ export interface RfqQuotedProduct {
   notes: string | null;
   sort_order: number;
   assigned_product_id: string | null;
+  image_url: string | null;
 }
 
 export interface Product {

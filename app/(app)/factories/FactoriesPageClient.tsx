@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Star, MapPin, Phone, Mail, Package, Trash2, X,
   Send, Clock, CheckCircle2, ChevronRight, Copy, Check,
-  BarChart3, AlertCircle,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
@@ -409,14 +409,23 @@ function RfqDetailPanel({ rfq, projects, products, onClose }: { rfq: Rfq; projec
                             <tbody className="divide-y divide-[var(--sa-border)]">
                               {sub.products.map((p) => (
                                 <tr key={p.id} className="hover:bg-[var(--sa-hover)] transition-colors">
-                                  <td className="px-3 py-2.5 min-w-[140px]">
-                                    <p className="font-medium text-[var(--sa-text-primary)] leading-tight">{p.name}</p>
-                                    {p.description && <p className="text-[11px] text-[var(--sa-text-tertiary)] leading-tight mt-0.5 line-clamp-2">{p.description}</p>}
-                                    {p.assigned_product_id && (
-                                      <span className="inline-flex items-center gap-1 mt-1 text-[10px] text-emerald-600 font-medium">
-                                        <CheckCircle2 size={10} /> Assigned
-                                      </span>
-                                    )}
+                                  <td className="px-3 py-2.5 min-w-[160px]">
+                                    <div className="flex items-start gap-2.5">
+                                      {p.image_url && (
+                                        <a href={p.image_url} target="_blank" rel="noreferrer" className="shrink-0">
+                                          <img src={p.image_url} alt={p.name} className="h-12 w-12 rounded-lg object-cover border border-[var(--sa-border)]" />
+                                        </a>
+                                      )}
+                                      <div className="min-w-0">
+                                        <p className="font-medium text-[var(--sa-text-primary)] leading-tight">{p.name}</p>
+                                        {p.description && <p className="text-[11px] text-[var(--sa-text-tertiary)] leading-tight mt-0.5 line-clamp-2">{p.description}</p>}
+                                        {p.assigned_product_id && (
+                                          <span className="inline-flex items-center gap-1 mt-1 text-[10px] text-emerald-600 font-medium">
+                                            <CheckCircle2 size={10} /> Assigned
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
                                   </td>
                                   <td className="px-3 py-2.5 font-mono text-[var(--sa-text-primary)] whitespace-nowrap">
                                     {p.moq != null ? p.moq.toLocaleString() : "—"}

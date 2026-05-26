@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion } from "framer-motion";
-import { Plus, Trash2, CheckCircle, AlertCircle } from "lucide-react";
+import { Plus, Trash2, CheckCircle, AlertCircle, ImagePlus, X, Loader2 } from "lucide-react";
 import { submitQuote } from "./actions";
+import { supabase } from "@/lib/supabase";
 import type { Rfq, RfqInvite, RfqSubmission, RfqQuotedProduct } from "@/lib/data";
 
 const inputCls = "w-full rounded-lg border border-[#D1D1D6] bg-white px-3 py-2 text-[14px] text-[#1D1D1F] placeholder:text-[#AEAEB2] outline-none focus:border-[#1A1A2E] transition-colors";
@@ -16,12 +17,67 @@ interface ProductRow {
   sample_fee_usd: string;
   lead_time_days: string;
   notes: string;
+  image_url: string;
 }
 
 const EMPTY_ROW: ProductRow = {
   name: "", description: "", moq: "", unit_price_usd: "",
-  sample_fee_usd: "", lead_time_days: "", notes: "",
+  sample_fee_usd: "", lead_time_days: "", notes: "", image_url: "",
 };
+
+function ProductImageUpload({ imageUrl, onUpload }: {
+  imageUrl: string;
+  onUpload: (url: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  async function handleFile(file: File) {
+    if (!file.type.startsWith("image/")) { setUploadError("Image files only / 仅支持图片格式"); return; }
+    setUploading(true);
+    setUploadError("");
+    const ext = file.name.split(".").pop() ?? "jpg";
+    const path = `rfq-products/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await supabase.storage.from("rfq-assets").upload(path, file, { upsert: true, cacheControl: "3600" });
+    if (error) { setUploadError("Upload failed / 上传失败"); setUploading(false); return; }
+    const { data } = supabase.storage.from("rfq-assets").getPublicUrl(path);
+    onUpload(data.publicUrl);
+    setUploading(false);
+  }
+
+  if (imageUrl) {
+    return (
+      <div className="relative w-full">
+        <img src={imageUrl} alt="Product" className="w-full h-40 object-cover rounded-lg border border-[#E5E5EA]" />
+        <button
+          type="button"
+          onClick={() => onUpload("")}
+          className="absolute top-2 right-2 flex items-center justify-center h-6 w-6 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+        >
+          <X size={12} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <input ref={inputRef} type="file" accept="image/*" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+        className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#D1D1D6] py-4 text-[12px] text-[#6E6E73] hover:border-[#1A1A2E] hover:text-[#1A1A2E] disabled:opacity-60 transition-colors"
+      >
+        {uploading ? <Loader2 size={14} className="animate-spin" /> : <ImagePlus size={14} />}
+        <span>{uploading ? "Uploading… / 上传中…" : "Add photo · 添加图片"}</span>
+      </button>
+      {uploadError && <p className="mt-1 text-[11px] text-red-500">{uploadError}</p>}
+    </div>
+  );
+}
 
 function ProductCard({ row, index, onChange, onRemove, canRemove }: {
   row: ProductRow;
@@ -34,7 +90,6 @@ function ProductCard({ row, index, onChange, onRemove, canRemove }: {
 
   return (
     <div className="rounded-xl border border-[#E5E5EA] bg-white overflow-hidden">
-      {/* Row header */}
       <div className="flex items-center justify-between px-4 py-2.5 bg-[#F5F5F7] border-b border-[#E5E5EA]">
         <span className="text-[11px] font-semibold text-[#6E6E73] uppercase tracking-wide">
           Product {index + 1} &nbsp;·&nbsp; 产品 {index + 1}
@@ -47,6 +102,17 @@ function ProductCard({ row, index, onChange, onRemove, canRemove }: {
       </div>
 
       <div className="p-4 flex flex-col gap-3">
+        {/* Photo */}
+        <div>
+          <label className="block text-[11px] font-medium text-[#6E6E73] mb-1">
+            Photo <span className="text-[#AEAEB2] font-normal">产品图片</span>
+          </label>
+          <ProductImageUpload
+            imageUrl={row.image_url}
+            onUpload={(url) => set("image_url", url)}
+          />
+        </div>
+
         {/* Product name */}
         <div>
           <label className="block text-[11px] font-medium text-[#6E6E73] mb-1">
@@ -145,6 +211,7 @@ export function FactoryPortalClient({ rfq, invite, factoryName, existingSubmissi
         sample_fee_usd: p.sample_fee_usd != null ? String(p.sample_fee_usd) : "",
         lead_time_days: p.lead_time_days != null ? String(p.lead_time_days) : "",
         notes: p.notes ?? "",
+        image_url: p.image_url ?? "",
       }));
     }
     return [{ ...EMPTY_ROW }];
@@ -176,6 +243,7 @@ export function FactoryPortalClient({ rfq, invite, factoryName, existingSubmissi
           sample_fee_usd: r.sample_fee_usd ? parseFloat(r.sample_fee_usd) : null,
           lead_time_days: r.lead_time_days ? parseInt(r.lead_time_days) : null,
           notes: r.notes,
+          image_url: r.image_url || null,
         })),
     });
 
@@ -280,7 +348,6 @@ export function FactoryPortalClient({ rfq, invite, factoryName, existingSubmissi
               </p>
             </div>
 
-            {/* Product rows */}
             {rows.map((row, i) => (
               <ProductCard
                 key={i}

@@ -98,6 +98,7 @@ export async function getRfqDetail(rfqId: string): Promise<{
       lead_time_days: number | null;
       notes: string | null;
       assigned_product_id: string | null;
+      image_url: string | null;
     }>;
   }>;
 }> {
@@ -145,6 +146,7 @@ export async function getRfqDetail(rfqId: string): Promise<{
           lead_time_days: p.lead_time_days,
           notes: p.notes,
           assigned_product_id: p.assigned_product_id,
+          image_url: p.image_url ?? null,
         })),
     };
   });

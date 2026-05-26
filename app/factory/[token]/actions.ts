@@ -18,6 +18,7 @@ export interface QuotedProductInput {
   sample_fee_usd: number | null;
   lead_time_days: number | null;
   notes: string;
+  image_url: string | null;
 }
 
 export async function submitQuote(data: {
@@ -64,6 +65,7 @@ export async function submitQuote(data: {
       lead_time_days: p.lead_time_days,
       notes: p.notes || null,
       sort_order: i,
+      image_url: p.image_url || null,
     });
   }
 
