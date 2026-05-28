@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, Plus, Trash2, ChevronRight, ChevronLeft, ExternalLink, Upload, X, FileText } from "lucide-react";
 import { submitBrief } from "./actions";
@@ -249,6 +249,21 @@ export function BriefForm() {
   const [step, setStep] = useState(1);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    html.style.overflow = "auto";
+    html.style.height = "auto";
+    body.style.overflow = "auto";
+    body.style.height = "auto";
+    return () => {
+      html.style.overflow = "";
+      html.style.height = "";
+      body.style.overflow = "";
+      body.style.height = "";
+    };
+  }, []);
 
   // Step 1: Brand
   const [brand, setBrand] = useState({
