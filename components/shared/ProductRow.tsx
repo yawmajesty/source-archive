@@ -49,6 +49,8 @@ export function ProductRow({ product, factory, selected, onClick, onDoubleClick 
 
   const hasVariance =
     product.quoted_cost_usd !== null &&
+    product.target_cost_usd != null &&
+    product.target_cost_usd !== 0 &&
     Math.abs(product.quoted_cost_usd - product.target_cost_usd) / product.target_cost_usd > 0.05;
 
   const contextItems: ContextMenuItem[] = [
@@ -113,7 +115,9 @@ export function ProductRow({ product, factory, selected, onClick, onDoubleClick 
         >
           {product.quoted_cost_usd != null
             ? `$${product.quoted_cost_usd.toFixed(2)}`
-            : `~$${product.target_cost_usd.toFixed(2)}`}
+            : product.target_cost_usd != null
+            ? `~$${product.target_cost_usd.toFixed(2)}`
+            : "—"}
         </span>
 
         {/* Stage dot — far right */}

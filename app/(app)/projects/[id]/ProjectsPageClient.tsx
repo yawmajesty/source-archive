@@ -242,10 +242,10 @@ function ProductPreview({ product, factory, onOpen }: { product: Product; factor
 
         <div className="grid grid-cols-2 gap-2">
           {[
-            { label: "Target cost", value: `$${product.target_cost_usd}` },
+            { label: "Target cost", value: product.target_cost_usd != null ? `$${product.target_cost_usd}` : "—" },
             { label: "Quoted cost", value: product.quoted_cost_usd ? `$${product.quoted_cost_usd}` : "—" },
-            { label: "MOQ", value: product.moq.toLocaleString() },
-            { label: "Lead time", value: `${product.lead_time_days}d` },
+            { label: "MOQ", value: product.moq != null ? product.moq.toLocaleString() : "—" },
+            { label: "Lead time", value: product.lead_time_days != null ? `${product.lead_time_days}d` : "—" },
           ].map(({ label, value }) => (
             <div key={label} className="rounded-lg border border-[var(--sa-border)] p-3 bg-[var(--sa-window)]">
               <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{label}</p>
@@ -590,7 +590,7 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
     let cmp = 0;
     if (sortKey === "name") cmp = a.product.name.localeCompare(b.product.name);
     else if (sortKey === "stage") cmp = STAGE_ORDER.indexOf(a.product.stage) - STAGE_ORDER.indexOf(b.product.stage);
-    else if (sortKey === "cost") cmp = (a.product.quoted_cost_usd ?? a.product.target_cost_usd) - (b.product.quoted_cost_usd ?? b.product.target_cost_usd);
+    else if (sortKey === "cost") cmp = (a.product.quoted_cost_usd ?? a.product.target_cost_usd ?? 0) - (b.product.quoted_cost_usd ?? b.product.target_cost_usd ?? 0);
     return sortDir === "asc" ? cmp : -cmp;
   });
 

@@ -406,7 +406,7 @@ function PricingCard({ product, onSaved }: { product: Product; onSaved: (p: Part
           <div className="space-y-2">
             <div className="grid grid-cols-2 gap-2">
               {[
-                { label: "Target", value: `$${product.target_cost_usd.toFixed(2)}` },
+                { label: "Target", value: product.target_cost_usd != null ? `$${product.target_cost_usd.toFixed(2)}` : "—" },
                 { label: "Quoted", value: product.quoted_cost_usd != null ? `${product.quoted_cost_currency} ${product.quoted_cost_usd.toFixed(2)}` : "—" },
                 { label: "Order qty", value: product.order_qty?.toLocaleString() ?? "—" },
                 { label: "Sample fee", value: product.sample_fee_usd != null ? `$${product.sample_fee_usd.toFixed(2)}` : "—" },
@@ -806,7 +806,7 @@ export function ProductDetailClient({
   }
 
   const variancePct =
-    product.quoted_cost_usd != null
+    product.quoted_cost_usd != null && product.target_cost_usd != null && product.target_cost_usd !== 0
       ? ((product.quoted_cost_usd - product.target_cost_usd) / product.target_cost_usd) * 100
       : null;
 
@@ -924,9 +924,9 @@ export function ProductDetailClient({
               {[
                 { label: "Factory", value: factory?.name ?? "Not assigned" },
                 { label: "City / Country", value: factory ? `${factory.city}, ${factory.country}` : "—" },
-                { label: "MOQ", value: product.moq.toLocaleString() },
+                { label: "MOQ", value: product.moq != null ? product.moq.toLocaleString() : "—" },
                 { label: "Order qty", value: product.order_qty ? product.order_qty.toLocaleString() : "—" },
-                { label: "Lead time", value: `${product.lead_time_days} days` },
+                { label: "Lead time", value: product.lead_time_days != null ? `${product.lead_time_days} days` : "—" },
                 { label: "Quote currency", value: product.quoted_cost_currency },
               ].map(({ label, value }) => (
                 <div key={label} className="flex flex-col gap-0.5">
@@ -1097,9 +1097,9 @@ export function ProductDetailClient({
               {(() => {
                 const hasProd = product.quoted_cost_usd != null;
                 const hasSampling = product.sample_fee_usd != null || product.sample_cost_usd != null;
-                const unitMargin = hasProd ? product.quoted_cost_usd! - product.target_cost_usd : null;
-                const marginPct = unitMargin != null && product.target_cost_usd > 0 ? (unitMargin / product.target_cost_usd) * 100 : null;
-                const qty = product.order_qty ?? product.moq;
+                const unitMargin = hasProd && product.target_cost_usd != null ? product.quoted_cost_usd! - product.target_cost_usd : null;
+                const marginPct = unitMargin != null && product.target_cost_usd != null && product.target_cost_usd > 0 ? (unitMargin / product.target_cost_usd) * 100 : null;
+                const qty = product.order_qty ?? product.moq ?? 0;
                 const totalMargin = unitMargin != null ? unitMargin * qty : null;
                 const isProfit = unitMargin != null ? unitMargin >= 0 : null;
                 const sampleFee = product.sample_fee_usd ?? 0;
@@ -1114,10 +1114,10 @@ export function ProductDetailClient({
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sa-text-tertiary)]">Production Margin</p>
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                           {[
-                            { label: "Target cost", value: `$${product.target_cost_usd.toFixed(2)}`, neutral: true },
+                            { label: "Target cost", value: product.target_cost_usd != null ? `$${product.target_cost_usd.toFixed(2)}` : "—", neutral: true },
                             { label: "Quoted / sell", value: `$${product.quoted_cost_usd!.toFixed(2)}`, neutral: true },
-                            { label: "Unit margin", value: `${unitMargin! >= 0 ? "+" : ""}$${unitMargin!.toFixed(2)}`, positive: isProfit! },
-                            { label: `Total (×${qty.toLocaleString()})`, value: `${totalMargin! >= 0 ? "+" : ""}$${totalMargin!.toLocaleString("en-US", { maximumFractionDigits: 0 })}`, positive: isProfit! },
+                            { label: "Unit margin", value: unitMargin != null ? `${unitMargin >= 0 ? "+" : ""}$${unitMargin.toFixed(2)}` : "—", neutral: unitMargin == null, positive: isProfit ?? false },
+                            { label: `Total (×${qty.toLocaleString()})`, value: totalMargin != null ? `${totalMargin >= 0 ? "+" : ""}$${totalMargin.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—", neutral: totalMargin == null, positive: isProfit ?? false },
                           ].map(({ label, value, neutral, positive }) => (
                             <div key={label} className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-bg)] p-3">
                               <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{label}</p>

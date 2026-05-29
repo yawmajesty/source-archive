@@ -55,8 +55,8 @@ function ProductDrillDown({ products }: { products: Product[] }) {
           </thead>
           <tbody>
             {products.map((p, i) => {
-              const unitMargin = p.quoted_cost_usd != null ? p.quoted_cost_usd - p.target_cost_usd : null;
-              const marginPct = unitMargin != null && p.target_cost_usd > 0 ? (unitMargin / p.target_cost_usd) * 100 : null;
+              const unitMargin = p.quoted_cost_usd != null && p.target_cost_usd != null ? p.quoted_cost_usd - p.target_cost_usd : null;
+              const marginPct = unitMargin != null && p.target_cost_usd != null && p.target_cost_usd > 0 ? (unitMargin / p.target_cost_usd) * 100 : null;
               const sampleFee = p.sample_fee_usd ?? 0;
               const sampleCost = p.sample_cost_usd ?? 0;
               const sampleMargin = (p.sample_fee_usd != null || p.sample_cost_usd != null) ? sampleFee - sampleCost : null;
@@ -69,7 +69,7 @@ function ProductDrillDown({ products }: { products: Product[] }) {
                       <span className="capitalize text-[var(--sa-text-secondary)]">{p.stage}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-2 font-mono text-[var(--sa-text-secondary)]">${p.target_cost_usd.toFixed(2)}</td>
+                  <td className="px-3 py-2 font-mono text-[var(--sa-text-secondary)]">{p.target_cost_usd != null ? `$${p.target_cost_usd.toFixed(2)}` : "—"}</td>
                   <td className="px-3 py-2 font-mono text-[var(--sa-text-secondary)]">{p.quoted_cost_usd != null ? `$${p.quoted_cost_usd.toFixed(2)}` : "—"}</td>
                   <td className={cn("px-3 py-2 font-mono", marginPct == null ? "text-[var(--sa-text-tertiary)]" : marginPct >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]")}>
                     {marginPct != null ? `${marginPct >= 0 ? "+" : ""}${marginPct.toFixed(1)}%` : "—"}

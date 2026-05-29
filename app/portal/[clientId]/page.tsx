@@ -15,7 +15,7 @@ export interface PortalProduct {
   name: string;
   category: string;
   stage: Stage;
-  moq: number;
+  moq: number | null;
   order_qty: number | null;
   quoted_cost_usd: number | null;
   colorways: string[];

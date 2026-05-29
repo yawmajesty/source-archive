@@ -493,7 +493,7 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
             <div className="grid grid-cols-2 gap-3">
               {[
                 ["Category", product.category],
-                ["MOQ", product.moq.toLocaleString() + " units"],
+                ["MOQ", product.moq != null ? product.moq.toLocaleString() + " units" : "TBC"],
                 ["Order qty", product.order_qty ? product.order_qty.toLocaleString() + " units" : "TBC"],
                 ["Unit price", product.quoted_cost_usd ? `$${product.quoted_cost_usd}` : "TBC"],
               ].map(([k, v]) => (
@@ -656,7 +656,7 @@ function ProductCard({ product, onClick }: { product: PortalProduct; onClick: ()
       <div className="p-3 flex flex-col gap-2">
         <p className="text-[12px] font-medium truncate" style={{ color: "var(--portal-text-primary)" }}>{product.name}</p>
         <p className="text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>
-          MOQ {product.moq.toLocaleString()} · {product.quoted_cost_usd ? `$${product.quoted_cost_usd}/unit` : "Price TBC"}
+          MOQ {product.moq != null ? product.moq.toLocaleString() : "TBC"} · {product.quoted_cost_usd ? `$${product.quoted_cost_usd}/unit` : "Price TBC"}
         </p>
         <div className="flex items-center justify-between">
           <StagePill stage={product.stage} />
@@ -750,7 +750,7 @@ function getDelivery(product: PortalProduct, projectTarget: string): string {
   return last?.due_date ?? projectTarget;
 }
 
-function downloadCSV(rows: { name: string; category: string; stage: Stage; moq: number; price: string; sampleDue: string; delivery: string; approved: string }[], clientName: string) {
+function downloadCSV(rows: { name: string; category: string; stage: Stage; moq: number | null; price: string; sampleDue: string; delivery: string; approved: string }[], clientName: string) {
   const date = new Date().toISOString().slice(0, 10);
   const filename = `sourceos-projects-${clientName.toLowerCase().replace(/\s+/g, "-")}-${date}.csv`;
   const headers = ["Product name","Category","Stage","MOQ","Unit price","Sample due","Delivery","Approved"];
@@ -784,7 +784,7 @@ function ProjectsTable({ projects, client }: { projects: PortalProject[]; client
       if (sortKey === "stage") {
         cmp = STAGE_ORDER.indexOf(a.product.stage) - STAGE_ORDER.indexOf(b.product.stage);
       } else if (sortKey === "moq") {
-        cmp = a.product.moq - b.product.moq;
+        cmp = (a.product.moq ?? 0) - (b.product.moq ?? 0);
       } else if (sortKey === "sample_due") {
         if (!a.sampleDue && !b.sampleDue) cmp = 0;
         else if (!a.sampleDue) cmp = 1;
@@ -866,7 +866,7 @@ function ProjectsTable({ projects, client }: { projects: PortalProject[]; client
                     <span className="text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>{product.category}</span>
                   </td>
                   <td className="px-3 py-2.5"><StagePill stage={product.stage} /></td>
-                  <td className="px-3 py-2.5 text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>{product.moq.toLocaleString()}</td>
+                  <td className="px-3 py-2.5 text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>{product.moq != null ? product.moq.toLocaleString() : "—"}</td>
                   <td className="px-3 py-2.5 text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>
                     {product.quoted_cost_usd ? `$${product.quoted_cost_usd}` : "—"}
                   </td>

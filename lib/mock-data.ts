@@ -177,13 +177,13 @@ export interface Product {
   category: string;
   stage: Stage;
   factory_id: string | null;
-  target_cost_usd: number;
+  target_cost_usd: number | null;
   quoted_cost_usd: number | null;
   quoted_cost_currency: Currency;
   quoted_cost_local: number | null;
-  moq: number;
+  moq: number | null;
   order_qty: number | null;
-  lead_time_days: number;
+  lead_time_days: number | null;
   colorways: string[];
   bom: BomItem[];
   notes: string;
