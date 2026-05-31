@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { notFound } from "next/navigation";
-import { getClient, getProjects, getProducts, getCosts } from "@/lib/data";
+import { getClient, getProjects, getProducts, getCosts, getPortalActivity } from "@/lib/data";
 import { ClientsPageClient } from "./ClientsPageClient";
 
 interface Props {
@@ -17,22 +17,26 @@ export default async function ClientPage({ params }: Props) {
 
   if (!client) notFound();
 
-  // Preload products + costs for each project
-  const projectData = await Promise.all(
-    projects.map(async (project) => {
-      const [products, costs] = await Promise.all([
-        getProducts(project.id),
-        getCosts({ projectId: project.id }),
-      ]);
-      const totalCostGbp = costs.reduce((s, c) => s + c.amount_gbp, 0);
-      return { project, products, totalCostGbp };
-    })
-  );
+  // Preload products + costs for each project, plus portal activity
+  const [projectData, portalActivity] = await Promise.all([
+    Promise.all(
+      projects.map(async (project) => {
+        const [products, costs] = await Promise.all([
+          getProducts(project.id),
+          getCosts({ projectId: project.id }),
+        ]);
+        const totalCostGbp = costs.reduce((s, c) => s + c.amount_gbp, 0);
+        return { project, products, totalCostGbp };
+      })
+    ),
+    getPortalActivity(id),
+  ]);
 
   return (
     <ClientsPageClient
       client={client}
       projectData={projectData}
+      portalActivity={portalActivity}
     />
   );
 }

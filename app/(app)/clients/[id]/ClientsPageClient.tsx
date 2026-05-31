@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Lock, Globe, Package, ChevronRight, Calendar, Plus } from "lucide-react";
+import { ArrowRight, Lock, Globe, Package, ChevronRight, Calendar, Plus, Activity, Clock } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ResizablePanel } from "@/components/layout/ResizablePanel";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { ContextMenu, type ContextMenuItem } from "@/components/shared/ContextMenu";
 import { cn } from "@/lib/utils";
 import type { Client, Project, Product, Stage } from "@/lib/mock-data";
+import type { PortalActivity } from "@/lib/data";
 
 interface ProjectData {
   project: Project;
@@ -22,6 +23,175 @@ interface ProjectData {
 interface Props {
   client: Client;
   projectData: ProjectData[];
+  portalActivity: PortalActivity;
+}
+
+const PATH_LABELS: Record<string, string> = {
+  overview: "Overview",
+  sampling: "Sampling quotes",
+  projects: "Collections",
+  files: "Files",
+  contracts: "Contracts",
+  references: "References",
+};
+
+function timeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return "0s";
+  const totalSec = Math.round(ms / 1000);
+  if (totalSec < 60) return `${totalSec}s`;
+  const mins = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  if (mins < 60) return sec > 0 ? `${mins}m ${sec}s` : `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const remMin = mins % 60;
+  return remMin > 0 ? `${hours}h ${remMin}m` : `${hours}h`;
+}
+
+function PortalActivityPanel({ activity, client, portalEnabled }: { activity: PortalActivity; client: Client; portalEnabled: boolean }) {
+  const maxDayVisits = Math.max(1, ...activity.perDay.map((d) => d.visits));
+  const portalUrl = `/portal/${client.id}`;
+
+  return (
+    <div className="h-full overflow-y-auto bg-[var(--sa-bg)]">
+      <div className="max-w-2xl mx-auto px-6 py-6 space-y-5">
+        {/* Header */}
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <Activity size={16} className="text-[var(--sa-accent)]" />
+              <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)]">Portal activity</h2>
+            </div>
+            <p className="text-[12px] text-[var(--sa-text-tertiary)] mt-0.5">
+              How {client.name} is using their portal
+            </p>
+          </div>
+          {portalEnabled && (
+            <a href={portalUrl} target="_blank" rel="noreferrer"
+              className="text-[11px] text-[var(--sa-accent)] hover:underline"
+            >
+              Open portal ↗
+            </a>
+          )}
+        </div>
+
+        {!portalEnabled && (
+          <div className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] p-4 flex items-center gap-3">
+            <Lock size={14} className="text-[var(--sa-text-tertiary)] shrink-0" />
+            <p className="text-[12px] text-[var(--sa-text-secondary)]">
+              The portal is locked. Enable it for this client to start collecting activity.
+            </p>
+          </div>
+        )}
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { label: "Total visits", value: activity.totalVisits.toLocaleString() },
+            { label: "Sessions", value: activity.uniqueSessions.toLocaleString() },
+            { label: "Time on portal", value: formatDuration(activity.totalTimeMs) },
+            { label: "Last seen", value: activity.lastVisitAt ? timeAgo(activity.lastVisitAt) : "—" },
+          ].map(({ label, value }) => (
+            <div key={label} className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] p-3">
+              <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{label}</p>
+              <p className="mt-1 text-[16px] font-semibold text-[var(--sa-text-primary)]">{value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* 14-day timeline */}
+        <div className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] p-4">
+          <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] mb-3">Visits, last 14 days</p>
+          {activity.totalVisits === 0 ? (
+            <p className="text-[12px] text-[var(--sa-text-tertiary)] py-3">No activity yet.</p>
+          ) : (
+            <div className="flex items-end gap-1 h-16">
+              {activity.perDay.map((d) => {
+                const heightPct = d.visits === 0 ? 4 : Math.max(8, (d.visits / maxDayVisits) * 100);
+                return (
+                  <div key={d.date} className="flex-1 flex flex-col items-center justify-end gap-1" title={`${d.date}: ${d.visits} visit${d.visits === 1 ? "" : "s"}`}>
+                    <div
+                      className={cn("w-full rounded-sm", d.visits > 0 ? "bg-[var(--sa-accent)]" : "bg-[var(--sa-border)]")}
+                      style={{ height: `${heightPct}%` }}
+                    />
+                    <span className="text-[9px] text-[var(--sa-text-tertiary)]">
+                      {new Date(d.date).getDate()}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Top sections + Recent visits */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] p-4">
+            <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] mb-3">Most visited sections</p>
+            {activity.topPaths.length === 0 ? (
+              <p className="text-[12px] text-[var(--sa-text-tertiary)]">No data yet.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {activity.topPaths.slice(0, 6).map((p) => {
+                  const label = PATH_LABELS[p.path] ?? p.path;
+                  const maxMs = activity.topPaths[0].totalMs || 1;
+                  const widthPct = Math.max(4, (p.totalMs / maxMs) * 100);
+                  return (
+                    <div key={p.path}>
+                      <div className="flex items-baseline justify-between mb-1">
+                        <span className="text-[12px] font-medium text-[var(--sa-text-primary)]">{label}</span>
+                        <span className="text-[10px] text-[var(--sa-text-tertiary)]">
+                          {p.visits} visit{p.visits === 1 ? "" : "s"} · {formatDuration(p.totalMs)}
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-[var(--sa-hover)] overflow-hidden">
+                        <div className="h-full bg-[var(--sa-accent)] rounded-full" style={{ width: `${widthPct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] p-4">
+            <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] mb-3">Recent visits</p>
+            {activity.recent.length === 0 ? (
+              <p className="text-[12px] text-[var(--sa-text-tertiary)]">No visits recorded yet.</p>
+            ) : (
+              <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
+                {activity.recent.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between gap-2 text-[12px]">
+                    <span className="text-[var(--sa-text-primary)] truncate">{PATH_LABELS[v.path] ?? v.path}</span>
+                    <span className="flex items-center gap-1 text-[10px] text-[var(--sa-text-tertiary)] shrink-0">
+                      {v.duration_ms != null && (
+                        <>
+                          <Clock size={9} /> {formatDuration(v.duration_ms)} ·
+                        </>
+                      )}
+                      <span>{timeAgo(v.visited_at)}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function stageProgress(products: Product[]) {
@@ -263,7 +433,7 @@ function AddProjectModal({ clientId, onClose }: { clientId: string; onClose: () 
   );
 }
 
-export function ClientsPageClient({ client, projectData }: Props) {
+export function ClientsPageClient({ client, projectData, portalActivity }: Props) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(
     projectData[0]?.project.id ?? null
@@ -409,10 +579,7 @@ export function ClientsPageClient({ client, projectData }: Props) {
               onBack={() => setSelectedId(null)}
             />
           ) : (
-            <EmptyState
-              title="Select a collection"
-              description="Click a collection to see details"
-            />
+            <PortalActivityPanel activity={portalActivity} client={client} portalEnabled={portalEnabled} />
           )}
         </AnimatePresence>
       </div>

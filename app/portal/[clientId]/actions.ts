@@ -2,7 +2,29 @@
 
 import { supabaseData as supabase } from "@/lib/supabase-data";
 import { revalidatePath } from "next/cache";
+import { randomUUID } from "crypto";
 import type { InvoiceLineItem } from "@/lib/data";
+
+export async function logPortalVisit(data: {
+  client_id: string;
+  session_id: string;
+  path: string;
+}): Promise<string | null> {
+  const id = "pv-" + Date.now() + "-" + randomUUID().slice(0, 8);
+  const { error } = await supabase.from("portal_visits").insert({
+    id,
+    client_id: data.client_id,
+    session_id: data.session_id,
+    path: data.path,
+  });
+  if (error) return null;
+  return id;
+}
+
+export async function updateVisitDuration(visitId: string, durationMs: number): Promise<void> {
+  if (!visitId || durationMs <= 0) return;
+  await supabase.from("portal_visits").update({ duration_ms: durationMs }).eq("id", visitId);
+}
 
 export async function createSamplingInvoice(data: {
   client_id: string;

@@ -645,6 +645,79 @@ export async function getRfqSubmissions(rfqId: string): Promise<Array<{
   });
 }
 
+// ── Portal Activity ────────────────────────────────────────
+
+export interface PortalVisitRow {
+  id: string;
+  client_id: string;
+  session_id: string;
+  path: string;
+  visited_at: string;
+  duration_ms: number | null;
+}
+
+export interface PortalActivity {
+  totalVisits: number;
+  uniqueSessions: number;
+  totalTimeMs: number;
+  firstVisitAt: string | null;
+  lastVisitAt: string | null;
+  topPaths: Array<{ path: string; visits: number; totalMs: number }>;
+  recent: PortalVisitRow[];
+  perDay: Array<{ date: string; visits: number }>;
+}
+
+export async function getPortalActivity(clientId: string): Promise<PortalActivity> {
+  const { data } = await supabase
+    .from("portal_visits")
+    .select("*")
+    .eq("client_id", clientId)
+    .order("visited_at", { ascending: false })
+    .limit(500);
+
+  const rows = (data ?? []) as PortalVisitRow[];
+
+  const byPath = new Map<string, { visits: number; totalMs: number }>();
+  const sessions = new Set<string>();
+  let totalTimeMs = 0;
+  for (const r of rows) {
+    sessions.add(r.session_id);
+    totalTimeMs += r.duration_ms ?? 0;
+    const cur = byPath.get(r.path) ?? { visits: 0, totalMs: 0 };
+    cur.visits += 1;
+    cur.totalMs += r.duration_ms ?? 0;
+    byPath.set(r.path, cur);
+  }
+
+  const topPaths = Array.from(byPath.entries())
+    .map(([path, v]) => ({ path, ...v }))
+    .sort((a, b) => b.totalMs - a.totalMs || b.visits - a.visits);
+
+  const perDayMap = new Map<string, number>();
+  const today = new Date();
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    perDayMap.set(d.toISOString().slice(0, 10), 0);
+  }
+  for (const r of rows) {
+    const day = r.visited_at.slice(0, 10);
+    if (perDayMap.has(day)) perDayMap.set(day, (perDayMap.get(day) ?? 0) + 1);
+  }
+  const perDay = Array.from(perDayMap.entries()).map(([date, visits]) => ({ date, visits }));
+
+  return {
+    totalVisits: rows.length,
+    uniqueSessions: sessions.size,
+    totalTimeMs,
+    firstVisitAt: rows.length > 0 ? rows[rows.length - 1].visited_at : null,
+    lastVisitAt: rows.length > 0 ? rows[0].visited_at : null,
+    topPaths,
+    recent: rows.slice(0, 15),
+    perDay,
+  };
+}
+
 export async function getExistingSubmission(inviteId: string): Promise<(RfqSubmission & { products: RfqQuotedProduct[] }) | null> {
   const { data } = await supabase
     .from("rfq_submissions")

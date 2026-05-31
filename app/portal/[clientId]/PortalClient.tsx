@@ -7,7 +7,7 @@ import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown
 import { supabase } from "@/lib/supabase";
 import { uploadFile } from "@/lib/storage";
 import type { Client, Contract, PortalFile, AgencySettings, SavedInvoice } from "@/lib/data";
-import { updateInvoiceStatus, deleteInvoice } from "./actions";
+import { updateInvoiceStatus, deleteInvoice, logPortalVisit, updateVisitDuration } from "./actions";
 import type { Stage } from "@/lib/mock-data";
 import type { PortalProject, PortalProduct } from "./page";
 
@@ -1650,11 +1650,61 @@ function ReferencesTab({ client, projects }: { client: Client; projects: PortalP
   );
 }
 
+// ── Visit tracking ───────────────────────────────────────────
+function usePortalVisitTracker(clientId: string, tab: Tab, enabled: boolean) {
+  const visitIdRef = useRef<string | null>(null);
+  const startedAtRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    if (!enabled || typeof window === "undefined") return;
+
+    const sessionKey = `portal-session-${clientId}`;
+    let sessionId = sessionStorage.getItem(sessionKey);
+    if (!sessionId) {
+      sessionId = (window.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      sessionStorage.setItem(sessionKey, sessionId);
+    }
+
+    let cancelled = false;
+
+    async function closePrevious() {
+      const prevId = visitIdRef.current;
+      if (!prevId) return;
+      const duration = Date.now() - startedAtRef.current;
+      visitIdRef.current = null;
+      await updateVisitDuration(prevId, duration);
+    }
+
+    async function startNew() {
+      startedAtRef.current = Date.now();
+      const newId = await logPortalVisit({ client_id: clientId, session_id: sessionId!, path: tab });
+      if (!cancelled) visitIdRef.current = newId;
+    }
+
+    closePrevious().then(startNew);
+
+    function handleVisibility() {
+      if (document.visibilityState === "hidden") closePrevious();
+    }
+    window.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("pagehide", closePrevious);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("pagehide", closePrevious);
+      closePrevious();
+    };
+  }, [clientId, tab, enabled]);
+}
+
 // ── Main portal ──────────────────────────────────────────────
 export function PortalClient({ client, locked, projects, contracts, files, agencySettings, isAgency, savedInvoices }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [selectedProduct, setSelectedProduct] = useState<PortalProduct | null>(null);
   const { dark, toggle } = usePortalTheme();
+
+  usePortalVisitTracker(client.id, tab, !locked && !isAgency);
 
   if (locked) return <PortalGate client={client} />;
 
