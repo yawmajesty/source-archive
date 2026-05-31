@@ -313,6 +313,7 @@ export interface InvoiceLineItem {
   project_name: string | null;
   amount_usd: number;
   expected_date: string | null;
+  kind?: "product" | "service";
 }
 
 export interface SavedInvoice {

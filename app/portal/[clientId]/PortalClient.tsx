@@ -1122,6 +1122,21 @@ const STATUS_CFG: Record<string, { label: string; bg: string; fg: string }> = {
   paid:  { label: "Paid",   bg: "#EAF3DE", fg: "#27500A" },
 };
 
+const SERVICE_PRESETS: string[] = [
+  "Design",
+  "Techpacking",
+  "Sourcing fee",
+  "Production management",
+  "Quality control",
+];
+
+interface ServiceLine {
+  id: string;
+  name: string;
+  amount: number;
+  project_name: string | null;
+}
+
 function SamplingInvoice({
   projects, client, agencySettings, isAgency, savedInvoices: initialInvoices,
 }: {
@@ -1146,11 +1161,31 @@ function SamplingInvoice({
   // Per-product selection + editable amounts
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [amounts, setAmounts] = useState<Record<string, number>>({});
+  const [serviceLines, setServiceLines] = useState<ServiceLine[]>([]);
+  const serviceIdRef = useRef(0);
+
+  function newServiceId() {
+    serviceIdRef.current += 1;
+    return `svc-${serviceIdRef.current}`;
+  }
+
+  function addService(name: string) {
+    setServiceLines((prev) => [...prev, { id: newServiceId(), name, amount: 0, project_name: null }]);
+  }
+
+  function updateService(id: string, patch: Partial<ServiceLine>) {
+    setServiceLines((prev) => prev.map((s) => s.id === id ? { ...s, ...patch } : s));
+  }
+
+  function removeService(id: string) {
+    setServiceLines((prev) => prev.filter((s) => s.id !== id));
+  }
 
   function openSelector() {
     const withFees = allProducts.filter((p) => (p.sample_fee_usd ?? 0) > 0);
     setSelected(new Set(withFees.map((p) => p.id)));
     setAmounts(Object.fromEntries(allProducts.map((p) => [p.id, p.sample_fee_usd ?? 0])));
+    setServiceLines([]);
     setShowSelector(true);
   }
 
@@ -1163,10 +1198,12 @@ function SamplingInvoice({
   }
 
   const nextRound = invoices.length > 0 ? Math.max(...invoices.map((i) => i.round)) + 1 : 1;
-  const selectedTotal = Array.from(selected).reduce((s, id) => s + (amounts[id] ?? 0), 0);
+  const productsTotal = Array.from(selected).reduce((s, id) => s + (amounts[id] ?? 0), 0);
+  const servicesTotal = serviceLines.reduce((s, l) => s + (l.amount || 0), 0);
+  const selectedTotal = productsTotal + servicesTotal;
 
   async function handleCreate() {
-    const items: InvoiceLineItem[] = Array.from(selected).map((id) => {
+    const productItems: InvoiceLineItem[] = Array.from(selected).map((id) => {
       const p = allProducts.find((p) => p.id === id)!;
       return {
         name: p.name,
@@ -1174,14 +1211,25 @@ function SamplingInvoice({
         project_name: p.project_name,
         amount_usd: amounts[id] ?? p.sample_fee_usd ?? 0,
         expected_date: p.expected_sample_date,
+        kind: "product",
       };
     });
+    const serviceItems: InvoiceLineItem[] = serviceLines
+      .filter((l) => l.name.trim() && l.amount > 0)
+      .map((l) => ({
+        name: l.name.trim(),
+        category: "Service",
+        project_name: l.project_name,
+        amount_usd: l.amount,
+        expected_date: null,
+        kind: "service",
+      }));
     setSaving(true);
     await createSamplingInvoice({
       client_id: client.id,
       round: nextRound,
       title: null,
-      line_items: items,
+      line_items: [...productItems, ...serviceItems],
       notes: null,
     });
     setSaving(false);
@@ -1296,9 +1344,90 @@ function SamplingInvoice({
             ))
           )}
 
+          {/* Services section */}
+          <div className="px-5 py-4" style={{ borderTop: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[12px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Services</p>
+              <p className="text-[10px]" style={{ color: "var(--portal-text-muted)" }}>Add design, techpacking and other fees</p>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {SERVICE_PRESETS.map((name) => (
+                <button
+                  key={name}
+                  onClick={() => addService(name)}
+                  className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium"
+                  style={{ border: "1px solid var(--portal-border)", color: "var(--portal-text-secondary)", background: "var(--portal-bg)" }}
+                >
+                  <Plus size={10} /> {name}
+                </button>
+              ))}
+              <button
+                onClick={() => addService("")}
+                className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium"
+                style={{ border: "1px dashed var(--portal-border)", color: "var(--portal-text-muted)" }}
+              >
+                <Plus size={10} /> Custom
+              </button>
+            </div>
+            {serviceLines.length > 0 && (
+              <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--portal-border-subtle)", background: "var(--portal-bg)" }}>
+                {serviceLines.map((line, i) => (
+                  <div
+                    key={line.id}
+                    className="flex items-center gap-2 px-3 py-2"
+                    style={{ borderBottom: i < serviceLines.length - 1 ? "1px solid var(--portal-border-subtle)" : undefined }}
+                  >
+                    <input
+                      type="text"
+                      placeholder="Service name"
+                      value={line.name}
+                      onChange={(e) => updateService(line.id, { name: e.target.value })}
+                      className="flex-1 rounded px-2 py-1 text-[12px] outline-none min-w-0"
+                      style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)", color: "var(--portal-text-primary)" }}
+                    />
+                    <select
+                      value={line.project_name ?? ""}
+                      onChange={(e) => updateService(line.id, { project_name: e.target.value || null })}
+                      className="rounded px-2 py-1 text-[11px] outline-none w-36 shrink-0"
+                      style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)", color: "var(--portal-text-secondary)" }}
+                    >
+                      <option value="">No project</option>
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.name}>{p.name}</option>
+                      ))}
+                    </select>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-[11px]" style={{ color: "var(--portal-text-muted)" }}>$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={line.amount}
+                        onChange={(e) => updateService(line.id, { amount: parseFloat(e.target.value) || 0 })}
+                        className="rounded px-2 py-1 text-[12px] font-mono outline-none w-24 text-right"
+                        style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)", color: "var(--portal-text-primary)" }}
+                      />
+                    </div>
+                    <button
+                      onClick={() => removeService(line.id)}
+                      className="p-1 rounded shrink-0"
+                      style={{ color: "var(--portal-text-muted)" }}
+                      title="Remove"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: "2px solid var(--portal-border)", background: "var(--portal-thead)" }}>
             <div>
-              <span className="text-[11px]" style={{ color: "var(--portal-text-muted)" }}>{selected.size} product{selected.size !== 1 ? "s" : ""} selected</span>
+              <span className="text-[11px]" style={{ color: "var(--portal-text-muted)" }}>
+                {selected.size} product{selected.size !== 1 ? "s" : ""}
+                {serviceLines.length > 0 && ` · ${serviceLines.length} service${serviceLines.length !== 1 ? "s" : ""}`}
+              </span>
               <span className="mx-2 text-[11px]" style={{ color: "var(--portal-border)" }}>·</span>
               <span className="font-mono text-[13px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>${selectedTotal.toFixed(2)}</span>
             </div>
@@ -1308,7 +1437,7 @@ function SamplingInvoice({
               </button>
               <button
                 onClick={handleCreate}
-                disabled={saving || selected.size === 0}
+                disabled={saving || (selected.size === 0 && serviceLines.length === 0)}
                 className="rounded-lg px-4 py-1.5 text-[12px] font-medium disabled:opacity-50"
                 style={{ background: "var(--portal-brand)", color: "#fff" }}
               >
