@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getProject, getProducts, getClient, getFactories } from "@/lib/data";
+import { getProject, getProducts, getClient, getFactories, getSamplingInvoices } from "@/lib/data";
 import { ProjectsPageClient } from "./ProjectsPageClient";
 
 interface Props {
@@ -17,6 +17,7 @@ export default async function ProjectPage({ params }: Props) {
   if (!project) notFound();
 
   const client = await getClient(project.client_id);
+  const savedInvoices = client ? await getSamplingInvoices(client.id, true) : [];
 
   // Attach factory info to products
   const productsWithFactory = products.map((p) => ({
@@ -30,6 +31,8 @@ export default async function ProjectPage({ params }: Props) {
       client={client}
       productsWithFactory={productsWithFactory}
       factories={factories}
+      products={products}
+      savedInvoices={savedInvoices}
     />
   );
 }

@@ -6,8 +6,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon, Plus, Trash2, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { uploadFile } from "@/lib/storage";
-import type { Client, Contract, PortalFile, AgencySettings, SavedInvoice, InvoiceLineItem } from "@/lib/data";
-import { createSamplingInvoice, updateInvoiceStatus, deleteInvoice } from "./actions";
+import type { Client, Contract, PortalFile, AgencySettings, SavedInvoice } from "@/lib/data";
+import { updateInvoiceStatus, deleteInvoice } from "./actions";
 import type { Stage } from "@/lib/mock-data";
 import type { PortalProject, PortalProduct } from "./page";
 
@@ -1122,20 +1122,6 @@ const STATUS_CFG: Record<string, { label: string; bg: string; fg: string }> = {
   paid:  { label: "Paid",   bg: "#EAF3DE", fg: "#27500A" },
 };
 
-const SERVICE_PRESETS: string[] = [
-  "Design",
-  "Techpacking",
-  "Sourcing fee",
-  "Production management",
-  "Quality control",
-];
-
-interface ServiceLine {
-  id: string;
-  name: string;
-  amount: number;
-  project_name: string | null;
-}
 
 function SamplingInvoice({
   projects, client, agencySettings, isAgency, savedInvoices: initialInvoices,
@@ -1150,92 +1136,6 @@ function SamplingInvoice({
   const [, startTransition] = useTransition();
   const [invoices, setInvoices] = useState<SavedInvoice[]>(initialInvoices);
   const [activeRound, setActiveRound] = useState<number>(initialInvoices.length > 0 ? initialInvoices[0].round : 1);
-  const [showSelector, setShowSelector] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  // Flat list of all products across projects
-  const allProducts = projects.flatMap((proj) =>
-    proj.products.map((p) => ({ ...p, project_name: proj.name }))
-  );
-
-  // Per-product selection + editable amounts
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [amounts, setAmounts] = useState<Record<string, number>>({});
-  const [serviceLines, setServiceLines] = useState<ServiceLine[]>([]);
-  const serviceIdRef = useRef(0);
-
-  function newServiceId() {
-    serviceIdRef.current += 1;
-    return `svc-${serviceIdRef.current}`;
-  }
-
-  function addService(name: string) {
-    setServiceLines((prev) => [...prev, { id: newServiceId(), name, amount: 0, project_name: null }]);
-  }
-
-  function updateService(id: string, patch: Partial<ServiceLine>) {
-    setServiceLines((prev) => prev.map((s) => s.id === id ? { ...s, ...patch } : s));
-  }
-
-  function removeService(id: string) {
-    setServiceLines((prev) => prev.filter((s) => s.id !== id));
-  }
-
-  function openSelector() {
-    const withFees = allProducts.filter((p) => (p.sample_fee_usd ?? 0) > 0);
-    setSelected(new Set(withFees.map((p) => p.id)));
-    setAmounts(Object.fromEntries(allProducts.map((p) => [p.id, p.sample_fee_usd ?? 0])));
-    setServiceLines([]);
-    setShowSelector(true);
-  }
-
-  function toggleProduct(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  const nextRound = invoices.length > 0 ? Math.max(...invoices.map((i) => i.round)) + 1 : 1;
-  const productsTotal = Array.from(selected).reduce((s, id) => s + (amounts[id] ?? 0), 0);
-  const servicesTotal = serviceLines.reduce((s, l) => s + (l.amount || 0), 0);
-  const selectedTotal = productsTotal + servicesTotal;
-
-  async function handleCreate() {
-    const productItems: InvoiceLineItem[] = Array.from(selected).map((id) => {
-      const p = allProducts.find((p) => p.id === id)!;
-      return {
-        name: p.name,
-        category: p.category,
-        project_name: p.project_name,
-        amount_usd: amounts[id] ?? p.sample_fee_usd ?? 0,
-        expected_date: p.expected_sample_date,
-        kind: "product",
-      };
-    });
-    const serviceItems: InvoiceLineItem[] = serviceLines
-      .filter((l) => l.name.trim() && l.amount > 0)
-      .map((l) => ({
-        name: l.name.trim(),
-        category: "Service",
-        project_name: l.project_name,
-        amount_usd: l.amount,
-        expected_date: null,
-        kind: "service",
-      }));
-    setSaving(true);
-    await createSamplingInvoice({
-      client_id: client.id,
-      round: nextRound,
-      title: null,
-      line_items: [...productItems, ...serviceItems],
-      notes: null,
-    });
-    setSaving(false);
-    setShowSelector(false);
-    startTransition(() => router.refresh());
-  }
 
   async function handleStatusChange(id: string, status: string) {
     setInvoices((prev) => prev.map((inv) => inv.id === id ? { ...inv, status } : inv));
@@ -1276,184 +1176,13 @@ function SamplingInvoice({
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <p className="text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>Sampling quotes</p>
-        {isAgency && !showSelector && (
-          <button
-            onClick={openSelector}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors"
-            style={{ background: "var(--portal-brand)", color: "#fff" }}
-          >
-            <Plus size={12} /> New quote
-          </button>
-        )}
       </div>
 
-      {/* Product selector */}
-      {showSelector && (
-        <div className="rounded-xl mb-5 overflow-hidden" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
-          <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
-            <div>
-              <p className="text-[13px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Round {nextRound} — Select products</p>
-              <p className="text-[11px] mt-0.5" style={{ color: "var(--portal-text-muted)" }}>Check the products to include and set the fee for each</p>
-            </div>
-            <button onClick={() => setShowSelector(false)} className="p-1 rounded" style={{ color: "var(--portal-text-muted)" }}>
-              <X size={14} />
-            </button>
-          </div>
-
-          {allProducts.length === 0 ? (
-            <p className="px-5 py-6 text-[13px] text-center" style={{ color: "var(--portal-text-muted)" }}>No products in this collection yet.</p>
-          ) : (
-            allProducts.map((p, i) => (
-              <div
-                key={p.id}
-                className="flex items-center gap-3 px-5 py-3 cursor-pointer"
-                style={{
-                  borderBottom: i < allProducts.length - 1 ? "1px solid var(--portal-border-subtle)" : undefined,
-                  background: selected.has(p.id) ? "var(--portal-row-alt)" : "transparent",
-                }}
-                onClick={() => toggleProduct(p.id)}
-              >
-                <input
-                  type="checkbox"
-                  checked={selected.has(p.id)}
-                  onChange={() => toggleProduct(p.id)}
-                  onClick={(e) => e.stopPropagation()}
-                  style={{ accentColor: "var(--portal-brand)", width: 15, height: 15, flexShrink: 0 }}
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[12px] font-medium truncate" style={{ color: "var(--portal-text-primary)" }}>{p.name}</p>
-                  <p className="text-[10px]" style={{ color: "var(--portal-text-muted)" }}>
-                    {p.project_name}{p.category ? ` · ${p.category}` : ""}{p.sample_round > 1 ? ` · R${p.sample_round}` : ""}
-                  </p>
-                </div>
-                {selected.has(p.id) && (
-                  <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <span className="text-[11px]" style={{ color: "var(--portal-text-muted)" }}>$</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={amounts[p.id] ?? 0}
-                      onChange={(e) => setAmounts((prev) => ({ ...prev, [p.id]: parseFloat(e.target.value) || 0 }))}
-                      className="rounded px-2 py-1 text-[12px] font-mono outline-none w-24 text-right"
-                      style={{ border: "1px solid var(--portal-border)", background: "var(--portal-bg)", color: "var(--portal-text-primary)" }}
-                    />
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-
-          {/* Services section */}
-          <div className="px-5 py-4" style={{ borderTop: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[12px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Services</p>
-              <p className="text-[10px]" style={{ color: "var(--portal-text-muted)" }}>Add design, techpacking and other fees</p>
-            </div>
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {SERVICE_PRESETS.map((name) => (
-                <button
-                  key={name}
-                  onClick={() => addService(name)}
-                  className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium"
-                  style={{ border: "1px solid var(--portal-border)", color: "var(--portal-text-secondary)", background: "var(--portal-bg)" }}
-                >
-                  <Plus size={10} /> {name}
-                </button>
-              ))}
-              <button
-                onClick={() => addService("")}
-                className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium"
-                style={{ border: "1px dashed var(--portal-border)", color: "var(--portal-text-muted)" }}
-              >
-                <Plus size={10} /> Custom
-              </button>
-            </div>
-            {serviceLines.length > 0 && (
-              <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--portal-border-subtle)", background: "var(--portal-bg)" }}>
-                {serviceLines.map((line, i) => (
-                  <div
-                    key={line.id}
-                    className="flex items-center gap-2 px-3 py-2"
-                    style={{ borderBottom: i < serviceLines.length - 1 ? "1px solid var(--portal-border-subtle)" : undefined }}
-                  >
-                    <input
-                      type="text"
-                      placeholder="Service name"
-                      value={line.name}
-                      onChange={(e) => updateService(line.id, { name: e.target.value })}
-                      className="flex-1 rounded px-2 py-1 text-[12px] outline-none min-w-0"
-                      style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)", color: "var(--portal-text-primary)" }}
-                    />
-                    <select
-                      value={line.project_name ?? ""}
-                      onChange={(e) => updateService(line.id, { project_name: e.target.value || null })}
-                      className="rounded px-2 py-1 text-[11px] outline-none w-36 shrink-0"
-                      style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)", color: "var(--portal-text-secondary)" }}
-                    >
-                      <option value="">No project</option>
-                      {projects.map((p) => (
-                        <option key={p.id} value={p.name}>{p.name}</option>
-                      ))}
-                    </select>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-[11px]" style={{ color: "var(--portal-text-muted)" }}>$</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={line.amount}
-                        onChange={(e) => updateService(line.id, { amount: parseFloat(e.target.value) || 0 })}
-                        className="rounded px-2 py-1 text-[12px] font-mono outline-none w-24 text-right"
-                        style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)", color: "var(--portal-text-primary)" }}
-                      />
-                    </div>
-                    <button
-                      onClick={() => removeService(line.id)}
-                      className="p-1 rounded shrink-0"
-                      style={{ color: "var(--portal-text-muted)" }}
-                      title="Remove"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: "2px solid var(--portal-border)", background: "var(--portal-thead)" }}>
-            <div>
-              <span className="text-[11px]" style={{ color: "var(--portal-text-muted)" }}>
-                {selected.size} product{selected.size !== 1 ? "s" : ""}
-                {serviceLines.length > 0 && ` · ${serviceLines.length} service${serviceLines.length !== 1 ? "s" : ""}`}
-              </span>
-              <span className="mx-2 text-[11px]" style={{ color: "var(--portal-border)" }}>·</span>
-              <span className="font-mono text-[13px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>${selectedTotal.toFixed(2)}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setShowSelector(false)} className="rounded-lg px-3 py-1.5 text-[12px]" style={{ border: "1px solid var(--portal-border)", color: "var(--portal-text-secondary)" }}>
-                Cancel
-              </button>
-              <button
-                onClick={handleCreate}
-                disabled={saving || (selected.size === 0 && serviceLines.length === 0)}
-                className="rounded-lg px-4 py-1.5 text-[12px] font-medium disabled:opacity-50"
-                style={{ background: "var(--portal-brand)", color: "#fff" }}
-              >
-                {saving ? "Saving…" : "Add to quote"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Empty state */}
-      {invoices.length === 0 && !showSelector && (
+      {invoices.length === 0 && (
         <div className="rounded-xl p-8 text-center" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
-          <p className="text-[13px]" style={{ color: "var(--portal-text-secondary)" }}>
-            {isAgency ? 'No quotes yet. Click "New quote" to create one.' : "No sampling quotes to show yet."}
-          </p>
+          <p className="text-[13px]" style={{ color: "var(--portal-text-secondary)" }}>No sampling quotes to show yet.</p>
         </div>
       )}
 

@@ -48,7 +48,7 @@ export default async function PortalPage({ params }: Props) {
     getContracts(clientId),
     getPortalFiles(clientId),
     getAgencySettings(),
-    getSamplingInvoices(clientId),
+    getSamplingInvoices(clientId, false),
   ]);
 
   if (!client.portal_enabled) {

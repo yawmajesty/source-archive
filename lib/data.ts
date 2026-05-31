@@ -327,12 +327,14 @@ export interface SavedInvoice {
   created_at: string;
 }
 
-export async function getSamplingInvoices(clientId: string): Promise<SavedInvoice[]> {
-  const { data } = await supabase
+export async function getSamplingInvoices(clientId: string, includeDrafts = true): Promise<SavedInvoice[]> {
+  let q = supabase
     .from("sampling_invoices")
     .select("*")
     .eq("client_id", clientId)
     .order("round", { ascending: true });
+  if (!includeDrafts) q = q.neq("status", "draft");
+  const { data } = await q;
   return (data ?? []).map((r: any) => ({ ...r, line_items: r.line_items ?? [] }));
 }
 

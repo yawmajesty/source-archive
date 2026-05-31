@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronRight, Package, ArrowRight, Plus, X, Pencil, Trash2, Check,
-  LayoutList, Table2, GitBranch, Copy,
+  LayoutList, Table2, GitBranch, Copy, Receipt,
 } from "lucide-react";
+import { QuoteBuilder } from "./QuoteBuilder";
 import { ResizablePanel } from "@/components/layout/ResizablePanel";
 import { ProductRow } from "@/components/shared/ProductRow";
 import { StageTrack } from "@/components/shared/StageTrack";
@@ -15,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { forkProductsToRound } from "./actions";
 import type { Client, Project, Product, Factory, Stage } from "@/lib/mock-data";
+import type { SavedInvoice } from "@/lib/data";
 
 interface ProductWithFactory {
   product: Product;
@@ -26,11 +28,13 @@ interface Props {
   client: Client | null;
   productsWithFactory: ProductWithFactory[];
   factories: Factory[];
+  products: Product[];
+  savedInvoices: SavedInvoice[];
 }
 
 type SortKey = "name" | "stage" | "cost";
 type SortDir = "asc" | "desc";
-type ViewMode = "list" | "table";
+type ViewMode = "list" | "table" | "quotes";
 
 const STAGE_ORDER: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
 const STAGES: Stage[] = STAGE_ORDER;
@@ -539,7 +543,7 @@ function CollectionTable({
 }
 
 // ── Main page component ───────────────────────────────────────────────────────
-export function ProjectsPageClient({ project, client, productsWithFactory, factories }: Props) {
+export function ProjectsPageClient({ project, client, productsWithFactory, factories, products, savedInvoices }: Props) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(
     productsWithFactory[0]?.product.id ?? null
@@ -667,6 +671,12 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
               >
                 <Table2 size={13} />
               </button>
+              <button onClick={() => setViewMode("quotes")}
+                title="Quotes"
+                className={cn("rounded-md p-1.5 transition-colors", viewMode === "quotes" ? "bg-[var(--sa-window)] text-[var(--sa-text-primary)] shadow-sm" : "text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-secondary)]")}
+              >
+                <Receipt size={13} />
+              </button>
             </div>
 
             <button
@@ -684,7 +694,22 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
         </div>
 
         {/* Body */}
-        {viewMode === "table" ? (
+        {viewMode === "quotes" ? (
+          <div className="flex-1 overflow-hidden">
+            {client ? (
+              <QuoteBuilder
+                project={project}
+                client={client}
+                products={products}
+                savedInvoices={savedInvoices}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-[13px] text-[var(--sa-text-tertiary)]">
+                No client linked to this collection.
+              </div>
+            )}
+          </div>
+        ) : viewMode === "table" ? (
           <div className="flex-1 overflow-hidden bg-[var(--sa-bg)]">
             <CollectionTable
               productsWithFactory={sorted}

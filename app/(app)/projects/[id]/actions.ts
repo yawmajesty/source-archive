@@ -2,6 +2,37 @@
 
 import { supabaseData as supabase } from "@/lib/supabase-data";
 import { revalidatePath } from "next/cache";
+import type { InvoiceLineItem } from "@/lib/data";
+
+export async function createProjectQuote(data: {
+  client_id: string;
+  project_id: string;
+  round: number;
+  line_items: InvoiceLineItem[];
+}): Promise<void> {
+  await supabase.from("sampling_invoices").insert({
+    client_id: data.client_id,
+    round: data.round,
+    title: null,
+    line_items: data.line_items,
+    notes: null,
+    status: "draft",
+  });
+  revalidatePath(`/projects/${data.project_id}`);
+  revalidatePath(`/portal/${data.client_id}`);
+}
+
+export async function sendQuote(invoiceId: string, clientId: string, projectId: string): Promise<void> {
+  await supabase.from("sampling_invoices").update({ status: "sent" }).eq("id", invoiceId);
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/portal/${clientId}`);
+}
+
+export async function deleteQuote(invoiceId: string, clientId: string, projectId: string): Promise<void> {
+  await supabase.from("sampling_invoices").delete().eq("id", invoiceId);
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/portal/${clientId}`);
+}
 
 export async function forkProductsToRound(
   productIds: string[],
