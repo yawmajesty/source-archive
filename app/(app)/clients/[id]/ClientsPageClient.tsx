@@ -60,13 +60,23 @@ function formatDuration(ms: number): string {
   return remMin > 0 ? `${hours}h ${remMin}m` : `${hours}h`;
 }
 
-function PortalActivityPanel({ activity, client, portalEnabled }: { activity: PortalActivity; client: Client; portalEnabled: boolean }) {
+function PortalActivityPanel({ activity, client, portalEnabled, onBack, backLabel }: { activity: PortalActivity; client: Client; portalEnabled: boolean; onBack?: () => void; backLabel?: string }) {
   const maxDayVisits = Math.max(1, ...activity.perDay.map((d) => d.visits));
   const portalUrl = `/portal/${client.id}`;
 
   return (
     <div className="h-full overflow-y-auto bg-[var(--sa-bg)]">
       <div className="max-w-2xl mx-auto px-6 py-6 space-y-5">
+        {/* Back link */}
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1 text-[12px] text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-primary)] transition-colors"
+          >
+            <ArrowRight size={11} className="rotate-180" /> {backLabel ?? "Back"}
+          </button>
+        )}
+
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
@@ -206,7 +216,7 @@ function formatDate(d: string) {
   return new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function ProjectDetailPanel({ data, portalEnabled, onNavigate, onBack }: { data: ProjectData; portalEnabled: boolean; onNavigate: () => void; onBack: () => void }) {
+function ProjectDetailPanel({ data, portalEnabled, onNavigate, onBack, onShowActivity }: { data: ProjectData; portalEnabled: boolean; onNavigate: () => void; onBack: () => void; onShowActivity: () => void }) {
   const { project, products, totalCostGbp } = data;
   const progress = stageProgress(products);
 
@@ -262,15 +272,23 @@ function ProjectDetailPanel({ data, portalEnabled, onNavigate, onBack }: { data:
               }
             </p>
           </div>
-          {portalEnabled && (
-            <a
-              href={`/portal/${project.client_id}`}
-              target="_blank"
-              className="shrink-0 rounded-lg px-3 py-1.5 text-[12px] font-medium bg-[var(--sa-success)] text-white hover:opacity-90 transition-opacity"
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={onShowActivity}
+              className="flex items-center gap-1 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] font-medium text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
             >
-              View portal
-            </a>
-          )}
+              <Activity size={12} /> View activity
+            </button>
+            {portalEnabled && (
+              <a
+                href={`/portal/${project.client_id}`}
+                target="_blank"
+                className="rounded-lg px-3 py-1.5 text-[12px] font-medium bg-[var(--sa-success)] text-white hover:opacity-90 transition-opacity"
+              >
+                View portal
+              </a>
+            )}
+          </div>
         </section>
 
         {/* Stats row */}
@@ -435,12 +453,18 @@ function AddProjectModal({ clientId, onClose }: { clientId: string; onClose: () 
 
 export function ClientsPageClient({ client, projectData, portalActivity }: Props) {
   const router = useRouter();
-  const [selectedId, setSelectedId] = useState<string | null>(
+  const [selectedId, setSelectedIdRaw] = useState<string | null>(
     projectData[0]?.project.id ?? null
   );
+  const [showActivity, setShowActivity] = useState(false);
   const [showAddProject, setShowAddProject] = useState(false);
   const [portalEnabled, setPortalEnabled] = useState(!!client.portal_enabled);
   const [togglingPortal, setTogglingPortal] = useState(false);
+
+  function setSelectedId(id: string | null) {
+    setSelectedIdRaw(id);
+    setShowActivity(false);
+  }
 
   async function togglePortal() {
     setTogglingPortal(true);
@@ -570,13 +594,22 @@ export function ClientsPageClient({ client, projectData, portalActivity }: Props
       {/* Panel 3 — hidden on mobile when nothing selected, back button to return to list */}
       <div className={cn("flex-1 overflow-hidden bg-[var(--sa-bg)]", !selected && "hidden md:block")}>
         <AnimatePresence mode="wait">
-          {selected ? (
+          {selected && !showActivity ? (
             <ProjectDetailPanel
               key={selected.project.id}
               data={selected}
               portalEnabled={portalEnabled}
               onNavigate={() => router.push(`/projects/${selected.project.id}`)}
               onBack={() => setSelectedId(null)}
+              onShowActivity={() => setShowActivity(true)}
+            />
+          ) : selected && showActivity ? (
+            <PortalActivityPanel
+              activity={portalActivity}
+              client={client}
+              portalEnabled={portalEnabled}
+              onBack={() => setShowActivity(false)}
+              backLabel={`Back to ${selected.project.name}`}
             />
           ) : (
             <PortalActivityPanel activity={portalActivity} client={client} portalEnabled={portalEnabled} />
