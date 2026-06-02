@@ -495,7 +495,9 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
                 ["Category", product.category],
                 ["MOQ", product.moq != null ? product.moq.toLocaleString() + " units" : "TBC"],
                 ["Order qty", product.order_qty ? product.order_qty.toLocaleString() + " units" : "TBC"],
-                ["Unit price", product.quoted_cost_usd ? `$${product.quoted_cost_usd}` : "TBC"],
+                ...(product.price_tiers && product.price_tiers.length > 0
+                  ? []
+                  : [["Unit price", product.quoted_cost_usd ? `$${product.quoted_cost_usd}` : "TBC"]]),
               ].map(([k, v]) => (
                 <div key={k} className="rounded-lg p-3" style={{ background: "var(--portal-surface-raised)" }}>
                   <p className="text-[10px] mb-0.5" style={{ color: "var(--portal-text-muted)" }}>{k}</p>
@@ -506,6 +508,29 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
                 <div className="col-span-2 rounded-lg p-3" style={{ background: "var(--portal-surface-raised)", border: "1px solid var(--portal-border)" }}>
                   <p className="text-[10px] mb-0.5" style={{ color: "var(--portal-text-muted)" }}>Sample cost</p>
                   <p className="text-[16px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>${product.sample_fee_usd.toFixed(2)}</p>
+                </div>
+              )}
+              {product.price_tiers && product.price_tiers.length > 0 && (
+                <div className="col-span-2 rounded-lg p-3" style={{ background: "var(--portal-surface-raised)", border: "1px solid var(--portal-border)" }}>
+                  <p className="text-[10px] mb-2" style={{ color: "var(--portal-text-muted)" }}>Volume pricing</p>
+                  <table className="w-full text-[12px]">
+                    <thead>
+                      <tr>
+                        <th className="text-left pb-1.5 text-[10px] uppercase tracking-wide font-semibold" style={{ color: "var(--portal-text-muted)" }}>Units</th>
+                        <th className="text-right pb-1.5 text-[10px] uppercase tracking-wide font-semibold" style={{ color: "var(--portal-text-muted)" }}>Unit price</th>
+                        <th className="text-right pb-1.5 text-[10px] uppercase tracking-wide font-semibold" style={{ color: "var(--portal-text-muted)" }}>Line total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {product.price_tiers.map((t, i) => (
+                        <tr key={i} style={{ borderTop: i === 0 ? undefined : "1px solid var(--portal-border-subtle)" }}>
+                          <td className="py-1.5 font-mono" style={{ color: "var(--portal-text-secondary)" }}>{t.moq.toLocaleString()}</td>
+                          <td className="py-1.5 font-mono font-semibold text-right" style={{ color: "var(--portal-text-primary)" }}>${t.unit_price_usd.toFixed(2)}</td>
+                          <td className="py-1.5 font-mono text-right" style={{ color: "var(--portal-text-muted)" }}>${(t.moq * t.unit_price_usd).toLocaleString("en-US", { maximumFractionDigits: 0 })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>

@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { notFound } from "next/navigation";
 import { getProject, getProducts, getClient, getFactories, getSamplingInvoices } from "@/lib/data";
 import { ProjectsPageClient } from "./ProjectsPageClient";

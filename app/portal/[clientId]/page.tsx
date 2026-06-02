@@ -23,6 +23,7 @@ export interface PortalProduct {
   sample_fee_usd: number | null;
   expected_sample_date: string | null;
   sample_round: number;
+  price_tiers: { moq: number; unit_price_usd: number }[];
   milestones: { id: string; title: string; due_date: string; completed_at: string | null }[];
   updates: { id: string; author: string; author_initials: string; text: string; created_at: string }[];
 }
@@ -78,6 +79,7 @@ export default async function PortalPage({ params }: Props) {
             sample_fee_usd: (product as any).sample_fee_usd ?? null,
             expected_sample_date: (product as any).expected_sample_date ?? null,
             sample_round: (product as any).sample_round ?? 1,
+            price_tiers: ((product as any).price_tiers ?? []) as { moq: number; unit_price_usd: number }[],
             milestones: milestones.map((m) => ({
               id: m.id,
               title: m.title,

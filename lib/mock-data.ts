@@ -202,6 +202,12 @@ export interface Product {
   bom_data?: BomItem[] | null;
   documents?: DocumentItem[] | null;
   images?: string[] | null;
+  price_tiers?: PriceTier[] | null;
+}
+
+export interface PriceTier {
+  moq: number;
+  unit_price_usd: number;
 }
 
 export interface BomItem {

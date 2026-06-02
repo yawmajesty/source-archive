@@ -16,7 +16,7 @@ import { TrafficDot } from "@/components/shared/TrafficLight";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { uploadFile } from "@/lib/storage";
-import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem } from "@/lib/mock-data";
+import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem, PriceTier } from "@/lib/mock-data";
 
 const STAGES: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
 const CURRENCIES = ["USD", "GBP", "EUR", "CNY"];
@@ -324,6 +324,137 @@ function QuickAddTask({ projectId, productId, onClose }: { projectId: string; pr
         </button>
       </div>
     </motion.div>
+  );
+}
+
+interface TierRow { moq: string; unit_price_usd: string }
+
+function VolumePricingCard({ product, onSaved }: { product: Product; onSaved: (p: Partial<Product>) => void }) {
+  const initial: TierRow[] = (product.price_tiers ?? []).map((t) => ({
+    moq: String(t.moq),
+    unit_price_usd: String(t.unit_price_usd),
+  }));
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [rows, setRows] = useState<TierRow[]>(initial);
+
+  function startEdit() {
+    setRows(initial.length > 0 ? initial : [{ moq: "", unit_price_usd: "" }]);
+    setEditing(true);
+  }
+
+  function cancel() {
+    setRows(initial);
+    setEditing(false);
+  }
+
+  function addRow() { setRows((prev) => [...prev, { moq: "", unit_price_usd: "" }]); }
+  function updateRow(i: number, patch: Partial<TierRow>) { setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r)); }
+  function removeRow(i: number) { setRows((prev) => prev.filter((_, idx) => idx !== i)); }
+
+  async function handleSave() {
+    setSaving(true);
+    const parsed: PriceTier[] = rows
+      .map((r) => ({ moq: parseInt(r.moq), unit_price_usd: parseFloat(r.unit_price_usd) }))
+      .filter((r) => Number.isFinite(r.moq) && r.moq > 0 && Number.isFinite(r.unit_price_usd) && r.unit_price_usd > 0)
+      .sort((a, b) => a.moq - b.moq);
+    await supabase.from("products").update({ price_tiers: parsed }).eq("id", product.id);
+    onSaved({ price_tiers: parsed });
+    setSaving(false);
+    setEditing(false);
+  }
+
+  const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-2.5 py-1.5 text-[12px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors font-mono";
+  const tiers = product.price_tiers ?? [];
+
+  return (
+    <section className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-bg)]">
+      <div className="flex items-center justify-between px-4 py-3 panel-border-b">
+        <div>
+          <span className="text-[12px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">Volume pricing</span>
+          <span className="ml-2 text-[10px] text-[var(--sa-text-tertiary)]">Shown to client when set</span>
+        </div>
+        {!editing ? (
+          <button onClick={startEdit} className="text-[11px] text-[var(--sa-accent)] hover:opacity-70 transition-opacity">
+            {tiers.length > 0 ? "Edit" : "Add tiers"}
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button onClick={cancel} className="text-[11px] text-[var(--sa-text-tertiary)] hover:opacity-70">Cancel</button>
+            <button onClick={handleSave} disabled={saving} className="text-[11px] font-medium text-[var(--sa-accent)] hover:opacity-70 disabled:opacity-50 transition-opacity">
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="px-4 py-3">
+        {!editing ? (
+          tiers.length === 0 ? (
+            <p className="text-[12px] text-[var(--sa-text-tertiary)] italic">No volume tiers set. The single Quoted price will be shown.</p>
+          ) : (
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="text-left">
+                  <th className="pb-1.5 text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] font-semibold">Units</th>
+                  <th className="pb-1.5 text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] font-semibold text-right">Unit price</th>
+                  <th className="pb-1.5 text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] font-semibold text-right">Line total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--sa-border)]">
+                {tiers.map((t, i) => (
+                  <tr key={i}>
+                    <td className="py-1.5 font-mono text-[var(--sa-text-secondary)]">{t.moq.toLocaleString()}</td>
+                    <td className="py-1.5 font-mono font-semibold text-[var(--sa-text-primary)] text-right">${t.unit_price_usd.toFixed(2)}</td>
+                    <td className="py-1.5 font-mono text-[var(--sa-text-tertiary)] text-right">${(t.moq * t.unit_price_usd).toLocaleString("en-US", { maximumFractionDigits: 0 })}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        ) : (
+          <div className="flex flex-col gap-2">
+            {rows.map((r, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div className="flex-1">
+                  <input
+                    className={inputCls}
+                    type="number"
+                    min="1"
+                    placeholder="Units (e.g. 100)"
+                    value={r.moq}
+                    onChange={(e) => updateRow(i, { moq: e.target.value })}
+                  />
+                </div>
+                <div className="flex-1">
+                  <input
+                    className={inputCls}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Unit price USD"
+                    value={r.unit_price_usd}
+                    onChange={(e) => updateRow(i, { unit_price_usd: e.target.value })}
+                  />
+                </div>
+                <button
+                  onClick={() => removeRow(i)}
+                  className="rounded-md p-1.5 text-[var(--sa-text-tertiary)] hover:text-red-500 transition-colors"
+                  title="Remove tier"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={addRow}
+              className="flex items-center justify-center gap-1 rounded-lg border border-dashed border-[var(--sa-border)] py-1.5 text-[11px] font-medium text-[var(--sa-text-secondary)] hover:border-[var(--sa-accent)] hover:text-[var(--sa-accent)] transition-colors"
+            >
+              <Plus size={11} /> Add tier
+            </button>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -1174,6 +1305,9 @@ export function ProductDetailClient({
 
           {/* Pricing */}
           <PricingCard product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
+
+          {/* Volume pricing tiers */}
+          <VolumePricingCard product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
 
           {/* Milestones */}
           <section className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-bg)]">
