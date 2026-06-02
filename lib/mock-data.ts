@@ -203,6 +203,7 @@ export interface Product {
   documents?: DocumentItem[] | null;
   images?: string[] | null;
   price_tiers?: PriceTier[] | null;
+  internal_price_tiers?: PriceTier[] | null;
 }
 
 export interface PriceTier {

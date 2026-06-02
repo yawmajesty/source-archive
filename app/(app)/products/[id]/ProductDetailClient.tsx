@@ -329,8 +329,13 @@ function QuickAddTask({ projectId, productId, onClose }: { projectId: string; pr
 
 interface TierRow { moq: string; unit_price_usd: string }
 
-function VolumePricingCard({ product, onSaved }: { product: Product; onSaved: (p: Partial<Product>) => void }) {
-  const initial: TierRow[] = (product.price_tiers ?? []).map((t) => ({
+function VolumePricingCard({ product, onSaved, kind }: { product: Product; onSaved: (p: Partial<Product>) => void; kind: "client" | "internal" }) {
+  const field = kind === "client" ? "price_tiers" : "internal_price_tiers";
+  const title = kind === "client" ? "Volume pricing (client)" : "Volume pricing (internal)";
+  const subtitle = kind === "client" ? "Shown to client when set" : "Supplier costs — internal only";
+  const source = (kind === "client" ? product.price_tiers : product.internal_price_tiers) ?? [];
+
+  const initial: TierRow[] = source.map((t) => ({
     moq: String(t.moq),
     unit_price_usd: String(t.unit_price_usd),
   }));
@@ -358,21 +363,22 @@ function VolumePricingCard({ product, onSaved }: { product: Product; onSaved: (p
       .map((r) => ({ moq: parseInt(r.moq), unit_price_usd: parseFloat(r.unit_price_usd) }))
       .filter((r) => Number.isFinite(r.moq) && r.moq > 0 && Number.isFinite(r.unit_price_usd) && r.unit_price_usd > 0)
       .sort((a, b) => a.moq - b.moq);
-    await supabase.from("products").update({ price_tiers: parsed }).eq("id", product.id);
-    onSaved({ price_tiers: parsed });
+    const updates: Partial<Product> = { [field]: parsed };
+    await supabase.from("products").update(updates).eq("id", product.id);
+    onSaved(updates);
     setSaving(false);
     setEditing(false);
   }
 
   const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-2.5 py-1.5 text-[12px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors font-mono";
-  const tiers = product.price_tiers ?? [];
+  const tiers = source;
 
   return (
     <section className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-bg)]">
       <div className="flex items-center justify-between px-4 py-3 panel-border-b">
         <div>
-          <span className="text-[12px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">Volume pricing</span>
-          <span className="ml-2 text-[10px] text-[var(--sa-text-tertiary)]">Shown to client when set</span>
+          <span className="text-[12px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">{title}</span>
+          <span className="ml-2 text-[10px] text-[var(--sa-text-tertiary)]">{subtitle}</span>
         </div>
         {!editing ? (
           <button onClick={startEdit} className="text-[11px] text-[var(--sa-accent)] hover:opacity-70 transition-opacity">
@@ -390,7 +396,11 @@ function VolumePricingCard({ product, onSaved }: { product: Product; onSaved: (p
       <div className="px-4 py-3">
         {!editing ? (
           tiers.length === 0 ? (
-            <p className="text-[12px] text-[var(--sa-text-tertiary)] italic">No volume tiers set. The single Quoted price will be shown.</p>
+            <p className="text-[12px] text-[var(--sa-text-tertiary)] italic">
+              {kind === "client"
+                ? "No volume tiers set. The single Quoted price will be shown to the client."
+                : "No supplier tiers set yet."}
+            </p>
           ) : (
             <table className="w-full text-[12px]">
               <thead>
@@ -1307,7 +1317,8 @@ export function ProductDetailClient({
           <PricingCard product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
 
           {/* Volume pricing tiers */}
-          <VolumePricingCard product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
+          <VolumePricingCard kind="client" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
+          <VolumePricingCard kind="internal" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
 
           {/* Milestones */}
           <section className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-bg)]">
