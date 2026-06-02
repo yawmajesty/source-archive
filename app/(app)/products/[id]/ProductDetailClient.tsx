@@ -342,14 +342,17 @@ function VolumePricingCard({ product, onSaved, kind }: { product: Product; onSav
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [rows, setRows] = useState<TierRow[]>(initial);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   function startEdit() {
     setRows(initial.length > 0 ? initial : [{ moq: "", unit_price_usd: "" }]);
+    setSaveError(null);
     setEditing(true);
   }
 
   function cancel() {
     setRows(initial);
+    setSaveError(null);
     setEditing(false);
   }
 
@@ -359,14 +362,19 @@ function VolumePricingCard({ product, onSaved, kind }: { product: Product; onSav
 
   async function handleSave() {
     setSaving(true);
+    setSaveError(null);
     const parsed: PriceTier[] = rows
       .map((r) => ({ moq: parseInt(r.moq), unit_price_usd: parseFloat(r.unit_price_usd) }))
       .filter((r) => Number.isFinite(r.moq) && r.moq > 0 && Number.isFinite(r.unit_price_usd) && r.unit_price_usd > 0)
       .sort((a, b) => a.moq - b.moq);
     const updates: Partial<Product> = { [field]: parsed };
-    await supabase.from("products").update(updates).eq("id", product.id);
-    onSaved(updates);
+    const { error } = await supabase.from("products").update(updates).eq("id", product.id);
     setSaving(false);
+    if (error) {
+      setSaveError(error.message);
+      return;
+    }
+    onSaved(updates);
     setEditing(false);
   }
 
@@ -461,6 +469,16 @@ function VolumePricingCard({ product, onSaved, kind }: { product: Product; onSav
             >
               <Plus size={11} /> Add tier
             </button>
+            {saveError && (
+              <p className="text-[11px] text-red-500 mt-1">
+                Couldn't save: {saveError}
+                {/column.*does not exist/i.test(saveError) && (
+                  <span className="block text-[10px] text-[var(--sa-text-tertiary)] mt-0.5">
+                    Run the ALTER TABLE migration in Supabase to add the price_tiers / internal_price_tiers columns.
+                  </span>
+                )}
+              </p>
+            )}
           </div>
         )}
       </div>
