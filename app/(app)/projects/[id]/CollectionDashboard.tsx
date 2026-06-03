@@ -17,15 +17,12 @@ const STAGE_COLORS: Record<Stage, string> = {
   shipped:    "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300",
 };
 
-function priceForQty(tiers: PriceTier[] | null | undefined, fallback: number | null | undefined, qty: number): number | null {
+// If volume tiers exist, use the middle tier (median by MOQ);
+// otherwise fall back to the single client_unit_price_usd / quoted_cost_usd.
+function representativePrice(tiers: PriceTier[] | null | undefined, fallback: number | null | undefined): number | null {
   if (tiers && tiers.length > 0) {
     const sorted = [...tiers].sort((a, b) => a.moq - b.moq);
-    let best = sorted[0];
-    for (const t of sorted) {
-      if (t.moq <= qty) best = t;
-      else break;
-    }
-    return best.unit_price_usd;
+    return sorted[Math.floor(sorted.length / 2)].unit_price_usd;
   }
   return fallback ?? null;
 }
@@ -53,8 +50,8 @@ export function CollectionDashboard({ products, onOpenProduct }: Props) {
   for (const p of products) {
     const qty = p.order_qty ?? p.moq ?? 0;
     if (qty <= 0) continue;
-    const clientUnit = priceForQty(p.price_tiers, p.client_unit_price_usd, qty);
-    const supplierUnit = priceForQty(p.internal_price_tiers, p.quoted_cost_usd, qty);
+    const clientUnit = representativePrice(p.price_tiers, p.client_unit_price_usd);
+    const supplierUnit = representativePrice(p.internal_price_tiers, p.quoted_cost_usd);
     if (clientUnit == null && supplierUnit == null && p.target_cost_usd == null) continue;
     totalQty += qty;
     if (p.target_cost_usd != null) totalTargetCost += p.target_cost_usd * qty;
