@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronRight, Package, ArrowRight, Plus, X, Pencil, Trash2, Check,
-  LayoutList, Table2, GitBranch, Copy, Receipt,
+  LayoutList, Table2, GitBranch, Copy, Receipt, LayoutGrid,
 } from "lucide-react";
 import { QuoteBuilder } from "./QuoteBuilder";
+import { CollectionDashboard } from "./CollectionDashboard";
 import { ResizablePanel } from "@/components/layout/ResizablePanel";
 import { ProductRow } from "@/components/shared/ProductRow";
 import { StageTrack } from "@/components/shared/StageTrack";
@@ -34,7 +35,7 @@ interface Props {
 
 type SortKey = "name" | "stage" | "cost";
 type SortDir = "asc" | "desc";
-type ViewMode = "list" | "table" | "quotes";
+type ViewMode = "dashboard" | "list" | "table" | "quotes";
 
 const STAGE_ORDER: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
 const STAGES: Stage[] = STAGE_ORDER;
@@ -667,7 +668,7 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [showAddProduct, setShowAddProduct] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
 
   // Rename
   const [projectName, setProjectName] = useState(project.name);
@@ -775,6 +776,12 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
           <div className="flex items-center gap-2 shrink-0">
             {/* View mode toggle */}
             <div className="flex items-center gap-0.5 rounded-lg bg-[var(--sa-bg)] p-0.5 border border-[var(--sa-border)]">
+              <button onClick={() => setViewMode("dashboard")}
+                title="Dashboard"
+                className={cn("rounded-md p-1.5 transition-colors", viewMode === "dashboard" ? "bg-[var(--sa-window)] text-[var(--sa-text-primary)] shadow-sm" : "text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-secondary)]")}
+              >
+                <LayoutGrid size={13} />
+              </button>
               <button onClick={() => setViewMode("list")}
                 title="List view"
                 className={cn("rounded-md p-1.5 transition-colors", viewMode === "list" ? "bg-[var(--sa-window)] text-[var(--sa-text-primary)] shadow-sm" : "text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-secondary)]")}
@@ -810,7 +817,11 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
         </div>
 
         {/* Body */}
-        {viewMode === "quotes" ? (
+        {viewMode === "dashboard" ? (
+          <div className="flex-1 overflow-hidden">
+            <CollectionDashboard products={products} onOpenProduct={openProduct} />
+          </div>
+        ) : viewMode === "quotes" ? (
           <div className="flex-1 overflow-hidden">
             {client ? (
               <QuoteBuilder
