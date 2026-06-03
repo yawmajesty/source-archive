@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { forkProductsToRound } from "./actions";
-import type { Client, Project, Product, Factory, Stage } from "@/lib/mock-data";
+import type { Client, Project, Product, Factory, Stage, PriceTier } from "@/lib/mock-data";
 import type { SavedInvoice } from "@/lib/data";
 
 interface ProductWithFactory {
@@ -52,6 +52,22 @@ const STAGE_COLORS: Record<Stage, string> = {
 function fmt(v: number | null | undefined, prefix = "$") {
   if (v == null) return "—";
   return `${prefix}${v.toFixed(2)}`;
+}
+
+// Pick the tier price applicable at a given quantity:
+// largest tier whose moq ≤ qty, falling back to the smallest tier if qty is below all.
+// If no tiers, return the flat fallback.
+function priceForQty(tiers: PriceTier[] | null | undefined, fallback: number | null | undefined, qty: number): number | null {
+  if (tiers && tiers.length > 0) {
+    const sorted = [...tiers].sort((a, b) => a.moq - b.moq);
+    let best = sorted[0];
+    for (const t of sorted) {
+      if (t.moq <= qty) best = t;
+      else break;
+    }
+    return best.unit_price_usd;
+  }
+  return fallback ?? null;
 }
 
 function RoundBadge({ round }: { round: number }) {
@@ -327,7 +343,7 @@ function CollectionTable({
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [forking, startFork] = useTransition();
-  const [viewTab, setViewTab] = useState<"products" | "sampling">("products");
+  const [viewTab, setViewTab] = useState<"products" | "sampling" | "production">("products");
 
   const allIds = productsWithFactory.map((i) => i.product.id);
   const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
@@ -361,18 +377,34 @@ function CollectionTable({
   const totalCost   = samplingItems.reduce((s, { product: p }) => s + (p.sample_cost_usd ?? 0), 0);
   const totalMargin = totalFee - totalCost;
 
+  // Production P&L rows — per-product projected revenue/cost/margin
+  const productionRows = productsWithFactory.map(({ product: p }) => {
+    const qty = p.order_qty ?? p.moq ?? 0;
+    const clientUnit = priceForQty(p.price_tiers, p.client_unit_price_usd, qty);
+    const supplierUnit = priceForQty(p.internal_price_tiers, p.quoted_cost_usd, qty);
+    const unitMargin = clientUnit != null && supplierUnit != null ? clientUnit - supplierUnit : null;
+    const lineRevenue = clientUnit != null && qty > 0 ? clientUnit * qty : null;
+    const lineCost = supplierUnit != null && qty > 0 ? supplierUnit * qty : null;
+    const lineMargin = lineRevenue != null && lineCost != null ? lineRevenue - lineCost : null;
+    return { product: p, qty, clientUnit, supplierUnit, unitMargin, lineRevenue, lineCost, lineMargin };
+  });
+  const prodTotalRevenue = productionRows.reduce((s, r) => s + (r.lineRevenue ?? 0), 0);
+  const prodTotalCost    = productionRows.reduce((s, r) => s + (r.lineCost ?? 0), 0);
+  const prodTotalMargin  = prodTotalRevenue - prodTotalCost;
+  const prodMarginPct    = prodTotalRevenue > 0 ? (prodTotalMargin / prodTotalRevenue) * 100 : null;
+
   return (
     <div className="flex flex-col h-full">
       {/* Sub-tab strip + actions */}
       <div className="flex items-center justify-between gap-2 px-3 py-2 panel-border-b bg-[var(--sa-window)] shrink-0">
         <div className="flex items-center gap-0.5 rounded-lg bg-[var(--sa-bg)] p-0.5 border border-[var(--sa-border)]">
-          {(["products", "sampling"] as const).map((t) => (
+          {(["products", "sampling", "production"] as const).map((t) => (
             <button key={t} onClick={() => setViewTab(t)}
               className={cn("rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors capitalize",
                 viewTab === t ? "bg-[var(--sa-window)] text-[var(--sa-text-primary)] shadow-sm" : "text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-secondary)]"
               )}
             >
-              {t === "products" ? "Products" : "Sampling P&L"}
+              {t === "products" ? "Products" : t === "sampling" ? "Sampling P&L" : "Production P&L"}
             </button>
           ))}
         </div>
@@ -462,7 +494,7 @@ function CollectionTable({
             <div className="flex items-center justify-center py-16 text-[13px] text-[var(--sa-text-tertiary)]">No products yet</div>
           )}
         </div>
-      ) : (
+      ) : viewTab === "sampling" ? (
         /* Sampling P&L table */
         <div className="flex-1 overflow-auto">
           <table className="w-full border-collapse text-[12px]">
@@ -529,6 +561,90 @@ function CollectionTable({
                     {totalFee > 0 || totalCost > 0 ? `${totalMargin >= 0 ? "+" : ""}$${totalMargin.toFixed(2)}` : "—"}
                   </td>
                   <td colSpan={3} />
+                </tr>
+              </tfoot>
+            )}
+          </table>
+          {productsWithFactory.length === 0 && (
+            <div className="flex items-center justify-center py-16 text-[13px] text-[var(--sa-text-tertiary)]">No products yet</div>
+          )}
+        </div>
+      ) : (
+        /* Production P&L table */
+        <div className="flex-1 overflow-auto">
+          <table className="w-full border-collapse text-[12px]">
+            <thead className="sticky top-0 z-10 bg-[var(--sa-window)] border-b border-[var(--sa-border)]">
+              <tr>
+                {["#", "Product", "Stage", "Qty", "Client unit", "Supplier unit", "Unit margin", "Margin %", "Revenue", "Cost", "Total margin"].map((h) => (
+                  <th key={h} className="px-3 py-2 text-left text-[9px] font-semibold uppercase tracking-wide text-[var(--sa-text-tertiary)] whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {productionRows.map(({ product: p, qty, clientUnit, supplierUnit, unitMargin, lineRevenue, lineCost, lineMargin }, i) => {
+                const marginPct = clientUnit != null && clientUnit > 0 && unitMargin != null ? (unitMargin / clientUnit) * 100 : null;
+                const hasAnyValue = lineRevenue != null || lineCost != null;
+                return (
+                  <tr key={p.id} className={cn("border-b border-[var(--sa-border)] hover:bg-[var(--sa-hover)] transition-colors", i % 2 === 1 && "bg-[var(--sa-bg)]/40")}>
+                    <td className="px-3 py-2.5 text-[var(--sa-text-tertiary)]">{i + 1}</td>
+                    <td className="px-3 py-2.5 font-medium text-[var(--sa-text-primary)] max-w-[160px]">
+                      <p className="truncate">{p.name}</p>
+                      {p.category && <p className="text-[10px] text-[var(--sa-text-tertiary)]">{p.category}</p>}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", STAGE_COLORS[p.stage])}>
+                        {p.stage}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-secondary)] whitespace-nowrap">
+                      {qty > 0 ? qty.toLocaleString() : "—"}
+                      {p.order_qty == null && p.moq != null && qty > 0 && (
+                        <span className="ml-1 text-[9px] text-[var(--sa-text-tertiary)]" title="Using MOQ — order qty not set">MOQ</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-primary)]">{clientUnit != null ? `$${clientUnit.toFixed(2)}` : "—"}</td>
+                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-secondary)]">{supplierUnit != null ? `$${supplierUnit.toFixed(2)}` : "—"}</td>
+                    <td className={cn("px-3 py-2.5 font-mono font-semibold",
+                      unitMargin == null ? "text-[var(--sa-text-tertiary)]"
+                      : unitMargin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]"
+                    )}>
+                      {unitMargin != null ? `${unitMargin >= 0 ? "+" : ""}$${unitMargin.toFixed(2)}` : "—"}
+                    </td>
+                    <td className={cn("px-3 py-2.5 font-mono",
+                      marginPct == null ? "text-[var(--sa-text-tertiary)]"
+                      : marginPct >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]"
+                    )}>
+                      {marginPct != null ? `${marginPct >= 0 ? "+" : ""}${marginPct.toFixed(1)}%` : "—"}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-primary)]">{lineRevenue != null ? `$${lineRevenue.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—"}</td>
+                    <td className="px-3 py-2.5 font-mono text-[var(--sa-text-secondary)]">{lineCost != null ? `$${lineCost.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—"}</td>
+                    <td className={cn("px-3 py-2.5 font-mono font-semibold",
+                      !hasAnyValue || lineMargin == null ? "text-[var(--sa-text-tertiary)]"
+                      : lineMargin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]"
+                    )}>
+                      {lineMargin != null ? `${lineMargin >= 0 ? "+" : ""}$${lineMargin.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            {productionRows.length > 0 && (prodTotalRevenue > 0 || prodTotalCost > 0) && (
+              <tfoot className="border-t-2 border-[var(--sa-border-strong)] bg-[var(--sa-bg)]">
+                <tr>
+                  <td colSpan={7} className="px-3 py-3 text-[11px] font-semibold text-[var(--sa-text-secondary)]">Collection total</td>
+                  <td className={cn("px-3 py-3 font-mono text-[13px] font-bold",
+                    prodMarginPct == null ? "text-[var(--sa-text-tertiary)]"
+                    : prodMarginPct >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]"
+                  )}>
+                    {prodMarginPct != null ? `${prodMarginPct >= 0 ? "+" : ""}${prodMarginPct.toFixed(1)}%` : "—"}
+                  </td>
+                  <td className="px-3 py-3 font-mono text-[13px] font-bold text-[var(--sa-text-primary)]">${prodTotalRevenue.toLocaleString("en-US", { maximumFractionDigits: 0 })}</td>
+                  <td className="px-3 py-3 font-mono text-[13px] font-bold text-[var(--sa-text-primary)]">${prodTotalCost.toLocaleString("en-US", { maximumFractionDigits: 0 })}</td>
+                  <td className={cn("px-3 py-3 font-mono text-[13px] font-bold",
+                    prodTotalMargin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]"
+                  )}>
+                    {`${prodTotalMargin >= 0 ? "+" : ""}$${prodTotalMargin.toLocaleString("en-US", { maximumFractionDigits: 0 })}`}
+                  </td>
                 </tr>
               </tfoot>
             )}
