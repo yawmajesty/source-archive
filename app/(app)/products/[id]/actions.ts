@@ -1,0 +1,147 @@
+"use server";
+
+import Anthropic from "@anthropic-ai/sdk";
+import { supabaseData as supabase } from "@/lib/supabase-data";
+import { revalidatePath } from "next/cache";
+
+export interface AutoTags {
+  auto_type: string;
+  auto_category: string;
+  auto_color: string;
+  auto_fabric: string;
+}
+
+const TAG_SCHEMA = {
+  type: "object" as const,
+  properties: {
+    product_type: {
+      type: "string",
+      description:
+        "The specific product type as it would be named in a sourcing brief. " +
+        "Examples: 't-shirt', 'oversized hoodie', 'cargo pants', 'denim jacket', 'tote bag', 'cap', 'sneakers'. " +
+        "Lowercase. Keep it short.",
+    },
+    category: {
+      type: "string",
+      description:
+        "Broad category. One of: 'apparel', 'outerwear', 'knitwear', 'denim', 'accessories', " +
+        "'footwear', 'headwear', 'bags', 'jewelry', 'homeware', 'other'. Lowercase.",
+    },
+    color: {
+      type: "string",
+      description:
+        "Primary visible colour or colour combination. " +
+        "Examples: 'black', 'cream', 'washed indigo', 'sage green', 'multicolour print'. Lowercase.",
+    },
+    fabric: {
+      type: "string",
+      description:
+        "Likely fabric or material based on the visual. " +
+        "Examples: 'cotton jersey', 'heavyweight fleece', 'denim', 'wool blend', 'nylon', 'leather'. " +
+        "Lowercase. If genuinely uncertain, say 'unknown'.",
+    },
+  },
+  required: ["product_type", "category", "color", "fabric"],
+};
+
+export async function autoTagProduct(productId: string): Promise<
+  { success: true; tags: AutoTags } | { success: false; error: string }
+> {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return { success: false, error: "ANTHROPIC_API_KEY is not set in the server environment." };
+  }
+
+  const { data: product, error: fetchErr } = await supabase
+    .from("products")
+    .select("id, name, category, notes, images, project_id")
+    .eq("id", productId)
+    .single();
+
+  if (fetchErr || !product) {
+    return { success: false, error: fetchErr?.message ?? "Product not found" };
+  }
+
+  const images = (product.images ?? []) as string[];
+  if (images.length === 0) {
+    return { success: false, error: "Add at least one product image before auto-tagging." };
+  }
+
+  // Use up to 3 images to give the model variety without exploding cost.
+  const imageUrls = images.slice(0, 3);
+
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const userContent: Anthropic.MessageParam["content"] = [
+    ...imageUrls.map((url) => ({
+      type: "image" as const,
+      source: { type: "url" as const, url },
+    })),
+    {
+      type: "text" as const,
+      text:
+        `Tag this product for our sourcing database.\n\n` +
+        `Listed name: ${product.name || "(unnamed)"}\n` +
+        `Listed category: ${product.category || "(none)"}\n` +
+        `Notes: ${product.notes || "(none)"}\n\n` +
+        `Use the submit_tags tool. Prefer the visual evidence over the listed text when they conflict.`,
+    },
+  ];
+
+  let response;
+  try {
+    response = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 500,
+      tools: [
+        {
+          name: "submit_tags",
+          description: "Submit the four product tags for this item.",
+          input_schema: TAG_SCHEMA,
+        },
+      ],
+      tool_choice: { type: "tool", name: "submit_tags" },
+      messages: [{ role: "user", content: userContent }],
+    });
+  } catch (e: any) {
+    return { success: false, error: `Tagging request failed: ${e?.message ?? String(e)}` };
+  }
+
+  const toolUse = response.content.find((b) => b.type === "tool_use");
+  if (!toolUse || toolUse.type !== "tool_use") {
+    return { success: false, error: "Model did not return structured tags." };
+  }
+
+  const input = toolUse.input as {
+    product_type?: string;
+    category?: string;
+    color?: string;
+    fabric?: string;
+  };
+
+  const tags: AutoTags = {
+    auto_type: (input.product_type ?? "").trim().toLowerCase(),
+    auto_category: (input.category ?? "").trim().toLowerCase(),
+    auto_color: (input.color ?? "").trim().toLowerCase(),
+    auto_fabric: (input.fabric ?? "").trim().toLowerCase(),
+  };
+
+  const { error: saveErr } = await supabase
+    .from("products")
+    .update({ ...tags, auto_tagged_at: new Date().toISOString() })
+    .eq("id", productId);
+
+  if (saveErr) {
+    return { success: false, error: `Saved tags but DB update failed: ${saveErr.message}` };
+  }
+
+  revalidatePath(`/products/${productId}`);
+  if (product.project_id) revalidatePath(`/projects/${product.project_id}`);
+  return { success: true, tags };
+}
+
+export async function updateAutoTags(productId: string, tags: AutoTags): Promise<{ success: boolean; error?: string }> {
+  const { error } = await supabase.from("products").update(tags).eq("id", productId);
+  if (error) return { success: false, error: error.message };
+  revalidatePath(`/products/${productId}`);
+  return { success: true };
+}

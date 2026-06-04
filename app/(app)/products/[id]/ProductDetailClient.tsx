@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { uploadFile } from "@/lib/storage";
 import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem, PriceTier } from "@/lib/mock-data";
+import { autoTagProduct, updateAutoTags } from "./actions";
 
 const STAGES: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
 const CURRENCIES = ["USD", "GBP", "EUR", "CNY"];
@@ -220,6 +221,129 @@ function MediaSection({ productId, initialImages }: { productId: string; initial
 function formatDate(d: string | null) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function AutoTagsSection({ product, onSaved }: { product: Product; onSaved: (p: Partial<Product>) => void }) {
+  const initial = {
+    auto_type: product.auto_type ?? "",
+    auto_category: product.auto_category ?? "",
+    auto_color: product.auto_color ?? "",
+    auto_fabric: product.auto_fabric ?? "",
+  };
+  const hasImages = ((product.images ?? []) as string[]).length > 0;
+  const hasTags = !!(product.auto_type || product.auto_category || product.auto_color || product.auto_fabric);
+  const [running, setRunning] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState(initial);
+
+  async function handleTag() {
+    setRunning(true);
+    setError(null);
+    const res = await autoTagProduct(product.id);
+    setRunning(false);
+    if (!res.success) { setError(res.error); return; }
+    onSaved({ ...res.tags, auto_tagged_at: new Date().toISOString() });
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    const res = await updateAutoTags(product.id, draft);
+    setSaving(false);
+    if (!res.success) { setError(res.error ?? "Save failed"); return; }
+    onSaved(draft);
+    setEditing(false);
+  }
+
+  function startEdit() {
+    setDraft({
+      auto_type: product.auto_type ?? "",
+      auto_category: product.auto_category ?? "",
+      auto_color: product.auto_color ?? "",
+      auto_fabric: product.auto_fabric ?? "",
+    });
+    setEditing(true);
+  }
+
+  const fields: Array<{ key: keyof typeof draft; label: string }> = [
+    { key: "auto_type",     label: "Product type" },
+    { key: "auto_category", label: "Category" },
+    { key: "auto_color",    label: "Colour" },
+    { key: "auto_fabric",   label: "Fabric" },
+  ];
+
+  const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-2.5 py-1.5 text-[12px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors";
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] text-[var(--sa-text-tertiary)]">
+          {hasTags
+            ? <>Tagged {product.auto_tagged_at ? new Date(product.auto_tagged_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : ""} · feeds analytics & future pricing suggestions</>
+            : "Tag this product to feed the pricing dataset."}
+        </p>
+        <div className="flex items-center gap-2">
+          {hasTags && !editing && (
+            <button
+              onClick={startEdit}
+              className="rounded-md border border-[var(--sa-border)] px-2.5 py-1 text-[11px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
+            >
+              Edit
+            </button>
+          )}
+          <button
+            onClick={handleTag}
+            disabled={running || !hasImages}
+            title={!hasImages ? "Add an image to enable auto-tagging" : "Run the AI tagger"}
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-3 py-1 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+          >
+            <Sparkles size={11} /> {running ? "Tagging…" : hasTags ? "Re-tag" : "Auto-tag"}
+          </button>
+        </div>
+      </div>
+
+      {error && <p className="text-[11px] text-red-500">{error}</p>}
+
+      {editing ? (
+        <div className="grid grid-cols-2 gap-2.5">
+          {fields.map(({ key, label }) => (
+            <div key={key}>
+              <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] mb-1">{label}</p>
+              <input
+                className={inputCls}
+                value={draft[key]}
+                onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+              />
+            </div>
+          ))}
+          <div className="col-span-2 flex justify-end gap-2 mt-1">
+            <button onClick={() => setEditing(false)} className="rounded-lg border border-[var(--sa-border)] px-3 py-1 text-[11px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors">Cancel</button>
+            <button onClick={handleSave} disabled={saving} className="rounded-lg bg-[var(--sa-accent)] px-3 py-1 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : hasTags ? (
+        <div className="grid grid-cols-2 gap-2">
+          {fields.map(({ key, label }) => {
+            const value = product[key as keyof Product] as string | null | undefined;
+            return (
+              <div key={key} className="rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] p-2.5">
+                <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{label}</p>
+                <p className="mt-0.5 text-[13px] font-medium text-[var(--sa-text-primary)] capitalize">{value || "—"}</p>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        !hasImages && (
+          <p className="text-[12px] text-[var(--sa-text-tertiary)] italic">Add at least one image above to enable auto-tagging.</p>
+        )
+      )}
+    </div>
+  );
 }
 
 function CollapsibleSection({
@@ -1202,6 +1326,11 @@ export function ProductDetailClient({
           {/* Media */}
           <CollapsibleSection title="Images & Video">
             <MediaSection productId={product.id} initialImages={(product as any).images ?? []} />
+          </CollapsibleSection>
+
+          {/* Auto tags */}
+          <CollapsibleSection title="Auto tags">
+            <AutoTagsSection product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
           </CollapsibleSection>
 
           {/* BOM */}

@@ -204,6 +204,12 @@ export interface Product {
   images?: string[] | null;
   price_tiers?: PriceTier[] | null;
   internal_price_tiers?: PriceTier[] | null;
+  // Auto-tagged attributes (from vision model)
+  auto_type?: string | null;
+  auto_category?: string | null;
+  auto_color?: string | null;
+  auto_fabric?: string | null;
+  auto_tagged_at?: string | null;
 }
 
 export interface PriceTier {
