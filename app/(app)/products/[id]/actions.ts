@@ -53,7 +53,7 @@ export async function autoTagProduct(productId: string): Promise<
 
   const { data: product, error: fetchErr } = await supabase
     .from("products")
-    .select("id, name, category, notes, images, project_id")
+    .select("id, name, category, notes, images, documents, project_id")
     .eq("id", productId)
     .single();
 
@@ -62,17 +62,26 @@ export async function autoTagProduct(productId: string): Promise<
   }
 
   const images = (product.images ?? []) as string[];
+  const documents = (product.documents ?? []) as Array<{ filename?: string; url?: string }>;
   const hasText = !!(product.name || product.category || product.notes);
-  if (images.length === 0 && !hasText) {
-    return { success: false, error: "Need at least a product name or image before auto-tagging." };
+  if (images.length === 0 && documents.length === 0 && !hasText) {
+    return { success: false, error: "Need a product name, image, or tech pack before auto-tagging." };
   }
 
-  // Use up to 3 images to give the model variety without exploding cost.
+  // Cap inputs to keep token usage predictable.
   const imageUrls = images.slice(0, 3);
+  const pdfDocs = documents
+    .filter((d) => !!d.url && /\.pdf($|\?)/i.test(d.filename ?? d.url ?? ""))
+    .slice(0, 2);
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const userContent: Anthropic.MessageParam["content"] = [
+    // PDFs first (tech packs tend to carry the richest construction detail)
+    ...pdfDocs.map((d) => ({
+      type: "document" as const,
+      source: { type: "url" as const, url: d.url! },
+    })),
     ...imageUrls.map((url) => ({
       type: "image" as const,
       source: { type: "url" as const, url },
@@ -80,14 +89,15 @@ export async function autoTagProduct(productId: string): Promise<
     {
       type: "text" as const,
       text:
-        `Tag this sourcing product. Weigh the product name, category, and notes equally with the images — ` +
-        `text often carries fabric/weight/finish detail that the photo can't show (e.g. "heavyweight French terry hoodie · stone wash"). ` +
+        `Tag this sourcing product. Weigh the product name, category, notes, attached tech packs, and images all equally — ` +
+        `text and tech packs often carry fabric/weight/finish detail that a photo can't show (e.g. "heavyweight French terry hoodie · stone wash"). ` +
         `Use the images for what they show most clearly (silhouette, colour). ` +
-        `When text and visuals genuinely conflict, trust the more specific signal.\n\n` +
+        `When sources genuinely conflict, trust whichever is most specific (a tech pack BOM beats a guess from a photo).\n\n` +
         `Name: ${product.name || "(none)"}\n` +
         `Category: ${product.category || "(none)"}\n` +
-        `Notes: ${product.notes || "(none)"}\n\n` +
-        `Submit your tags via the submit_tags tool.`,
+        `Notes: ${product.notes || "(none)"}\n` +
+        (pdfDocs.length > 0 ? `Tech packs attached: ${pdfDocs.map((d) => d.filename ?? "untitled.pdf").join(", ")}\n` : "") +
+        `\nSubmit your tags via the submit_tags tool.`,
     },
   ];
 

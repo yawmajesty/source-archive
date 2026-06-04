@@ -285,18 +285,19 @@ function AutoTagsSection({ product, onSaved }: { product: Product; onSaved: (p: 
             : "Tag this product to feed the pricing dataset."}
         </p>
         <div className="flex items-center gap-2">
-          {hasTags && !editing && (
+          {!editing && (
             <button
               onClick={startEdit}
               className="rounded-md border border-[var(--sa-border)] px-2.5 py-1 text-[11px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
+              title="Fill in tags yourself — no AI tokens used"
             >
-              Edit
+              {hasTags ? "Edit" : "Tag manually"}
             </button>
           )}
           <button
             onClick={handleTag}
             disabled={running}
-            title={hasImages ? "Tag using images + name + notes" : "Tag from the product name + notes (images make it more accurate)"}
+            title={hasImages ? "Tag using images + name + notes + tech packs" : "Tag from the product name + notes (images and tech packs make it more accurate)"}
             className="flex items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-3 py-1 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
             <Sparkles size={11} /> {running ? "Tagging…" : hasTags ? "Re-tag" : "Auto-tag"}
