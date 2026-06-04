@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, ChevronDown, ChevronRight, Package,
   CheckCircle, Plus, Upload, Edit2, X, Trash2, Image as ImageIcon,
-  FileText, TrendingUp, TrendingDown, DollarSign, Video,
+  FileText, TrendingUp, TrendingDown, DollarSign, Video, Sparkles,
 } from "lucide-react";
 import { StageTrack } from "@/components/shared/StageTrack";
 import { StatusBadge, SampleStatusBadge } from "@/components/shared/StatusBadge";
@@ -329,6 +329,29 @@ function QuickAddTask({ projectId, productId, onClose }: { projectId: string; pr
 
 interface TierRow { moq: string; unit_price_usd: string }
 
+const MARGIN_PRESETS: ReadonlyArray<{ label: string; value: number }> = [
+  { label: "Low",  value: 0.30 },
+  { label: "Med",  value: 0.50 },
+  { label: "High", value: 0.65 },
+];
+
+// Looks up the supplier (internal) cost relevant to a given client MOQ.
+// Picks the largest internal tier whose moq <= the row moq, or the smallest tier if below all,
+// otherwise falls back to the flat quoted_cost_usd. Returns null if no reference is available.
+function supplierCostForMoq(product: Product, moq: number): number | null {
+  const internal = product.internal_price_tiers ?? [];
+  if (internal.length > 0) {
+    const sorted = [...internal].sort((a, b) => a.moq - b.moq);
+    let best: PriceTier | null = null;
+    for (const t of sorted) {
+      if (t.moq <= moq) best = t;
+      else break;
+    }
+    return (best ?? sorted[0]).unit_price_usd;
+  }
+  return product.quoted_cost_usd ?? null;
+}
+
 function VolumePricingCard({ product, onSaved, kind }: { product: Product; onSaved: (p: Partial<Product>) => void; kind: "client" | "internal" }) {
   const field = kind === "client" ? "price_tiers" : "internal_price_tiers";
   const title = kind === "client" ? "Volume pricing (client)" : "Volume pricing (internal)";
@@ -343,6 +366,7 @@ function VolumePricingCard({ product, onSaved, kind }: { product: Product; onSav
   const [saving, setSaving] = useState(false);
   const [rows, setRows] = useState<TierRow[]>(initial);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [suggestRow, setSuggestRow] = useState<number | null>(null);
 
   function startEdit() {
     setRows(initial.length > 0 ? initial : [{ moq: "", unit_price_usd: "" }]);
@@ -431,38 +455,75 @@ function VolumePricingCard({ product, onSaved, kind }: { product: Product; onSav
           )
         ) : (
           <div className="flex flex-col gap-2">
-            {rows.map((r, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <div className="flex-1">
-                  <input
-                    className={inputCls}
-                    type="number"
-                    min="1"
-                    placeholder="Units (e.g. 100)"
-                    value={r.moq}
-                    onChange={(e) => updateRow(i, { moq: e.target.value })}
-                  />
+            {rows.map((r, i) => {
+              const moqNum = parseInt(r.moq);
+              const cost = kind === "client" && Number.isFinite(moqNum) && moqNum > 0
+                ? supplierCostForMoq(product, moqNum)
+                : null;
+              const showSuggest = kind === "client" && suggestRow === i && cost != null && cost > 0;
+              return (
+                <div key={i} className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <input
+                        className={inputCls}
+                        type="number"
+                        min="1"
+                        placeholder="Units (e.g. 100)"
+                        value={r.moq}
+                        onChange={(e) => updateRow(i, { moq: e.target.value })}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <input
+                        className={inputCls}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="Unit price USD"
+                        value={r.unit_price_usd}
+                        onFocus={() => kind === "client" && setSuggestRow(i)}
+                        onBlur={() => setTimeout(() => setSuggestRow((cur) => cur === i ? null : cur), 150)}
+                        onChange={(e) => updateRow(i, { unit_price_usd: e.target.value })}
+                      />
+                    </div>
+                    <button
+                      onClick={() => removeRow(i)}
+                      className="rounded-md p-1.5 text-[var(--sa-text-tertiary)] hover:text-red-500 transition-colors"
+                      title="Remove tier"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                  {showSuggest && (
+                    <div className="flex items-center flex-wrap gap-1.5 pl-1">
+                      <span className="flex items-center gap-1 text-[10px] text-[var(--sa-text-tertiary)]">
+                        <Sparkles size={10} className="text-[var(--sa-accent)]" /> Suggested
+                      </span>
+                      {MARGIN_PRESETS.map((m) => {
+                        const price = cost! / (1 - m.value);
+                        return (
+                          <button
+                            key={m.label}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              updateRow(i, { unit_price_usd: price.toFixed(2) });
+                              setSuggestRow(null);
+                            }}
+                            className="rounded-md border border-[var(--sa-border)] bg-[var(--sa-window)] px-2 py-0.5 text-[10px] text-[var(--sa-text-primary)] hover:border-[var(--sa-accent)] hover:text-[var(--sa-accent)] transition-colors"
+                          >
+                            {m.label} · ${price.toFixed(2)}
+                            <span className="ml-1 text-[9px] text-[var(--sa-text-tertiary)]">{Math.round(m.value * 100)}% margin</span>
+                          </button>
+                        );
+                      })}
+                      <span className="text-[10px] text-[var(--sa-text-tertiary)] italic">based on ${cost!.toFixed(2)} cost</span>
+                    </div>
+                  )}
                 </div>
-                <div className="flex-1">
-                  <input
-                    className={inputCls}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="Unit price USD"
-                    value={r.unit_price_usd}
-                    onChange={(e) => updateRow(i, { unit_price_usd: e.target.value })}
-                  />
-                </div>
-                <button
-                  onClick={() => removeRow(i)}
-                  className="rounded-md p-1.5 text-[var(--sa-text-tertiary)] hover:text-red-500 transition-colors"
-                  title="Remove tier"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            ))}
+              );
+            })}
             <button
               onClick={addRow}
               className="flex items-center justify-center gap-1 rounded-lg border border-dashed border-[var(--sa-border)] py-1.5 text-[11px] font-medium text-[var(--sa-text-secondary)] hover:border-[var(--sa-accent)] hover:text-[var(--sa-accent)] transition-colors"
