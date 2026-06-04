@@ -62,8 +62,9 @@ export async function autoTagProduct(productId: string): Promise<
   }
 
   const images = (product.images ?? []) as string[];
-  if (images.length === 0) {
-    return { success: false, error: "Add at least one product image before auto-tagging." };
+  const hasText = !!(product.name || product.category || product.notes);
+  if (images.length === 0 && !hasText) {
+    return { success: false, error: "Need at least a product name or image before auto-tagging." };
   }
 
   // Use up to 3 images to give the model variety without exploding cost.
@@ -79,11 +80,14 @@ export async function autoTagProduct(productId: string): Promise<
     {
       type: "text" as const,
       text:
-        `Tag this product for our sourcing database.\n\n` +
-        `Listed name: ${product.name || "(unnamed)"}\n` +
-        `Listed category: ${product.category || "(none)"}\n` +
+        `Tag this sourcing product. Weigh the product name, category, and notes equally with the images — ` +
+        `text often carries fabric/weight/finish detail that the photo can't show (e.g. "heavyweight French terry hoodie · stone wash"). ` +
+        `Use the images for what they show most clearly (silhouette, colour). ` +
+        `When text and visuals genuinely conflict, trust the more specific signal.\n\n` +
+        `Name: ${product.name || "(none)"}\n` +
+        `Category: ${product.category || "(none)"}\n` +
         `Notes: ${product.notes || "(none)"}\n\n` +
-        `Use the submit_tags tool. Prefer the visual evidence over the listed text when they conflict.`,
+        `Submit your tags via the submit_tags tool.`,
     },
   ];
 

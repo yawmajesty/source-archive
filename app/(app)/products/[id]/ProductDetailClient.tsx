@@ -295,8 +295,8 @@ function AutoTagsSection({ product, onSaved }: { product: Product; onSaved: (p: 
           )}
           <button
             onClick={handleTag}
-            disabled={running || !hasImages}
-            title={!hasImages ? "Add an image to enable auto-tagging" : "Run the AI tagger"}
+            disabled={running}
+            title={hasImages ? "Tag using images + name + notes" : "Tag from the product name + notes (images make it more accurate)"}
             className="flex items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-3 py-1 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
             <Sparkles size={11} /> {running ? "Tagging…" : hasTags ? "Re-tag" : "Auto-tag"}
@@ -339,7 +339,7 @@ function AutoTagsSection({ product, onSaved }: { product: Product; onSaved: (p: 
         </div>
       ) : (
         !hasImages && (
-          <p className="text-[12px] text-[var(--sa-text-tertiary)] italic">Add at least one image above to enable auto-tagging.</p>
+          <p className="text-[12px] text-[var(--sa-text-tertiary)] italic">No image yet — tagging will rely on the name + notes only. Add an image to improve accuracy.</p>
         )
       )}
     </div>
