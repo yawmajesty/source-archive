@@ -354,8 +354,40 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
   const [sendingFeedback, setSendingFeedback] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [stage, setStage] = useState<Stage>(product.stage);
+  const [approving, setApproving] = useState(false);
+  const [approveError, setApproveError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const now = new Date();
+
+  async function handleApproveSample() {
+    if (approving) return;
+    if (!window.confirm("Approve this sample and move it to the next stage? Your agency will be notified.")) return;
+    setApproving(true);
+    setApproveError(null);
+
+    const { error: stageErr } = await supabase
+      .from("products")
+      .update({ stage: "approved" })
+      .eq("id", product.id);
+
+    if (stageErr) { setApproveError(stageErr.message); setApproving(false); return; }
+
+    const approvalNote = {
+      id: "upd-" + Date.now(),
+      product_id: product.id,
+      author: client.name,
+      author_initials: client.logo_initial ?? client.name[0].toUpperCase(),
+      text: `Sample approved by ${client.name}.`,
+      visible_to_client: true,
+      created_at: new Date().toISOString(),
+    };
+    await supabase.from("updates").insert(approvalNote);
+
+    setUpdates((prev) => [approvalNote, ...prev]);
+    setStage("approved");
+    setApproving(false);
+  }
 
   async function submitFeedback() {
     if (!feedback.trim()) return;
@@ -595,23 +627,39 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
           {/* Feedback & updates */}
           <div className="px-6 py-4">
             <p className="text-[11px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--portal-text-muted)" }}>Updates & Feedback</p>
-            <div className="flex gap-2 mb-4">
-              <input
+            <div className="rounded-xl mb-4 transition-colors"
+              style={{ border: "1px solid var(--portal-border)", background: "var(--portal-input-bg)" }}
+            >
+              <textarea
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && submitFeedback()}
-                placeholder="Leave feedback or a comment…"
-                className="flex-1 rounded-xl px-3 py-2 text-[12px] outline-none transition-colors"
-                style={{ border: "1px solid var(--portal-border)", background: "var(--portal-input-bg)", color: "var(--portal-text-primary)" }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    submitFeedback();
+                  }
+                }}
+                placeholder="Leave feedback or a comment — e.g. 'the stitching on the cuff is uneven', 'colour is a touch too warm'…"
+                rows={3}
+                className="block w-full resize-y rounded-t-xl px-3 py-2.5 text-[13px] outline-none leading-relaxed bg-transparent"
+                style={{ color: "var(--portal-text-primary)", minHeight: "76px" }}
               />
-              <button
-                onClick={submitFeedback}
-                disabled={!feedback.trim() || sendingFeedback}
-                className="flex items-center justify-center h-9 w-9 rounded-xl text-white hover:opacity-90 disabled:opacity-30 transition-opacity shrink-0"
-                style={{ background: "var(--portal-brand)" }}
+              <div className="flex items-center justify-between px-3 py-2"
+                style={{ borderTop: "1px solid var(--portal-border-subtle)" }}
               >
-                <Send size={13} />
-              </button>
+                <span className="text-[10px]" style={{ color: "var(--portal-text-muted)" }}>
+                  ⌘/Ctrl + Enter to send
+                </span>
+                <button
+                  onClick={submitFeedback}
+                  disabled={!feedback.trim() || sendingFeedback}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium text-white hover:opacity-90 disabled:opacity-30 transition-opacity shrink-0"
+                  style={{ background: "var(--portal-brand)" }}
+                >
+                  <Send size={11} />
+                  {sendingFeedback ? "Sending…" : "Send comment"}
+                </button>
+              </div>
             </div>
             {updates.length > 0 ? (
               <div className="flex flex-col gap-3">
@@ -638,12 +686,26 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
         </div>
 
         {/* Sample approval CTA */}
-        {product.stage === "sampling" && (
+        {stage === "sampling" && (
           <div className="px-6 py-4" style={{ borderTop: "1px solid var(--portal-border-subtle)" }}>
-            <button className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#C8963C] py-3 text-[13px] font-semibold text-white hover:opacity-90 transition-opacity">
+            <button
+              onClick={handleApproveSample}
+              disabled={approving}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#C8963C] py-3 text-[13px] font-semibold text-white hover:opacity-90 disabled:opacity-60 transition-opacity"
+            >
               <CheckCircle2 size={14} strokeWidth={2.5} />
-              Approve Sample
+              {approving ? "Approving…" : "Approve Sample"}
             </button>
+            {approveError && (
+              <p className="mt-2 text-[11px] text-red-500">{approveError}</p>
+            )}
+          </div>
+        )}
+        {stage === "approved" && product.stage === "sampling" && (
+          <div className="px-6 py-3 flex items-center justify-center gap-2 text-[12px] font-medium text-emerald-700"
+            style={{ borderTop: "1px solid var(--portal-border-subtle)", background: "rgba(16,185,129,0.06)" }}
+          >
+            <CheckCircle2 size={13} /> Sample approved · the agency has been notified
           </div>
         )}
       </motion.div>
