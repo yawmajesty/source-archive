@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronRight, Package, ArrowRight, Plus, X, Pencil, Trash2, Check,
-  LayoutList, Table2, GitBranch, Copy, Receipt, LayoutGrid,
+  LayoutList, Table2, GitBranch, Copy, Receipt, LayoutGrid, FileSpreadsheet,
 } from "lucide-react";
 import { QuoteBuilder } from "./QuoteBuilder";
 import { CollectionDashboard } from "./CollectionDashboard";
@@ -797,6 +797,13 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
               </button>
             </div>
 
+            <a
+              href={`/api/projects/${project.id}/production-invoice`}
+              title="Download Production Invoice .xlsx (approved products only)"
+              className="flex items-center gap-1 rounded-lg border border-[var(--sa-border)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
+            >
+              <FileSpreadsheet size={12} /> Production Invoice
+            </a>
             <button
               onClick={() => setShowAddProduct(true)}
               className="flex items-center gap-1 rounded-lg bg-[var(--sa-accent)] px-2.5 py-1.5 text-[11px] font-medium text-white hover:opacity-90 transition-opacity"

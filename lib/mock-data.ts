@@ -210,6 +210,20 @@ export interface Product {
   auto_color?: string | null;
   auto_fabric?: string | null;
   auto_tagged_at?: string | null;
+  // Production invoice breakdown — sizes x quantities, per colour variant
+  production_breakdown?: ProductionVariant[] | null;
+  // Free-text production status note, surfaced on the PO (e.g. "5/29 PP sample confirmation")
+  production_status_note?: string | null;
+}
+
+export interface ProductionSize {
+  size: string;
+  qty: number;
+}
+
+export interface ProductionVariant {
+  color: string;
+  sizes: ProductionSize[];
 }
 
 export interface PriceTier {

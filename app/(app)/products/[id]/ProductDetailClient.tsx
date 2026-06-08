@@ -16,7 +16,7 @@ import { TrafficDot } from "@/components/shared/TrafficLight";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { uploadFile } from "@/lib/storage";
-import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem, PriceTier } from "@/lib/mock-data";
+import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem, PriceTier, ProductionVariant, ProductionSize } from "@/lib/mock-data";
 import { autoTagProduct, updateAutoTags } from "./actions";
 
 const STAGES: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
@@ -343,6 +343,151 @@ function AutoTagsSection({ product, onSaved }: { product: Product; onSaved: (p: 
           <p className="text-[12px] text-[var(--sa-text-tertiary)] italic">No image yet — tagging will rely on the name + notes only. Add an image to improve accuracy.</p>
         )
       )}
+    </div>
+  );
+}
+
+function ProductionBreakdownSection({ product, onSaved }: { product: Product; onSaved: (p: Partial<Product>) => void }) {
+  const initial = (product.production_breakdown ?? []) as ProductionVariant[];
+  const [variants, setVariants] = useState<ProductionVariant[]>(initial);
+  const [statusNote, setStatusNote] = useState(product.production_status_note ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+
+  function mark() { setDirty(true); }
+
+  function addVariant() {
+    mark();
+    const presetColors = (product.colorways ?? []).filter((c) => !variants.some((v) => v.color === c));
+    setVariants((prev) => [...prev, { color: presetColors[0] ?? "", sizes: [{ size: "", qty: 0 }] }]);
+  }
+  function updateVariant(i: number, patch: Partial<ProductionVariant>) { mark(); setVariants((prev) => prev.map((v, idx) => idx === i ? { ...v, ...patch } : v)); }
+  function removeVariant(i: number) { mark(); setVariants((prev) => prev.filter((_, idx) => idx !== i)); }
+
+  function addSize(vi: number) {
+    mark();
+    setVariants((prev) => prev.map((v, idx) => idx === vi ? { ...v, sizes: [...v.sizes, { size: "", qty: 0 }] } : v));
+  }
+  function updateSize(vi: number, si: number, patch: Partial<ProductionSize>) {
+    mark();
+    setVariants((prev) => prev.map((v, idx) => idx === vi ? { ...v, sizes: v.sizes.map((s, sIdx) => sIdx === si ? { ...s, ...patch } : s) } : v));
+  }
+  function removeSize(vi: number, si: number) {
+    mark();
+    setVariants((prev) => prev.map((v, idx) => idx === vi ? { ...v, sizes: v.sizes.filter((_, sIdx) => sIdx !== si) } : v));
+  }
+
+  async function handleSave() {
+    setSaving(true); setError(null);
+    const cleaned = variants
+      .map((v) => ({
+        color: v.color.trim(),
+        sizes: v.sizes
+          .map((s) => ({ size: s.size.trim(), qty: Number.isFinite(s.qty) ? s.qty : 0 }))
+          .filter((s) => s.size && s.qty > 0),
+      }))
+      .filter((v) => v.color && v.sizes.length > 0);
+    const note = statusNote.trim() || null;
+    const { error: err } = await supabase
+      .from("products")
+      .update({ production_breakdown: cleaned, production_status_note: note })
+      .eq("id", product.id);
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    onSaved({ production_breakdown: cleaned, production_status_note: note });
+    setDirty(false);
+  }
+
+  const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-2.5 py-1.5 text-[12px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors";
+  const totals = variants.reduce((sum, v) => sum + v.sizes.reduce((s, sz) => s + (sz.qty || 0), 0), 0);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-[11px] text-[var(--sa-text-tertiary)]">
+        Size / colour breakdown used on the Production Invoice spreadsheet sent to the factory.
+      </p>
+
+      {variants.length === 0 && (
+        <p className="text-[12px] text-[var(--sa-text-tertiary)] italic">No breakdown yet. Add a colour variant to begin.</p>
+      )}
+
+      <div className="flex flex-col gap-3">
+        {variants.map((v, vi) => {
+          const variantTotal = v.sizes.reduce((s, sz) => s + (sz.qty || 0), 0);
+          return (
+            <div key={vi} className="rounded-xl border border-[var(--sa-border)] overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2 bg-[var(--sa-bg)] border-b border-[var(--sa-border)]">
+                <input
+                  className={inputCls + " flex-1"}
+                  placeholder="Colour (e.g. BLACK, BROWN / CREAM)"
+                  value={v.color}
+                  onChange={(e) => updateVariant(vi, { color: e.target.value })}
+                />
+                <span className="text-[11px] font-mono text-[var(--sa-text-secondary)] shrink-0">Total: {variantTotal.toLocaleString()}</span>
+                <button onClick={() => removeVariant(vi)} className="rounded p-1 text-[var(--sa-text-tertiary)] hover:text-red-500" title="Remove colour variant">
+                  <Trash2 size={12} />
+                </button>
+              </div>
+              <div className="p-2 flex flex-col gap-1.5">
+                {v.sizes.map((s, si) => (
+                  <div key={si} className="flex items-center gap-2">
+                    <input
+                      className={inputCls}
+                      style={{ width: "9rem" }}
+                      placeholder="Size (e.g. XS/S, M, XL)"
+                      value={s.size}
+                      onChange={(e) => updateSize(vi, si, { size: e.target.value })}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      className={inputCls + " font-mono"}
+                      style={{ width: "8rem" }}
+                      placeholder="Qty"
+                      value={s.qty || ""}
+                      onChange={(e) => updateSize(vi, si, { qty: parseInt(e.target.value) || 0 })}
+                    />
+                    <button onClick={() => removeSize(vi, si)} className="rounded p-1 text-[var(--sa-text-tertiary)] hover:text-red-500" title="Remove size">
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                ))}
+                <button onClick={() => addSize(vi)} className="self-start flex items-center gap-1 rounded-md border border-dashed border-[var(--sa-border)] px-2 py-1 text-[11px] text-[var(--sa-text-secondary)] hover:border-[var(--sa-accent)] hover:text-[var(--sa-accent)] transition-colors">
+                  <Plus size={10} /> Add size
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <button onClick={addVariant} className="flex items-center justify-center gap-1 rounded-lg border border-dashed border-[var(--sa-border)] py-1.5 text-[11px] font-medium text-[var(--sa-text-secondary)] hover:border-[var(--sa-accent)] hover:text-[var(--sa-accent)] transition-colors">
+        <Plus size={11} /> Add colour variant
+      </button>
+
+      <div className="border-t border-[var(--sa-border)] pt-3">
+        <p className="text-[11px] uppercase tracking-wide text-[var(--sa-text-tertiary)] mb-1.5">Production status note <span className="lowercase text-[10px] text-[var(--sa-text-tertiary)]">(shown on the Production Invoice)</span></p>
+        <input
+          className={inputCls}
+          placeholder='e.g. "5/29 PP sample confirmation" or "车缝口袋中"'
+          value={statusNote}
+          onChange={(e) => { mark(); setStatusNote(e.target.value); }}
+        />
+      </div>
+
+      {error && <p className="text-[11px] text-red-500">{error}</p>}
+
+      <div className="flex items-center justify-between pt-1">
+        <span className="text-[11px] text-[var(--sa-text-tertiary)]">{variants.length} variant{variants.length !== 1 ? "s" : ""} · {totals.toLocaleString()} units total</span>
+        <button
+          onClick={handleSave}
+          disabled={!dirty || saving}
+          className="rounded-lg bg-[var(--sa-accent)] px-3 py-1 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-40 transition-opacity"
+        >
+          {saving ? "Saving…" : "Save breakdown"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -1332,6 +1477,11 @@ export function ProductDetailClient({
           {/* Auto tags */}
           <CollapsibleSection title="Auto tags">
             <AutoTagsSection product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
+          </CollapsibleSection>
+
+          {/* Production breakdown */}
+          <CollapsibleSection title="Production Breakdown (Sizes × Colours)">
+            <ProductionBreakdownSection product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
           </CollapsibleSection>
 
           {/* BOM */}
