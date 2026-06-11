@@ -305,12 +305,6 @@ export function BriefForm() {
   async function handleSubmit() {
     setSubmitting(true);
 
-    // Merge typed links + uploaded file URLs into a single newline-separated string
-    const allMoodboardLinks = [
-      refs.moodboard_links,
-      ...refs.moodboard_files,
-    ].filter(Boolean).join("\n");
-
     await submitBrief({
       company_name: brand.company_name,
       website: brand.website || null,
@@ -324,7 +318,8 @@ export function BriefForm() {
       how_found_us: brand.how_found_us || null,
       estimated_budget: refs.estimated_budget || null,
       timeline: refs.timeline || null,
-      moodboard_links: allMoodboardLinks || null,
+      moodboard_links: refs.moodboard_links?.trim() || null,
+      brief_files: refs.moodboard_files,
       sustainability_requirements: refs.sustainability_requirements || null,
       message: refs.message || null,
       brief_products: products.filter((p) => p.name.trim()),

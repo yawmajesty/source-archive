@@ -194,8 +194,22 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
   }
 
   const products = lead.brief_products as any[] | undefined;
-  const moodboardLinks = (lead.moodboard_links as string | null)?.split("\n").filter(Boolean) ?? [];
+  // Reference links: typed URLs only (drop accidental uploaded-file URLs from older brief submissions)
+  const moodboardLinks = (lead.moodboard_links as string | null)?.split("\n").map((s) => s.trim()).filter(Boolean) ?? [];
+  // Global files attached to the brief
+  const briefFiles = (lead.brief_files as string[] | null) ?? [];
+  // Legacy: older briefs that stuffed file URLs into moodboard_links — fish them out
+  const legacyFileUrls = moodboardLinks.filter((l) => /\.(png|jpe?g|webp|gif|pdf|heic|heif|svg)(\?|$)/i.test(l));
+  const cleanLinks = moodboardLinks.filter((l) => !/\.(png|jpe?g|webp|gif|pdf|heic|heif|svg)(\?|$)/i.test(l));
+  const allFiles = [...briefFiles, ...legacyFileUrls];
   const isConverted = lead.status === "converted";
+
+  function fileMeta(url: string) {
+    const isImage = /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(url);
+    const isPdf = /\.pdf(\?|$)/i.test(url);
+    const name = decodeURIComponent(url.split("/").pop() ?? "file").split("?")[0];
+    return { isImage, isPdf, name };
+  }
 
   return (
     <motion.div
@@ -279,17 +293,62 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
                       <ExternalLink size={9} /> View reference
                     </a>
                   )}
+                  {Array.isArray(p.moodboard_files) && p.moodboard_files.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-[var(--sa-border)]">
+                      <p className="text-[9px] uppercase tracking-wide text-[var(--sa-text-tertiary)] mb-1.5">Attached files</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(p.moodboard_files as string[]).map((url, idx) => {
+                          const { isImage, isPdf, name } = fileMeta(url);
+                          return isImage ? (
+                            <a key={idx} href={url} target="_blank" rel="noreferrer" className="block">
+                              <img src={url} alt={name} className="h-14 w-14 rounded-md object-cover border border-[var(--sa-border)] hover:opacity-90" />
+                            </a>
+                          ) : (
+                            <a key={idx} href={url} target="_blank" rel="noreferrer"
+                              className="flex items-center gap-1.5 rounded-md border border-[var(--sa-border)] px-2 py-1 text-[10px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
+                            >
+                              {isPdf ? "📄" : "📎"} {name}
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {moodboardLinks.length > 0 && (
+        {allFiles.length > 0 && (
+          <div className="pt-2 border-t border-[var(--sa-border)]">
+            <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">
+              Files & images ({allFiles.length})
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {allFiles.map((url, i) => {
+                const { isImage, isPdf, name } = fileMeta(url);
+                return isImage ? (
+                  <a key={i} href={url} target="_blank" rel="noreferrer" className="block group">
+                    <img src={url} alt={name} className="h-20 w-20 rounded-lg object-cover border border-[var(--sa-border)] group-hover:opacity-90" />
+                  </a>
+                ) : (
+                  <a key={i} href={url} target="_blank" rel="noreferrer"
+                    className="flex items-center gap-2 rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] max-w-full truncate"
+                  >
+                    {isPdf ? "📄" : "📎"} <span className="truncate">{name}</span>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {cleanLinks.length > 0 && (
           <div className="pt-2 border-t border-[var(--sa-border)]">
             <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Reference links</p>
             <div className="flex flex-col gap-1">
-              {moodboardLinks.map((link, i) => (
+              {cleanLinks.map((link, i) => (
                 <a key={i} href={link} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-[12px] text-[var(--sa-accent)] hover:underline truncate">
                   <ExternalLink size={10} /> {link}
                 </a>

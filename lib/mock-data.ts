@@ -93,6 +93,7 @@ export interface Lead {
   sustainability_requirements?: string | null;
   brief_products?: BriefProduct[];
   moodboard_links?: string | null;
+  brief_files?: string[] | null;
 }
 
 export interface Factory {

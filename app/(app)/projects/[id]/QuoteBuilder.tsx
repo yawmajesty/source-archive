@@ -2,7 +2,7 @@
 
 import { useState, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, X, Send, CheckCircle2, FileText } from "lucide-react";
+import { Plus, Trash2, X, Send, CheckCircle2, FileText, Factory as FactoryIcon, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Client, Product, Project, SavedInvoice, InvoiceLineItem } from "@/lib/data";
 import { createProjectQuote, sendQuote, deleteQuote } from "./actions";
@@ -34,28 +34,77 @@ const STATUS_CFG: Record<string, { label: string; bg: string; fg: string }> = {
   paid:  { label: "Paid",  bg: "#EAF3DE",          fg: "#27500A" },
 };
 
+type InvoiceKind = "sampling" | "production";
+
+// Pick best available per-unit production price for a product.
+function defaultProductionUnitPrice(p: Product): number {
+  return p.client_unit_price_usd ?? p.quoted_cost_usd ?? p.target_cost_usd ?? 0;
+}
+
+function defaultProductionQty(p: Product): number {
+  return p.order_qty ?? p.moq ?? 0;
+}
+
 export function QuoteBuilder({ project, client, products, savedInvoices }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [showBuilder, setShowBuilder] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [kind, setKind] = useState<InvoiceKind>("sampling");
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Sampling: amounts[id] = sample fee. Production: per-product qty/unit-price drive amount.
   const [amounts, setAmounts] = useState<Record<string, number>>({});
+  const [qtys, setQtys] = useState<Record<string, number>>({});
+  const [unitPrices, setUnitPrices] = useState<Record<string, number>>({});
+  const [depositPct, setDepositPct] = useState<number>(100);
   const [serviceLines, setServiceLines] = useState<ServiceLine[]>([]);
   const svcIdRef = useRef(0);
 
   const nextRound = savedInvoices.length > 0 ? Math.max(...savedInvoices.map((i) => i.round)) + 1 : 1;
-  const productsTotal = Array.from(selected).reduce((s, id) => s + (amounts[id] ?? 0), 0);
-  const servicesTotal = serviceLines.reduce((s, l) => s + (l.amount || 0), 0);
-  const totalDue = productsTotal + servicesTotal;
 
-  function openBuilder() {
+  const productsTotal = Array.from(selected).reduce((s, id) => {
+    if (kind === "production") {
+      const qty = qtys[id] ?? 0;
+      const price = unitPrices[id] ?? 0;
+      return s + qty * price;
+    }
+    return s + (amounts[id] ?? 0);
+  }, 0);
+  const servicesTotal = serviceLines.reduce((s, l) => s + (l.amount || 0), 0);
+  const projectTotal = productsTotal + servicesTotal;
+  const amountDueNow = projectTotal * (depositPct / 100);
+  const balanceRemaining = projectTotal - amountDueNow;
+
+  function initSamplingState() {
     const withFees = products.filter((p) => (p.sample_fee_usd ?? 0) > 0);
     setSelected(new Set(withFees.map((p) => p.id)));
     setAmounts(Object.fromEntries(products.map((p) => [p.id, p.sample_fee_usd ?? 0])));
+    setQtys({});
+    setUnitPrices({});
+  }
+
+  function initProductionState() {
+    const withPrice = products.filter((p) => defaultProductionUnitPrice(p) > 0 && defaultProductionQty(p) > 0);
+    setSelected(new Set(withPrice.map((p) => p.id)));
+    setAmounts({});
+    setQtys(Object.fromEntries(products.map((p) => [p.id, defaultProductionQty(p)])));
+    setUnitPrices(Object.fromEntries(products.map((p) => [p.id, defaultProductionUnitPrice(p)])));
+  }
+
+  function openBuilder(forKind: InvoiceKind = "sampling") {
+    setKind(forKind);
+    setDepositPct(forKind === "production" ? 50 : 100);
+    if (forKind === "production") initProductionState(); else initSamplingState();
     setServiceLines([]);
     setShowBuilder(true);
+  }
+
+  function switchKind(next: InvoiceKind) {
+    if (next === kind) return;
+    setKind(next);
+    setDepositPct(next === "production" ? 50 : 100);
+    if (next === "production") initProductionState(); else initSamplingState();
   }
 
   function toggleProduct(id: string) {
@@ -82,6 +131,20 @@ export function QuoteBuilder({ project, client, products, savedInvoices }: Props
   async function handleSave() {
     const productItems: InvoiceLineItem[] = Array.from(selected).map((id) => {
       const p = products.find((p) => p.id === id)!;
+      if (kind === "production") {
+        const qty = qtys[id] ?? 0;
+        const unit = unitPrices[id] ?? 0;
+        return {
+          name: p.name,
+          category: p.category,
+          project_name: project.name,
+          amount_usd: qty * unit,
+          expected_date: null,
+          kind: "product",
+          qty,
+          unit_price_usd: unit,
+        };
+      }
       return {
         name: p.name,
         category: p.category,
@@ -108,6 +171,9 @@ export function QuoteBuilder({ project, client, products, savedInvoices }: Props
       project_id: project.id,
       round: nextRound,
       line_items: [...productItems, ...serviceItems],
+      invoice_kind: kind,
+      deposit_percent: depositPct,
+      title: kind === "production" ? `Production invoice` : null,
     });
     setSaving(false);
     setShowBuilder(false);
@@ -128,21 +194,29 @@ export function QuoteBuilder({ project, client, products, savedInvoices }: Props
   return (
     <div className="flex flex-col h-full overflow-y-auto bg-[var(--sa-bg)]">
       <div className="px-6 py-5 max-w-3xl mx-auto w-full space-y-5">
-        {/* Header + New quote button */}
+        {/* Header + New quote buttons */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)]">Sampling quotes</h2>
+            <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)]">Quotes & invoices</h2>
             <p className="text-[12px] text-[var(--sa-text-tertiary)] mt-0.5">
-              Build a quote with this collection's products and services for {client.name}
+              Sampling quotes and production invoices for {client.name}
             </p>
           </div>
           {!showBuilder && (
-            <button
-              onClick={openBuilder}
-              className="flex items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-3 py-1.5 text-[12px] font-medium text-white hover:opacity-90 transition-opacity"
-            >
-              <Plus size={12} /> New quote
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => openBuilder("sampling")}
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-3 py-1.5 text-[12px] font-medium text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
+              >
+                <Plus size={12} /> Sampling quote
+              </button>
+              <button
+                onClick={() => openBuilder("production")}
+                className="flex items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-3 py-1.5 text-[12px] font-medium text-white hover:opacity-90 transition-opacity"
+              >
+                <FactoryIcon size={12} /> Production invoice
+              </button>
+            </div>
           )}
         </div>
 
@@ -151,12 +225,40 @@ export function QuoteBuilder({ project, client, products, savedInvoices }: Props
           <div className="rounded-xl overflow-hidden border border-[var(--sa-border)] bg-[var(--sa-window)]">
             <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
               <div>
-                <p className="text-[13px] font-semibold text-[var(--sa-text-primary)]">Round {nextRound} — New quote</p>
-                <p className="text-[11px] mt-0.5 text-[var(--sa-text-tertiary)]">Select products and add any services</p>
+                <p className="text-[13px] font-semibold text-[var(--sa-text-primary)]">
+                  Round {nextRound} — New {kind === "production" ? "production invoice" : "sampling quote"}
+                </p>
+                <p className="text-[11px] mt-0.5 text-[var(--sa-text-tertiary)]">
+                  {kind === "production"
+                    ? "Set quantity and unit price per product, then choose how much to invoice now"
+                    : "Select products and add any services"}
+                </p>
               </div>
-              <button onClick={() => setShowBuilder(false)} className="p-1 rounded text-[var(--sa-text-tertiary)] hover:bg-[var(--sa-hover)]">
-                <X size={14} />
-              </button>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center rounded-lg border border-[var(--sa-border)] overflow-hidden">
+                  <button
+                    onClick={() => switchKind("sampling")}
+                    className={cn(
+                      "px-2.5 py-1 text-[11px] font-medium transition-colors",
+                      kind === "sampling" ? "bg-[var(--sa-accent)] text-white" : "text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]",
+                    )}
+                  >
+                    Sampling
+                  </button>
+                  <button
+                    onClick={() => switchKind("production")}
+                    className={cn(
+                      "px-2.5 py-1 text-[11px] font-medium transition-colors border-l border-[var(--sa-border)]",
+                      kind === "production" ? "bg-[var(--sa-accent)] text-white" : "text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]",
+                    )}
+                  >
+                    Production
+                  </button>
+                </div>
+                <button onClick={() => setShowBuilder(false)} className="p-1 rounded text-[var(--sa-text-tertiary)] hover:bg-[var(--sa-hover)]">
+                  <X size={14} />
+                </button>
+              </div>
             </div>
 
             {/* Products section */}
@@ -190,7 +292,7 @@ export function QuoteBuilder({ project, client, products, savedInvoices }: Props
                           {p.category || "—"}{(p.sample_round ?? 1) > 1 ? ` · R${p.sample_round}` : ""}
                         </p>
                       </div>
-                      {selected.has(p.id) && (
+                      {selected.has(p.id) && kind === "sampling" && (
                         <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                           <span className="text-[11px] text-[var(--sa-text-tertiary)]">$</span>
                           <input
@@ -203,6 +305,39 @@ export function QuoteBuilder({ project, client, products, savedInvoices }: Props
                           />
                         </div>
                       )}
+                      {selected.has(p.id) && kind === "production" && (() => {
+                        const qty = qtys[p.id] ?? 0;
+                        const unit = unitPrices[p.id] ?? 0;
+                        return (
+                          <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={qty}
+                                onChange={(e) => setQtys((prev) => ({ ...prev, [p.id]: parseInt(e.target.value) || 0 }))}
+                                className="rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[12px] font-mono outline-none w-20 text-right text-[var(--sa-text-primary)]"
+                                placeholder="Qty"
+                              />
+                              <span className="text-[11px] text-[var(--sa-text-tertiary)]">×</span>
+                              <span className="text-[11px] text-[var(--sa-text-tertiary)]">$</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={unit}
+                                onChange={(e) => setUnitPrices((prev) => ({ ...prev, [p.id]: parseFloat(e.target.value) || 0 }))}
+                                className="rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[12px] font-mono outline-none w-20 text-right text-[var(--sa-text-primary)]"
+                                placeholder="Unit"
+                              />
+                            </div>
+                            <span className="font-mono text-[12px] font-semibold text-[var(--sa-text-primary)] w-24 text-right whitespace-nowrap">
+                              ${(qty * unit).toFixed(2)}
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
@@ -268,6 +403,64 @@ export function QuoteBuilder({ project, client, products, savedInvoices }: Props
               )}
             </div>
 
+            {/* Deposit section (production only) */}
+            {kind === "production" && (
+              <div className="px-5 py-4 border-b border-[var(--sa-border)]">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--sa-text-tertiary)]">
+                    <Wallet size={11} /> Invoice now
+                  </p>
+                  <p className="text-[10px] text-[var(--sa-text-tertiary)]">How much to bill on this invoice — balance can be sent later</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                  {[25, 30, 50, 100].map((pct) => (
+                    <button
+                      key={pct}
+                      onClick={() => setDepositPct(pct)}
+                      className={cn(
+                        "rounded-full border px-3 py-1 text-[11px] font-medium transition-colors",
+                        depositPct === pct
+                          ? "border-[var(--sa-accent)] bg-[var(--sa-accent)] text-white"
+                          : "border-[var(--sa-border)] bg-[var(--sa-bg)] text-[var(--sa-text-secondary)] hover:border-[var(--sa-accent)] hover:text-[var(--sa-accent)]",
+                      )}
+                    >
+                      {pct === 100 ? "100% (full)" : `${pct}% deposit`}
+                    </button>
+                  ))}
+                  <div className="flex items-center gap-1 ml-2 text-[11px] text-[var(--sa-text-tertiary)]">
+                    <span>Custom:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      step="1"
+                      value={depositPct}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value);
+                        if (Number.isFinite(v)) setDepositPct(Math.max(1, Math.min(100, v)));
+                      }}
+                      className="rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[11px] font-mono outline-none w-16 text-right text-[var(--sa-text-primary)]"
+                    />
+                    <span>%</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] p-2.5">
+                    <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">Project total</p>
+                    <p className="mt-0.5 font-mono text-[14px] font-semibold text-[var(--sa-text-primary)]">${projectTotal.toFixed(2)}</p>
+                  </div>
+                  <div className="rounded-lg border border-[var(--sa-accent)] bg-[var(--sa-accent)]/5 p-2.5">
+                    <p className="text-[10px] uppercase tracking-wide text-[var(--sa-accent)] font-semibold">Due now ({depositPct}%)</p>
+                    <p className="mt-0.5 font-mono text-[14px] font-semibold text-[var(--sa-text-primary)]">${amountDueNow.toFixed(2)}</p>
+                  </div>
+                  <div className="rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] p-2.5">
+                    <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">Balance</p>
+                    <p className="mt-0.5 font-mono text-[14px] font-semibold text-[var(--sa-text-primary)]">${balanceRemaining.toFixed(2)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Footer */}
             <div className="flex items-center justify-between px-5 py-3 bg-[var(--sa-bg)]">
               <div>
@@ -276,7 +469,14 @@ export function QuoteBuilder({ project, client, products, savedInvoices }: Props
                   {serviceLines.length > 0 && ` · ${serviceLines.length} service${serviceLines.length !== 1 ? "s" : ""}`}
                 </span>
                 <span className="mx-2 text-[11px] text-[var(--sa-border)]">·</span>
-                <span className="font-mono text-[13px] font-semibold text-[var(--sa-text-primary)]">${totalDue.toFixed(2)}</span>
+                <span className="font-mono text-[13px] font-semibold text-[var(--sa-text-primary)]">
+                  ${kind === "production" ? amountDueNow.toFixed(2) : projectTotal.toFixed(2)}
+                </span>
+                {kind === "production" && depositPct < 100 && (
+                  <span className="ml-1 text-[10px] text-[var(--sa-text-tertiary)]">
+                    ({depositPct}% of ${projectTotal.toFixed(2)})
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={() => setShowBuilder(false)} className="rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors">
@@ -306,12 +506,21 @@ export function QuoteBuilder({ project, client, products, savedInvoices }: Props
             {savedInvoices.slice().sort((a, b) => b.round - a.round).map((inv) => {
               const total = inv.line_items.reduce((s, li) => s + li.amount_usd, 0);
               const cfg = STATUS_CFG[inv.status] ?? STATUS_CFG.draft;
+              const isProduction = inv.invoice_kind === "production";
+              const deposit = inv.deposit_percent ?? 100;
+              const dueNow = total * (deposit / 100);
               return (
                 <div key={inv.id} className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] overflow-hidden">
                   <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
                     <div className="flex items-center gap-3">
                       <span className="rounded-full px-2 py-0.5 text-[10px] font-medium leading-none" style={{ backgroundColor: cfg.bg, color: cfg.fg }}>
                         {cfg.label}
+                      </span>
+                      <span className={cn(
+                        "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium leading-none",
+                        isProduction ? "bg-[var(--sa-accent)]/10 text-[var(--sa-accent)]" : "bg-[var(--sa-hover)] text-[var(--sa-text-secondary)]",
+                      )}>
+                        {isProduction ? <><FactoryIcon size={9} /> Production</> : <><FileText size={9} /> Sampling</>}
                       </span>
                       <div>
                         <p className="text-[13px] font-semibold text-[var(--sa-text-primary)]">Round {inv.round}</p>
@@ -322,7 +531,12 @@ export function QuoteBuilder({ project, client, products, savedInvoices }: Props
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-[14px] font-bold text-[var(--sa-text-primary)]">${total.toFixed(2)}</span>
+                      <div className="text-right">
+                        <p className="font-mono text-[14px] font-bold text-[var(--sa-text-primary)]">${(isProduction ? dueNow : total).toFixed(2)}</p>
+                        {isProduction && deposit < 100 && (
+                          <p className="text-[10px] text-[var(--sa-text-tertiary)]">{deposit}% of ${total.toFixed(2)}</p>
+                        )}
+                      </div>
                       {inv.status === "draft" && (
                         <button
                           onClick={() => handleSend(inv.id)}
@@ -357,7 +571,16 @@ export function QuoteBuilder({ project, client, products, savedInvoices }: Props
                             </p>
                           )}
                         </div>
-                        <span className="font-mono text-[12px] font-semibold text-[var(--sa-text-primary)] whitespace-nowrap">${li.amount_usd.toFixed(2)}</span>
+                        <div className="text-right">
+                          {li.qty != null && li.unit_price_usd != null && (
+                            <p className="text-[10px] text-[var(--sa-text-tertiary)]">
+                              {li.qty.toLocaleString()} × ${li.unit_price_usd.toFixed(2)}
+                            </p>
+                          )}
+                          <span className="font-mono text-[12px] font-semibold text-[var(--sa-text-primary)] whitespace-nowrap">
+                            ${li.amount_usd.toFixed(2)}
+                          </span>
+                        </div>
                       </div>
                     ))}
                   </div>

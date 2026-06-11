@@ -9,14 +9,19 @@ export async function createProjectQuote(data: {
   project_id: string;
   round: number;
   line_items: InvoiceLineItem[];
+  invoice_kind?: "sampling" | "production";
+  deposit_percent?: number;
+  title?: string | null;
 }): Promise<void> {
   await supabase.from("sampling_invoices").insert({
     client_id: data.client_id,
     round: data.round,
-    title: null,
+    title: data.title ?? null,
     line_items: data.line_items,
     notes: null,
     status: "draft",
+    invoice_kind: data.invoice_kind ?? "sampling",
+    deposit_percent: data.deposit_percent ?? 100,
   });
   revalidatePath(`/projects/${data.project_id}`);
   revalidatePath(`/portal/${data.client_id}`);

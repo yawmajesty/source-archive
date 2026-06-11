@@ -1297,23 +1297,44 @@ function SamplingInvoice({
             const total = activeInvoice.line_items.reduce((s, li) => s + li.amount_usd, 0);
             const statusCfg = STATUS_CFG[activeInvoice.status] ?? STATUS_CFG.draft;
             const invoiceDate = new Date(activeInvoice.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+            const isProduction = activeInvoice.invoice_kind === "production";
+            const deposit = activeInvoice.deposit_percent ?? 100;
+            const dueNow = total * (deposit / 100);
+            const balance = total - dueNow;
+            const defaultTitle = isProduction
+              ? `Round ${activeInvoice.round} Production`
+              : `Round ${activeInvoice.round} Sampling`;
             return (
               <>
                 <div className="flex items-start justify-between px-6 py-5" style={{ borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
                   <div>
                     <p className="text-[15px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>
-                      {activeInvoice.title ?? `Round ${activeInvoice.round} Sampling`}
+                      {activeInvoice.title ?? defaultTitle}
                     </p>
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
                       <p className="text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>{client.name} · {invoiceDate}</p>
                       <span className="rounded-full px-2 py-0.5 text-[10px] font-medium leading-none" style={{ backgroundColor: statusCfg.bg, color: statusCfg.fg }}>
                         {statusCfg.label}
                       </span>
+                      {isProduction && (
+                        <span className="rounded-full px-2 py-0.5 text-[10px] font-medium leading-none"
+                          style={{ background: "var(--portal-brand)", color: "#fff" }}
+                        >
+                          Production
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-[9px] uppercase tracking-wider" style={{ color: "var(--portal-text-muted)" }}>Total</p>
-                    <p className="font-mono text-[22px] font-bold mt-0.5" style={{ color: "var(--portal-text-primary)" }}>${total.toFixed(2)}</p>
+                    <p className="text-[9px] uppercase tracking-wider" style={{ color: "var(--portal-text-muted)" }}>
+                      {isProduction && deposit < 100 ? `Due now (${deposit}%)` : "Total"}
+                    </p>
+                    <p className="font-mono text-[22px] font-bold mt-0.5" style={{ color: "var(--portal-text-primary)" }}>${dueNow.toFixed(2)}</p>
+                    {isProduction && deposit < 100 && (
+                      <p className="text-[10px] mt-0.5" style={{ color: "var(--portal-text-muted)" }}>
+                        of ${total.toFixed(2)} project total
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -1339,15 +1360,36 @@ function SamplingInvoice({
                           {[li.category, li.project_name].filter(Boolean).join(" · ")}
                         </p>
                       )}
+                      {li.qty != null && li.unit_price_usd != null && (
+                        <p className="text-[10px] mt-0.5" style={{ color: "var(--portal-text-muted)" }}>
+                          {li.qty.toLocaleString()} × ${li.unit_price_usd.toFixed(2)}
+                        </p>
+                      )}
                     </div>
                     <span className="text-[11px] whitespace-nowrap" style={{ color: "var(--portal-text-secondary)" }}>{li.expected_date ? formatDate(li.expected_date) : "—"}</span>
                     <span className="font-mono text-[13px] font-semibold whitespace-nowrap" style={{ color: "var(--portal-text-primary)" }}>${li.amount_usd.toFixed(2)}</span>
                   </div>
                 ))}
 
-                <div className="flex items-center justify-between px-6 py-4" style={{ borderTop: "2px solid var(--portal-border)" }}>
-                  <span className="text-[13px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Total</span>
-                  <span className="font-mono text-[16px] font-bold" style={{ color: "var(--portal-text-primary)" }}>${total.toFixed(2)}</span>
+                <div className="flex flex-col gap-1 px-6 py-4" style={{ borderTop: "2px solid var(--portal-border)" }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[13px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>
+                      {isProduction ? "Project total" : "Total"}
+                    </span>
+                    <span className="font-mono text-[16px] font-bold" style={{ color: "var(--portal-text-primary)" }}>${total.toFixed(2)}</span>
+                  </div>
+                  {isProduction && deposit < 100 && (
+                    <>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>Due now ({deposit}% deposit)</span>
+                        <span className="font-mono text-[14px] font-semibold" style={{ color: "var(--portal-brand)" }}>${dueNow.toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>Balance (invoiced later)</span>
+                        <span className="font-mono text-[14px]" style={{ color: "var(--portal-text-secondary)" }}>${balance.toFixed(2)}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {activeInvoice.notes && (

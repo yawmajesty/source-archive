@@ -314,6 +314,8 @@ export interface InvoiceLineItem {
   amount_usd: number;
   expected_date: string | null;
   kind?: "product" | "service";
+  qty?: number | null;
+  unit_price_usd?: number | null;
 }
 
 export interface SavedInvoice {
@@ -325,6 +327,8 @@ export interface SavedInvoice {
   notes: string | null;
   status: string; // draft | sent | paid
   created_at: string;
+  invoice_kind?: "sampling" | "production" | null;
+  deposit_percent?: number | null;
 }
 
 export async function getSamplingInvoices(clientId: string, includeDrafts = true): Promise<SavedInvoice[]> {

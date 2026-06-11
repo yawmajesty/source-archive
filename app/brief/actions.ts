@@ -17,6 +17,7 @@ interface BriefPayload {
   estimated_budget: string | null;
   timeline: string | null;
   moodboard_links: string | null;
+  brief_files: string[];
   sustainability_requirements: string | null;
   message: string | null;
   brief_products: BriefProduct[];
@@ -44,6 +45,7 @@ export async function submitBrief(payload: BriefPayload) {
     how_found_us: payload.how_found_us,
     timeline: payload.timeline,
     moodboard_links: payload.moodboard_links,
+    brief_files: payload.brief_files,
     sustainability_requirements: payload.sustainability_requirements,
     brief_products: payload.brief_products,
   });
