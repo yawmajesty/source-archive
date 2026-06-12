@@ -1171,7 +1171,12 @@ function SamplingInvoice({
   }
 
   async function handleDownload(invoice: SavedInvoice) {
-    await downloadInvoicePDF(invoice, client, agencySettings);
+    try {
+      await downloadInvoicePDF(invoice, client, agencySettings);
+    } catch (err) {
+      console.error("[Invoice PDF] failed:", err);
+      alert(`Couldn't generate the PDF: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   useEffect(() => { setInvoices(initialInvoices); }, [initialInvoices]);
