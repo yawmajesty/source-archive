@@ -149,6 +149,110 @@ function EditProductDrawer({
   );
 }
 
+const EXCLUSION_REASONS = [
+  "Sample didn't meet standard",
+  "Did not qualify for production",
+  "Not ready",
+  "Not added to production",
+  "Cancelled by client",
+] as const;
+
+function ExcludeProductModal({
+  productName, saving, onCancel, onConfirm,
+}: {
+  productName: string;
+  saving: boolean;
+  onCancel: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [selected, setSelected] = useState<string>(EXCLUSION_REASONS[0]);
+  const [custom, setCustom] = useState("");
+  const usingCustom = selected === "__custom__";
+  const reason = usingCustom ? custom.trim() : selected;
+  const canSubmit = !!reason && !saving;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onCancel} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        className="relative z-10 w-full max-w-md rounded-2xl bg-[var(--sa-window)] border border-[var(--sa-border)] shadow-2xl p-6"
+      >
+        <h2 className="text-[15px] font-semibold text-[var(--sa-text-primary)] mb-1">Exclude from production</h2>
+        <p className="text-[12px] text-[var(--sa-text-secondary)] mb-1">
+          <span className="font-semibold text-[var(--sa-text-primary)]">{productName}</span> will be removed from all P&L totals,
+          financial estimates, and the client portal until restored.
+        </p>
+        <p className="text-[11px] text-[var(--sa-text-tertiary)] mb-4">
+          The product itself is kept — you can restore it at any time.
+        </p>
+
+        <div className="flex flex-col gap-1.5 mb-4">
+          {EXCLUSION_REASONS.map((r) => (
+            <label key={r} className={cn(
+              "flex items-center gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-colors",
+              selected === r ? "border-[var(--sa-accent)] bg-[var(--sa-accent)]/5" : "border-[var(--sa-border)] hover:bg-[var(--sa-hover)]",
+            )}>
+              <input
+                type="radio"
+                name="exclude-reason"
+                value={r}
+                checked={selected === r}
+                onChange={() => setSelected(r)}
+                className="accent-[var(--sa-accent)]"
+              />
+              <span className="text-[12px] text-[var(--sa-text-primary)]">{r}</span>
+            </label>
+          ))}
+          <label className={cn(
+            "flex items-center gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-colors",
+            usingCustom ? "border-[var(--sa-accent)] bg-[var(--sa-accent)]/5" : "border-[var(--sa-border)] hover:bg-[var(--sa-hover)]",
+          )}>
+            <input
+              type="radio"
+              name="exclude-reason"
+              value="__custom__"
+              checked={usingCustom}
+              onChange={() => setSelected("__custom__")}
+              className="accent-[var(--sa-accent)]"
+            />
+            <span className="text-[12px] text-[var(--sa-text-primary)] shrink-0">Other:</span>
+            <input
+              type="text"
+              value={custom}
+              onChange={(e) => {
+                setCustom(e.target.value);
+                if (!usingCustom) setSelected("__custom__");
+              }}
+              placeholder="Custom reason…"
+              className="flex-1 rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[12px] outline-none focus:border-[var(--sa-accent)] text-[var(--sa-text-primary)]"
+            />
+          </label>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={onCancel}
+            className="flex-1 rounded-lg border border-[var(--sa-border)] py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => canSubmit && onConfirm(reason)}
+            disabled={!canSubmit}
+            className="flex-1 rounded-lg bg-amber-600 py-2 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+          >
+            {saving ? "Saving…" : "Exclude"}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 function MediaSection({ productId, initialImages }: { productId: string; initialImages: string[] }) {
   const [images, setImages] = useState<string[]>(initialImages ?? []);
   const [uploading, setUploading] = useState(false);
@@ -1379,7 +1483,24 @@ export function ProductDetailClient({
   const [factory, setFactory] = useState(initialFactory);
   const [showEdit, setShowEdit] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showExcludeModal, setShowExcludeModal] = useState(false);
+  const [excludeSaving, setExcludeSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  async function setProductionExclusion(reason: string | null) {
+    setExcludeSaving(true);
+    const updates = reason
+      ? { production_excluded_at: new Date().toISOString(), production_excluded_reason: reason }
+      : { production_excluded_at: null, production_excluded_reason: null };
+    const { error } = await supabase.from("products").update(updates).eq("id", product.id);
+    setExcludeSaving(false);
+    if (error) {
+      alert("Could not update exclusion: " + error.message);
+      return;
+    }
+    setProduct((p) => ({ ...p, ...updates }));
+    setShowExcludeModal(false);
+  }
   const [localUpdates, setLocalUpdates] = useState(updates);
   const [newUpdate, setNewUpdate] = useState("");
   const [showAddTask, setShowAddTask] = useState(false);
@@ -1458,6 +1579,24 @@ export function ProductDetailClient({
         <ChevronRight size={11} className="text-[var(--sa-text-tertiary)]" />
         <span className="text-[12px] font-medium text-[var(--sa-text-primary)] truncate">{product.name}</span>
         <div className="ml-auto flex items-center gap-2 shrink-0">
+          {product.production_excluded_at ? (
+            <button
+              onClick={() => setProductionExclusion(null)}
+              disabled={excludeSaving}
+              className="flex items-center gap-1.5 rounded-lg border border-amber-500 px-3 py-1.5 text-[12px] text-amber-700 hover:bg-amber-50 transition-colors disabled:opacity-50"
+              title="Restore — include in P&L again"
+            >
+              <CheckCircle size={11} /> Restore
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowExcludeModal(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
+              title="Exclude from production P&L"
+            >
+              <X size={11} /> Exclude
+            </button>
+          )}
           <button
             onClick={() => setShowEdit(true)}
             className="flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
@@ -1473,6 +1612,29 @@ export function ProductDetailClient({
           </button>
         </div>
       </div>
+
+      {/* Exclusion banner */}
+      {product.production_excluded_at && (
+        <div className="px-6 py-2.5 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900/50 flex items-center gap-2.5 text-[12px]">
+          <X size={13} className="text-amber-600 dark:text-amber-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <span className="font-semibold text-amber-900 dark:text-amber-200">Excluded from production</span>
+            {product.production_excluded_reason && (
+              <span className="text-amber-700 dark:text-amber-300"> · {product.production_excluded_reason}</span>
+            )}
+            <span className="text-amber-600 dark:text-amber-400 ml-2 text-[11px]">
+              Hidden from all P&L totals, financial estimates, and the client portal.
+            </span>
+          </div>
+          <button
+            onClick={() => setProductionExclusion(null)}
+            disabled={excludeSaving}
+            className="text-[11px] font-medium text-amber-700 hover:text-amber-900 dark:text-amber-300 hover:underline disabled:opacity-50 shrink-0"
+          >
+            Restore
+          </button>
+        </div>
+      )}
 
       {/* Product header */}
       <motion.div
@@ -1896,6 +2058,14 @@ export function ProductDetailClient({
             factories={factories}
             onClose={() => setShowEdit(false)}
             onSaved={handleSaved}
+          />
+        )}
+        {showExcludeModal && (
+          <ExcludeProductModal
+            productName={product.name}
+            saving={excludeSaving}
+            onCancel={() => setShowExcludeModal(false)}
+            onConfirm={(reason) => setProductionExclusion(reason)}
           />
         )}
         {showDeleteConfirm && (

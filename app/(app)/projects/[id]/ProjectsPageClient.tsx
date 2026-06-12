@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { forkProductsToRound } from "./actions";
 import type { Client, Project, Product, Factory, Stage, PriceTier } from "@/lib/mock-data";
-import type { SavedInvoice } from "@/lib/data";
+import type { SavedInvoice, AgencySettings } from "@/lib/data";
 
 interface ProductWithFactory {
   product: Product;
@@ -31,6 +31,7 @@ interface Props {
   factories: Factory[];
   products: Product[];
   savedInvoices: SavedInvoice[];
+  agencySettings: AgencySettings;
 }
 
 type SortKey = "name" | "stage" | "cost";
@@ -365,8 +366,11 @@ function CollectionTable({
     });
   }
 
+  // Exclude products marked as "not going to production" from all P&L totals.
+  const includedRows = productsWithFactory.filter(({ product: p }) => !p.production_excluded_at);
+
   // Sampling totals
-  const samplingItems = productsWithFactory.filter(
+  const samplingItems = includedRows.filter(
     ({ product: p }) => p.sample_fee_usd != null || p.sample_cost_usd != null
   );
   const totalFee    = samplingItems.reduce((s, { product: p }) => s + (p.sample_fee_usd  ?? 0), 0);
@@ -374,7 +378,7 @@ function CollectionTable({
   const totalMargin = totalFee - totalCost;
 
   // Production P&L rows — per-product projected revenue/cost/margin
-  const productionRows = productsWithFactory.map(({ product: p }) => {
+  const productionRows = includedRows.map(({ product: p }) => {
     const qty = p.order_qty ?? p.moq ?? 0;
     const clientUnit = representativePrice(p.price_tiers, p.client_unit_price_usd);
     const supplierUnit = representativePrice(p.internal_price_tiers, p.quoted_cost_usd);
@@ -655,7 +659,7 @@ function CollectionTable({
 }
 
 // ── Main page component ───────────────────────────────────────────────────────
-export function ProjectsPageClient({ project, client, productsWithFactory, factories, products, savedInvoices }: Props) {
+export function ProjectsPageClient({ project, client, productsWithFactory, factories, products, savedInvoices, agencySettings }: Props) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(
     productsWithFactory[0]?.product.id ?? null
@@ -831,6 +835,7 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
                 client={client}
                 products={products}
                 savedInvoices={savedInvoices}
+                agencySettings={agencySettings}
               />
             ) : (
               <div className="flex h-full items-center justify-center text-[13px] text-[var(--sa-text-tertiary)]">

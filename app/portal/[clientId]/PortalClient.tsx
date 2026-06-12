@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { uploadFile } from "@/lib/storage";
 import type { Client, Contract, PortalFile, AgencySettings, SavedInvoice } from "@/lib/data";
 import { updateInvoiceStatus, deleteInvoice, logPortalVisit, updateVisitDuration } from "./actions";
+import { downloadInvoicePDF } from "@/lib/invoice-pdf";
 import type { Stage } from "@/lib/mock-data";
 import type { PortalProject, PortalProduct } from "./page";
 
@@ -130,7 +131,7 @@ function PortalNavBar({ client, tab, setTab, dark, onToggleTheme }: {
 }) {
   const TABS: { id: Tab; label: string }[] = [
     { id: "overview",    label: "Overview" },
-    { id: "sampling",    label: "Sampling" },
+    { id: "sampling",    label: "Invoices" },
     { id: "projects",    label: "Projects" },
     { id: "files",       label: "Files" },
     { id: "contracts",   label: "Contracts" },
@@ -1132,76 +1133,6 @@ ${(() => {
 </body></html>`;
 }
 
-function buildSavedInvoiceHTML(invoice: SavedInvoice, client: Client, agencySettings: AgencySettings): string {
-  const date = new Date(invoice.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-  const grandTotal = invoice.line_items.reduce((s, li) => s + li.amount_usd, 0);
-  const rows = invoice.line_items.map((li, i) => `
-    <tr style="background:${i % 2 === 0 ? "#fff" : "#f9f9f7"}">
-      <td style="padding:10px 16px;font-size:11px;color:#888;text-align:right">${i + 1}</td>
-      <td style="padding:10px 16px">
-        <div style="font-size:12px;font-weight:500;color:#1d1d1f">${li.name}</div>
-        <div style="font-size:10px;color:#888;margin-top:2px">${[li.category, li.project_name].filter(Boolean).join(" · ")}</div>
-      </td>
-      <td style="padding:10px 16px;font-size:11px;color:#555;white-space:nowrap">${li.expected_date ? new Date(li.expected_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}</td>
-      <td style="padding:10px 16px;font-size:13px;font-weight:600;font-family:monospace;white-space:nowrap;text-align:right">$${li.amount_usd.toFixed(2)}</td>
-    </tr>`).join("");
-
-  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-  const bRow = (label: string, val: string) => val ? `<tr><td style="padding:4px 0;font-size:10px;color:#aaa;white-space:nowrap;width:140px">${label}</td><td style="padding:4px 0 4px 12px;font-size:11px;color:#333;font-weight:500">${esc(val)}</td></tr>` : "";
-  const hasBankDetails = [agencySettings.account_name, agencySettings.bank_name, agencySettings.account_number, agencySettings.sort_code, agencySettings.iban, agencySettings.swift_code, agencySettings.account_location, agencySettings.bank_address].some(Boolean);
-  const bankBlock = hasBankDetails ? `<div style="border:1px solid #eee;border-radius:10px;padding:16px;flex:1">
-  <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;margin-bottom:10px">Bank details</div>
-  <table style="border-collapse:collapse;width:100%">
-    ${bRow("Account name", agencySettings.account_name)}
-    ${bRow("Bank name", agencySettings.bank_name)}
-    ${bRow("Account number", agencySettings.account_number)}
-    ${bRow("Sort code", agencySettings.sort_code)}
-    ${bRow("IBAN", agencySettings.iban)}
-    ${bRow("SWIFT / BIC", agencySettings.swift_code)}
-    ${bRow("Account location", agencySettings.account_location)}
-    ${bRow("Bank address", agencySettings.bank_address)}
-  </table>
-</div>` : "";
-  const termsBlock = agencySettings.invoice_terms ? `<div style="border:1px solid #eee;border-radius:10px;padding:16px;flex:1">
-  <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;margin-bottom:10px">Terms &amp; conditions</div>
-  <p style="font-size:11px;color:#333;line-height:1.7">${esc(agencySettings.invoice_terms)}</p>
-</div>` : "";
-
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${invoice.title ?? `Round ${invoice.round} Invoice`} – ${client.name}</title>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;background:#fff;color:#1d1d1f;padding:40px}
-  @media print{body{padding:20px}button{display:none!important}@page{margin:20mm}}
-  table{width:100%;border-collapse:collapse}
-  th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#aaa;padding:8px 16px;text-align:left;border-bottom:1px solid #eee}
-  th:last-child{text-align:right}
-  tr{border-bottom:1px solid #eee}
-</style></head><body>
-<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-  <div>
-    <div style="font-size:22px;font-weight:700;letter-spacing:-.5px">${invoice.title ?? `Sampling Invoice – Round ${invoice.round}`}</div>
-    <div style="font-size:13px;color:#888;margin-top:4px">${client.name} · ${date}</div>
-  </div>
-  <div style="text-align:right">
-    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#aaa">Total due</div>
-    <div style="font-size:28px;font-weight:800;font-family:monospace;margin-top:2px">$${grandTotal.toFixed(2)}</div>
-  </div>
-</div>
-${invoice.notes ? `<p style="font-size:12px;color:#555;margin-bottom:20px;line-height:1.6">${esc(invoice.notes)}</p>` : "<div style='margin-bottom:20px'></div>"}
-<div style="border:1px solid #eee;border-radius:10px;overflow:hidden">
-<table>
-  <thead><tr><th style="width:2rem">#</th><th>Item</th><th>Expected Date</th><th style="text-align:right">Amount</th></tr></thead>
-  <tbody>${rows}</tbody>
-</table>
-<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-top:2px solid #eee">
-  <span style="font-size:13px;font-weight:600">Total</span>
-  <span style="font-size:16px;font-weight:800;font-family:monospace">$${grandTotal.toFixed(2)}</span>
-</div>
-</div>
-${(bankBlock || termsBlock) ? `<div style="margin-top:24px;display:flex;gap:16px;align-items:flex-start">${bankBlock}${termsBlock}</div>` : ""}
-<div style="margin-top:16px;font-size:10px;color:#aaa;text-align:center">Generated by Kōru · ${date}</div>
-</body></html>`;
-}
 
 const STATUS_CFG: Record<string, { label: string; bg: string; fg: string }> = {
   draft: { label: "Draft",  bg: "#F1EFE8", fg: "#444441" },
@@ -1239,14 +1170,8 @@ function SamplingInvoice({
     startTransition(() => router.refresh());
   }
 
-  function handleDownload(invoice: SavedInvoice) {
-    const html = buildSavedInvoiceHTML(invoice, client, agencySettings);
-    const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 400);
+  async function handleDownload(invoice: SavedInvoice) {
+    await downloadInvoicePDF(invoice, client, agencySettings);
   }
 
   useEffect(() => { setInvoices(initialInvoices); }, [initialInvoices]);
@@ -1287,7 +1212,7 @@ function SamplingInvoice({
                     ? { color: "var(--portal-brand)", borderBottom: "2px solid var(--portal-brand)", marginBottom: "-1px" }
                     : { color: "var(--portal-text-secondary)" }}
                 >
-                  Round {inv.round}
+                  {inv.invoice_kind === "production" ? "Production" : `Round ${inv.round}`}
                 </button>
               ))}
             </div>
@@ -1302,7 +1227,7 @@ function SamplingInvoice({
             const dueNow = total * (deposit / 100);
             const balance = total - dueNow;
             const defaultTitle = isProduction
-              ? `Round ${activeInvoice.round} Production`
+              ? `Production Invoice`
               : `Round ${activeInvoice.round} Sampling`;
             return (
               <>

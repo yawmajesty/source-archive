@@ -2,10 +2,11 @@
 
 import { useState, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, X, Send, CheckCircle2, FileText, Factory as FactoryIcon, Wallet } from "lucide-react";
+import { Plus, Trash2, X, Send, CheckCircle2, FileText, Factory as FactoryIcon, Wallet, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Client, Product, Project, SavedInvoice, InvoiceLineItem } from "@/lib/data";
+import type { Client, Product, Project, SavedInvoice, InvoiceLineItem, AgencySettings } from "@/lib/data";
 import { createProjectQuote, sendQuote, deleteQuote } from "./actions";
+import { downloadInvoicePDF } from "@/lib/invoice-pdf";
 
 const SERVICE_PRESETS: string[] = [
   "Design",
@@ -26,6 +27,7 @@ interface Props {
   client: Client;
   products: Product[];
   savedInvoices: SavedInvoice[];
+  agencySettings: AgencySettings;
 }
 
 const STATUS_CFG: Record<string, { label: string; bg: string; fg: string }> = {
@@ -45,7 +47,9 @@ function defaultProductionQty(p: Product): number {
   return p.order_qty ?? p.moq ?? 0;
 }
 
-export function QuoteBuilder({ project, client, products, savedInvoices }: Props) {
+export function QuoteBuilder({ project, client, products: allProducts, savedInvoices, agencySettings }: Props) {
+  // Exclude products marked as not going to production from invoice building.
+  const products = allProducts.filter((p) => !p.production_excluded_at);
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [showBuilder, setShowBuilder] = useState(false);
@@ -523,7 +527,9 @@ export function QuoteBuilder({ project, client, products, savedInvoices }: Props
                         {isProduction ? <><FactoryIcon size={9} /> Production</> : <><FileText size={9} /> Sampling</>}
                       </span>
                       <div>
-                        <p className="text-[13px] font-semibold text-[var(--sa-text-primary)]">Round {inv.round}</p>
+                        <p className="text-[13px] font-semibold text-[var(--sa-text-primary)]">
+                          {isProduction ? "Production" : `Round ${inv.round}`}
+                        </p>
                         <p className="text-[10px] text-[var(--sa-text-tertiary)]">
                           {new Date(inv.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                           {" · "}{inv.line_items.length} line item{inv.line_items.length !== 1 ? "s" : ""}
@@ -551,6 +557,13 @@ export function QuoteBuilder({ project, client, products, savedInvoices }: Props
                           <CheckCircle2 size={11} /> Visible to client
                         </span>
                       )}
+                      <button
+                        onClick={() => downloadInvoicePDF(inv, client, agencySettings)}
+                        className="flex items-center gap-1 rounded-lg border border-[var(--sa-border)] px-2.5 py-1 text-[11px] font-medium text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
+                        title="Download PDF"
+                      >
+                        <Download size={11} /> PDF
+                      </button>
                       <button
                         onClick={() => handleDelete(inv.id, inv.round)}
                         className="rounded p-1.5 text-[var(--sa-text-tertiary)] hover:text-red-500 hover:bg-red-50 transition-colors"

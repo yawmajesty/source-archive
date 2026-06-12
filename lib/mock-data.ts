@@ -211,6 +211,11 @@ export interface Product {
   auto_color?: string | null;
   auto_fabric?: string | null;
   auto_tagged_at?: string | null;
+  // Excluded from production (sample failed / dropped / etc.)
+  // When production_excluded_at is set, this product is filtered out of all
+  // P&L aggregations and financial estimates across the app.
+  production_excluded_at?: string | null;
+  production_excluded_reason?: string | null;
   // Production invoice breakdown — sizes x quantities, per colour variant
   production_breakdown?: ProductionVariant[] | null;
   // Free-text production status note, surfaced on the PO (e.g. "5/29 PP sample confirmation")

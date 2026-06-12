@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { notFound } from "next/navigation";
-import { getProject, getProducts, getClient, getFactories, getSamplingInvoices } from "@/lib/data";
+import { getProject, getProducts, getClient, getFactories, getSamplingInvoices, getAgencySettings } from "@/lib/data";
 import { ProjectsPageClient } from "./ProjectsPageClient";
 
 interface Props {
@@ -18,7 +18,10 @@ export default async function ProjectPage({ params }: Props) {
 
   if (!project) notFound();
 
-  const client = await getClient(project.client_id);
+  const [client, agencySettings] = await Promise.all([
+    getClient(project.client_id),
+    getAgencySettings(),
+  ]);
   const savedInvoices = client ? await getSamplingInvoices(client.id, true) : [];
 
   // Attach factory info to products
@@ -35,6 +38,7 @@ export default async function ProjectPage({ params }: Props) {
       factories={factories}
       products={products}
       savedInvoices={savedInvoices}
+      agencySettings={agencySettings}
     />
   );
 }

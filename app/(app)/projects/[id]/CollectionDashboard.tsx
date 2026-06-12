@@ -47,6 +47,11 @@ interface Props {
 export function CollectionDashboard({ products, onOpenProduct }: Props) {
   const router = useRouter();
 
+  // Filter out products explicitly excluded from production — they don't count
+  // toward P&L, sampling totals, or any aggregate financial estimate.
+  const includedProducts = products.filter((p) => !p.production_excluded_at);
+  const excludedCount = products.length - includedProducts.length;
+
   // ── Aggregate production margin ───────────────────────────────
   let totalRevenue = 0;
   let totalCost = 0;
@@ -58,7 +63,7 @@ export function CollectionDashboard({ products, onOpenProduct }: Props) {
   let spreadTotalQuoted = 0;
   let spreadTotalTarget = 0;
   let spreadProductCount = 0;
-  for (const p of products) {
+  for (const p of includedProducts) {
     const qty = p.order_qty ?? p.moq ?? 0;
     if (qty <= 0) continue;
     const clientUnit = representativePrice(p.price_tiers, p.client_unit_price_usd);
@@ -89,7 +94,7 @@ export function CollectionDashboard({ products, onOpenProduct }: Props) {
   const spreadPct = hasSpread && spreadTotalTarget > 0 ? ((quotedTargetSpread ?? 0) / spreadTotalTarget) * 100 : null;
 
   // ── Aggregate sampling P&L ───────────────────────────────────
-  const samplingItems = products.filter((p) => p.sample_fee_usd != null || p.sample_cost_usd != null);
+  const samplingItems = includedProducts.filter((p) => p.sample_fee_usd != null || p.sample_cost_usd != null);
   const totalSampleFee = samplingItems.reduce((s, p) => s + (p.sample_fee_usd ?? 0), 0);
   const totalSampleCost = samplingItems.reduce((s, p) => s + (p.sample_cost_usd ?? 0), 0);
   const sampleMargin = totalSampleFee - totalSampleCost;
@@ -111,7 +116,12 @@ export function CollectionDashboard({ products, onOpenProduct }: Props) {
       <div className="max-w-6xl mx-auto px-6 py-6 space-y-6">
         {/* Top stats row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatTile label="Products" value={products.length.toString()} icon={<Package size={14} />} />
+          <StatTile
+            label="Products"
+            value={products.length.toString()}
+            hint={excludedCount > 0 ? `${excludedCount} excluded from P&L` : undefined}
+            icon={<Package size={14} />}
+          />
           <StatTile label="In sampling" value={samplingCount.toString()} />
           <StatTile label="In production" value={productionCount.toString()} />
           <StatTile label="Total qty (planned)" value={totalQty > 0 ? totalQty.toLocaleString() : "—"} />
@@ -283,13 +293,14 @@ export function CollectionDashboard({ products, onOpenProduct }: Props) {
   );
 }
 
-function StatTile({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
+function StatTile({ label, value, hint, icon }: { label: string; value: string; hint?: string; icon?: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] p-3">
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">
         {icon}<span>{label}</span>
       </div>
       <p className="mt-1.5 text-[18px] font-semibold text-[var(--sa-text-primary)] font-mono">{value}</p>
+      {hint && <p className="mt-0.5 text-[10px] text-amber-600 dark:text-amber-400">{hint}</p>}
     </div>
   );
 }

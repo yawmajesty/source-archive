@@ -58,7 +58,9 @@ export default async function PortalPage({ params }: Props) {
 
   const portalProjects: PortalProject[] = await Promise.all(
     projects.map(async (project) => {
-      const products = await getProducts(project.id);
+      const allProducts = await getProducts(project.id);
+      // Excluded-from-production items are never shown to the client.
+      const products = allProducts.filter((p) => !p.production_excluded_at);
       const enriched: PortalProduct[] = await Promise.all(
         products.map(async (product) => {
           const [milestones, updates] = await Promise.all([
