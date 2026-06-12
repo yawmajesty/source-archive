@@ -260,9 +260,15 @@ function TaskRow({ task, onDone }: { task: DashboardTask; onDone: (id: string) =
 
   async function handle() {
     setDone(true);
-    await new Promise((r) => setTimeout(r, 250));
+    // Persist first so we know the DB update succeeded before we drop it from the local list.
+    const { error } = await supabase.from("tasks").update({ status: "done" }).eq("id", task.id);
+    if (error) {
+      // Roll back the visual checkmark if the persist failed.
+      setDone(false);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 200));
     onDone(task.id);
-    supabase.from("tasks").update({ status: "done" }).eq("id", task.id);
   }
 
   return (

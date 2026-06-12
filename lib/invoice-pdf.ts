@@ -161,64 +161,335 @@ async function imageToDataUrl(url: string): Promise<string | null> {
   }
 }
 
+// Page constants (A4 portrait, mm)
+const PAGE_W = 210;
+const PAGE_H = 297;
+const MARGIN = 15;
+const CONTENT_W = PAGE_W - MARGIN * 2;
+
+function detectImageFormat(dataUrl: string): "JPEG" | "PNG" | "WEBP" {
+  if (dataUrl.startsWith("data:image/png")) return "PNG";
+  if (dataUrl.startsWith("data:image/webp")) return "WEBP";
+  return "JPEG";
+}
+
 export async function downloadInvoicePDF(invoice: SavedInvoice, client: Client, agencySettings: AgencySettings): Promise<void> {
-  // Pre-resolve every line-item image to a data URL so the PDF renderer
-  // doesn't depend on cross-origin loading at capture time.
+  // Pre-fetch every line-item image as a data URL so jsPDF can embed it without
+  // any cross-origin / load-timing race.
   const inlinedItems = await Promise.all(
     invoice.line_items.map(async (li) => {
       if (!li.image_url) return li;
       const dataUrl = await imageToDataUrl(li.image_url);
-      return dataUrl ? { ...li, image_url: dataUrl } : li;
+      return dataUrl ? { ...li, image_url: dataUrl } : { ...li, image_url: null };
     })
   );
-  const localInvoice: SavedInvoice = { ...invoice, line_items: inlinedItems };
 
-  const html = buildSavedInvoiceHTML(localInvoice, client, agencySettings);
-
-  // Render inside the viewport (off-screen positioning trips html2canvas) but
-  // invisible to the user.
-  const container = document.createElement("div");
-  container.style.position = "absolute";
-  container.style.left = "0";
-  container.style.top = "0";
-  container.style.width = "794px"; // A4 width @ 96dpi
-  container.style.background = "#ffffff";
-  container.style.opacity = "0";
-  container.style.zIndex = "-1";
-  container.style.pointerEvents = "none";
-  container.innerHTML = html;
-  document.body.appendChild(container);
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
 
   const isProduction = invoice.invoice_kind === "production";
+  const projectTotal = inlinedItems.reduce((s, li) => s + li.amount_usd, 0);
+  const deposit = invoice.deposit_percent ?? 100;
+  const dueNow = projectTotal * (deposit / 100);
+  const balanceLater = projectTotal - dueNow;
+  const grandTotal = isProduction ? dueNow : projectTotal;
+  const date = new Date(invoice.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  const titleStr = invoice.title ?? (isProduction ? `Production Invoice` : `Sampling Invoice – Round ${invoice.round}`);
+  const dueLabel = isProduction && deposit < 100 ? `DUE NOW (${deposit}% DEPOSIT)` : "TOTAL DUE";
+
+  const rightEdge = MARGIN + CONTENT_W;
+  let y = MARGIN + 5;
+
+  // ── Title + meta (left)
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.setTextColor(29, 29, 31);
+  doc.text(titleStr, MARGIN, y);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(136, 136, 136);
+  doc.text(`${client.name} · ${date}`, MARGIN, y + 6);
+
+  // ── Total due (right)
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.setTextColor(170, 170, 170);
+  doc.text(dueLabel, rightEdge, y - 4, { align: "right" });
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.setTextColor(29, 29, 31);
+  doc.text(`$${grandTotal.toFixed(2)}`, rightEdge, y + 3, { align: "right" });
+
+  if (isProduction && deposit < 100) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(136, 136, 136);
+    doc.text(`of $${projectTotal.toFixed(2)} project total`, rightEdge, y + 8, { align: "right" });
+  }
+
+  y += 18;
+
+  // ── Notes
+  if (invoice.notes) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(85, 85, 85);
+    const noteLines = doc.splitTextToSize(invoice.notes, CONTENT_W);
+    doc.text(noteLines, MARGIN, y);
+    y += noteLines.length * 4 + 4;
+  }
+
+  // ── Items table
+  // Column layout
+  const cols = isProduction
+    ? [
+        { label: "#",          x: MARGIN,           w: 8,   align: "left"  as const },
+        { label: "PHOTO",      x: MARGIN + 8,       w: 22,  align: "left"  as const },
+        { label: "ITEM",       x: MARGIN + 30,      w: 80,  align: "left"  as const },
+        { label: "QTY",        x: MARGIN + 110,     w: 22,  align: "right" as const },
+        { label: "UNIT PRICE", x: MARGIN + 132,     w: 22,  align: "right" as const },
+        { label: "LINE TOTAL", x: MARGIN + 154,     w: 26,  align: "right" as const },
+      ]
+    : [
+        { label: "#",      x: MARGIN,         w: 8,   align: "left"  as const },
+        { label: "ITEM",   x: MARGIN + 8,     w: 110, align: "left"  as const },
+        { label: "DATE",   x: MARGIN + 118,   w: 32,  align: "left"  as const },
+        { label: "AMOUNT", x: MARGIN + 150,   w: 30,  align: "right" as const },
+      ];
+
+  // Header bar
+  doc.setFillColor(245, 245, 247);
+  doc.rect(MARGIN, y, CONTENT_W, 7, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.setTextColor(136, 136, 136);
+  cols.forEach((c) => {
+    const tx = c.align === "right" ? c.x + c.w - 2 : c.x + 2;
+    doc.text(c.label, tx, y + 5, { align: c.align });
+  });
+  y += 7;
+
+  // Rows
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setDrawColor(238, 238, 238);
+
+  const ROW_PADDING = 3;
+  for (let i = 0; i < inlinedItems.length; i++) {
+    const li = inlinedItems[i];
+    const photoSize = 16;
+    const baseRowH = isProduction ? photoSize + ROW_PADDING * 2 : 11;
+
+    // Pre-measure the name + subtitle to allow taller rows when needed.
+    const nameCol = isProduction ? cols[2] : cols[1];
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    const nameLines = doc.splitTextToSize(li.name, nameCol.w - 4);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    const subtitleText = [li.category, li.project_name].filter(Boolean).join(" · ");
+    const subtitleLines = subtitleText ? doc.splitTextToSize(subtitleText, nameCol.w - 4) : [];
+    const measuredTextH = nameLines.length * 4.5 + subtitleLines.length * 3.5 + 2;
+    const rowH = Math.max(baseRowH, measuredTextH + ROW_PADDING * 2);
+
+    // Page break check
+    if (y + rowH > PAGE_H - MARGIN - 50) {
+      doc.addPage();
+      y = MARGIN + 5;
+    }
+
+    // Row background (alternating)
+    if (i % 2 === 1) {
+      doc.setFillColor(249, 249, 247);
+      doc.rect(MARGIN, y, CONTENT_W, rowH, "F");
+    }
+
+    // Index
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(136, 136, 136);
+    doc.text(String(i + 1), cols[0].x + cols[0].w - 2, y + rowH / 2 + 1, { align: "right" });
+
+    // Photo (production only)
+    if (isProduction) {
+      const photoX = cols[1].x + 2;
+      const photoY = y + (rowH - photoSize) / 2;
+      if (li.image_url) {
+        try {
+          doc.addImage(li.image_url, detectImageFormat(li.image_url), photoX, photoY, photoSize, photoSize);
+          doc.setDrawColor(229, 229, 229);
+          doc.rect(photoX, photoY, photoSize, photoSize);
+        } catch {
+          // Image failed to decode — fall through to placeholder
+          doc.setDrawColor(221, 221, 221);
+          doc.setLineDashPattern([1, 1], 0);
+          doc.rect(photoX, photoY, photoSize, photoSize);
+          doc.setLineDashPattern([], 0);
+        }
+      } else {
+        doc.setDrawColor(221, 221, 221);
+        doc.setLineDashPattern([1, 1], 0);
+        doc.rect(photoX, photoY, photoSize, photoSize);
+        doc.setLineDashPattern([], 0);
+      }
+    }
+
+    // Name + subtitle
+    const textTop = y + ROW_PADDING + 4;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(29, 29, 31);
+    doc.text(nameLines, nameCol.x + 2, textTop);
+
+    if (subtitleLines.length > 0) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(136, 136, 136);
+      doc.text(subtitleLines, nameCol.x + 2, textTop + nameLines.length * 4.5 + 0.5);
+    }
+
+    // Numeric columns
+    if (isProduction) {
+      const midY = y + rowH / 2 + 1;
+      const qtyStr = li.qty != null ? li.qty.toLocaleString() : "—";
+      const unitStr = li.unit_price_usd != null ? `$${li.unit_price_usd.toFixed(2)}` : "—";
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(29, 29, 31);
+      doc.text(qtyStr, cols[3].x + cols[3].w - 2, midY, { align: "right" });
+      doc.text(unitStr, cols[4].x + cols[4].w - 2, midY, { align: "right" });
+      doc.setFont("helvetica", "bold");
+      doc.text(`$${li.amount_usd.toFixed(2)}`, cols[5].x + cols[5].w - 2, midY, { align: "right" });
+    } else {
+      const midY = y + rowH / 2 + 1;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(85, 85, 85);
+      const dateStr = li.expected_date ? new Date(li.expected_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
+      doc.text(dateStr, cols[2].x + 2, midY);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(29, 29, 31);
+      doc.text(`$${li.amount_usd.toFixed(2)}`, cols[3].x + cols[3].w - 2, midY, { align: "right" });
+    }
+
+    // Row separator
+    doc.setDrawColor(238, 238, 238);
+    doc.line(MARGIN, y + rowH, MARGIN + CONTENT_W, y + rowH);
+    y += rowH;
+  }
+
+  y += 3;
+
+  // ── Totals breakdown
+  function totalsLine(label: string, value: string, opts: { highlight?: boolean; bold?: boolean; small?: boolean } = {}) {
+    const h = opts.small ? 8 : 9;
+    if (opts.highlight) {
+      doc.setFillColor(255, 248, 230);
+      doc.rect(MARGIN, y, CONTENT_W, h, "F");
+    }
+    doc.setFont("helvetica", opts.bold ? "bold" : "normal");
+    doc.setFontSize(opts.small ? 8 : 10);
+    doc.setTextColor(opts.highlight ? 58 : (opts.bold ? 29 : 85), opts.highlight ? 41 : (opts.bold ? 29 : 85), opts.highlight ? 0 : (opts.bold ? 31 : 85));
+    doc.text(label, MARGIN + 3, y + h - 2.5);
+    doc.setFont("helvetica", "bold");
+    doc.text(value, MARGIN + CONTENT_W - 3, y + h - 2.5, { align: "right" });
+    doc.setDrawColor(238, 238, 238);
+    doc.line(MARGIN, y + h, MARGIN + CONTENT_W, y + h);
+    y += h;
+  }
+
+  if (isProduction) {
+    totalsLine("Project total", `$${projectTotal.toFixed(2)}`);
+    if (deposit < 100) {
+      totalsLine(`Due now (${deposit}% deposit)`, `$${dueNow.toFixed(2)}`, { highlight: true, bold: true });
+      totalsLine(`Balance (${100 - deposit}%) — invoiced later`, `$${balanceLater.toFixed(2)}`, { small: true });
+    } else {
+      totalsLine("Total due", `$${projectTotal.toFixed(2)}`, { bold: true });
+    }
+  } else {
+    totalsLine("Total", `$${grandTotal.toFixed(2)}`, { bold: true });
+  }
+
+  y += 4;
+
+  // ── Bank details + Terms (side by side)
+  const hasBank = [agencySettings.account_name, agencySettings.bank_name, agencySettings.account_number, agencySettings.sort_code, agencySettings.iban, agencySettings.swift_code, agencySettings.account_location, agencySettings.bank_address].some(Boolean);
+  const hasTerms = !!agencySettings.invoice_terms;
+
+  if (hasBank || hasTerms) {
+    const colCount = (hasBank ? 1 : 0) + (hasTerms ? 1 : 0);
+    const colW = (CONTENT_W - (colCount - 1) * 4) / colCount;
+    let colX = MARGIN;
+
+    const drawBox = (title: string, contentFn: (boxY: number) => number, x: number) => {
+      const boxYStart = y;
+      const innerY = contentFn(boxYStart + 8);
+      const boxH = innerY - boxYStart + 4;
+      doc.setDrawColor(229, 229, 229);
+      doc.rect(x, boxYStart, colW, boxH);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(170, 170, 170);
+      doc.text(title.toUpperCase(), x + 4, boxYStart + 5);
+      return boxH;
+    };
+
+    let bankH = 0, termsH = 0;
+    if (hasBank) {
+      bankH = drawBox("BANK DETAILS", (boxY) => {
+        let yy = boxY;
+        const fields: Array<[string, string | null]> = [
+          ["Account name", agencySettings.account_name],
+          ["Bank name", agencySettings.bank_name],
+          ["Account number", agencySettings.account_number],
+          ["Sort code", agencySettings.sort_code],
+          ["IBAN", agencySettings.iban],
+          ["SWIFT / BIC", agencySettings.swift_code],
+          ["Account location", agencySettings.account_location],
+          ["Bank address", agencySettings.bank_address],
+        ];
+        for (const [label, val] of fields) {
+          if (!val) continue;
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7);
+          doc.setTextColor(170, 170, 170);
+          doc.text(label, colX + 4, yy);
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(8);
+          doc.setTextColor(51, 51, 51);
+          const valLines = doc.splitTextToSize(String(val), colW - 30);
+          doc.text(valLines, colX + 30, yy);
+          yy += Math.max(4.5, valLines.length * 3.5 + 1);
+        }
+        return yy;
+      }, colX);
+      colX += colW + 4;
+    }
+    if (hasTerms) {
+      termsH = drawBox("TERMS & CONDITIONS", (boxY) => {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(51, 51, 51);
+        const termsLines = doc.splitTextToSize(agencySettings.invoice_terms, colW - 8);
+        doc.text(termsLines, colX + 4, boxY);
+        return boxY + termsLines.length * 4 + 2;
+      }, colX);
+    }
+    y += Math.max(bankH, termsH) + 6;
+  }
+
+  // ── Footer
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(170, 170, 170);
+  doc.text(`Generated by Kōru · ${date}`, PAGE_W / 2, PAGE_H - 8, { align: "center" });
+
+  // Save
   const baseName = isProduction
     ? `Production-Invoice-Round-${invoice.round}`
     : `Sampling-Invoice-Round-${invoice.round}`;
   const safeClient = client.name.replace(/[^\w-]+/g, "_");
-  const filename = `${safeClient}-${baseName}.pdf`;
-
-  try {
-    const mod = await import("html2pdf.js");
-    const html2pdf = (mod as any).default ?? mod;
-    await html2pdf()
-      .set({
-        margin: 12,
-        filename,
-        image: { type: "jpeg", quality: 0.96 },
-        html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: "#ffffff", logging: false },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        pagebreak: { mode: ["css", "legacy"] },
-      })
-      .from(container)
-      .save();
-  } catch {
-    const win = window.open("", "_blank");
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-      win.focus();
-      setTimeout(() => win.print(), 400);
-    }
-  } finally {
-    document.body.removeChild(container);
-  }
+  doc.save(`${safeClient}-${baseName}.pdf`);
 }
