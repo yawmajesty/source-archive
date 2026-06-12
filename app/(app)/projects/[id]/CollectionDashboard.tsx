@@ -28,9 +28,15 @@ function representativePrice(tiers: PriceTier[] | null | undefined, fallback: nu
 }
 
 function fmtUsd(v: number, opts: { whole?: boolean } = {}) {
+  const sign = v < 0 ? "-" : "";
+  const abs = Math.abs(v);
   return opts.whole
-    ? `$${Math.round(v).toLocaleString("en-US")}`
-    : `$${v.toFixed(2)}`;
+    ? `${sign}$${Math.round(abs).toLocaleString("en-US")}`
+    : `${sign}$${abs.toFixed(2)}`;
+}
+
+function signed(v: number, opts: { whole?: boolean } = {}) {
+  return `${v >= 0 ? "+" : ""}${fmtUsd(v, opts)}`;
 }
 
 interface Props {
@@ -47,6 +53,11 @@ export function CollectionDashboard({ products, onOpenProduct }: Props) {
   let totalTargetCost = 0;
   let totalQty = 0;
   let productsWithMargin = 0;
+  // Spread vs target uses the supplier-side quoted price as the comparison.
+  // Positive when quoted is above target.
+  let spreadTotalQuoted = 0;
+  let spreadTotalTarget = 0;
+  let spreadProductCount = 0;
   for (const p of products) {
     const qty = p.order_qty ?? p.moq ?? 0;
     if (qty <= 0) continue;
@@ -58,11 +69,24 @@ export function CollectionDashboard({ products, onOpenProduct }: Props) {
     if (clientUnit != null) totalRevenue += clientUnit * qty;
     if (supplierUnit != null) totalCost += supplierUnit * qty;
     if (clientUnit != null && supplierUnit != null) productsWithMargin++;
+    // Quoted-vs-target spread: only counts when both quoted and target exist
+    if (supplierUnit != null && p.target_cost_usd != null) {
+      spreadTotalQuoted += supplierUnit * qty;
+      spreadTotalTarget += p.target_cost_usd * qty;
+      spreadProductCount++;
+    }
   }
+  const hasRevenue = totalRevenue > 0;
   const totalMargin = totalRevenue - totalCost;
-  const marginPct = totalRevenue > 0 ? (totalMargin / totalRevenue) * 100 : null;
-  const avgUnitMargin = totalQty > 0 && productsWithMargin > 0 ? totalMargin / totalQty : null;
+  const marginPct = hasRevenue ? (totalMargin / totalRevenue) * 100 : null;
+  const avgUnitMargin = hasRevenue && totalQty > 0 && productsWithMargin > 0 ? totalMargin / totalQty : null;
   const inProfit = totalMargin >= 0;
+
+  // Quoted vs target spread
+  const hasSpread = spreadProductCount > 0;
+  const quotedTargetSpread = hasSpread ? spreadTotalQuoted - spreadTotalTarget : null;
+  const spreadAboveTarget = quotedTargetSpread != null ? quotedTargetSpread >= 0 : null;
+  const spreadPct = hasSpread && spreadTotalTarget > 0 ? ((quotedTargetSpread ?? 0) / spreadTotalTarget) * 100 : null;
 
   // ── Aggregate sampling P&L ───────────────────────────────────
   const samplingItems = products.filter((p) => p.sample_fee_usd != null || p.sample_cost_usd != null);
@@ -114,20 +138,47 @@ export function CollectionDashboard({ products, onOpenProduct }: Props) {
               />
               <PLTile
                 label="Revenue (×qty)"
-                value={totalRevenue > 0 ? fmtUsd(totalRevenue, { whole: true }) : "—"}
+                value={hasRevenue ? fmtUsd(totalRevenue, { whole: true }) : "—"}
                 neutral
               />
               <PLTile
                 label="Avg unit margin"
-                value={avgUnitMargin != null ? `${avgUnitMargin >= 0 ? "+" : ""}${fmtUsd(avgUnitMargin)}` : "—"}
+                value={avgUnitMargin != null ? signed(avgUnitMargin) : "—"}
                 positive={avgUnitMargin != null ? avgUnitMargin >= 0 : null}
               />
               <PLTile
                 label={totalQty > 0 ? `Total profit (×${totalQty.toLocaleString()})` : "Total profit"}
-                value={totalRevenue > 0 || totalCost > 0 ? `${totalMargin >= 0 ? "+" : ""}${fmtUsd(totalMargin, { whole: true })}` : "—"}
-                positive={totalRevenue > 0 || totalCost > 0 ? inProfit : null}
+                value={hasRevenue ? signed(totalMargin, { whole: true }) : "—"}
+                positive={hasRevenue ? inProfit : null}
               />
             </div>
+
+            {!hasRevenue && hasSpread && (
+              <div className="rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[11px] text-[var(--sa-text-tertiary)]">
+                Set a client unit price (or client volume tiers) on each product to compute total profit.
+              </div>
+            )}
+
+            {hasSpread && (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pt-1">
+                <PLTile
+                  label="Quoted total (supplier)"
+                  value={fmtUsd(spreadTotalQuoted, { whole: true })}
+                  neutral
+                />
+                <PLTile
+                  label="Target cost total"
+                  value={fmtUsd(spreadTotalTarget, { whole: true })}
+                  neutral
+                />
+                <PLTile
+                  label="Quoted vs target"
+                  value={quotedTargetSpread != null ? signed(quotedTargetSpread, { whole: true }) : "—"}
+                  positive={spreadAboveTarget}
+                />
+              </div>
+            )}
+
             {marginPct != null && (
               <div className={cn(
                 "flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium",
@@ -136,6 +187,19 @@ export function CollectionDashboard({ products, onOpenProduct }: Props) {
               )}>
                 {inProfit ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
                 <span>{inProfit ? "In profit" : "Below target"} · {Math.abs(marginPct).toFixed(1)}% margin</span>
+              </div>
+            )}
+
+            {!hasRevenue && hasSpread && spreadPct != null && (
+              <div className={cn(
+                "flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium",
+                spreadAboveTarget ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                  : "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300"
+              )}>
+                {spreadAboveTarget ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+                <span>
+                  Quoted {spreadAboveTarget ? "above" : "below"} target by {Math.abs(spreadPct).toFixed(1)}%
+                </span>
               </div>
             )}
           </div>
@@ -158,7 +222,7 @@ export function CollectionDashboard({ products, onOpenProduct }: Props) {
               />
               <PLTile
                 label="Sample margin"
-                value={samplingItems.length > 0 ? `${sampleMargin >= 0 ? "+" : ""}${fmtUsd(sampleMargin)}` : "—"}
+                value={samplingItems.length > 0 ? signed(sampleMargin) : "—"}
                 positive={samplingItems.length > 0 ? sampleProfitable : null}
               />
             </div>

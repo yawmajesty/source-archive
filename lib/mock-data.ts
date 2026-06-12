@@ -232,6 +232,22 @@ export interface PriceTier {
   unit_price_usd: number;
 }
 
+export type PriceField =
+  | "target_cost_usd"
+  | "quoted_cost_usd"
+  | "client_unit_price_usd"
+  | "price_tiers"
+  | "internal_price_tiers";
+
+export interface ProductPriceHistoryEntry {
+  id: number;
+  product_id: string;
+  field_name: PriceField | string;
+  old_value: number | PriceTier[] | null;
+  new_value: number | PriceTier[] | null;
+  changed_at: string;
+}
+
 export interface BomItem {
   id: string;
   material: string;

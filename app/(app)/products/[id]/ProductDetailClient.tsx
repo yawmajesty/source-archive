@@ -16,7 +16,7 @@ import { TrafficDot } from "@/components/shared/TrafficLight";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { uploadFile } from "@/lib/storage";
-import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem, PriceTier, ProductionVariant, ProductionSize } from "@/lib/mock-data";
+import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem, PriceTier, ProductionVariant, ProductionSize, ProductPriceHistoryEntry } from "@/lib/mock-data";
 import { autoTagProduct, updateAutoTags } from "./actions";
 
 const STAGES: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
@@ -32,6 +32,7 @@ interface Props {
   costs: Cost[];
   project: Project | null;
   client: Client | null;
+  priceHistory: ProductPriceHistoryEntry[];
 }
 
 function EditProductDrawer({
@@ -817,6 +818,105 @@ function VolumePricingCard({ product, onSaved, kind }: { product: Product; onSav
   );
 }
 
+const PRICE_FIELD_LABELS: Record<string, string> = {
+  target_cost_usd: "Target cost",
+  quoted_cost_usd: "Supplier quoted cost",
+  client_unit_price_usd: "Client unit price",
+  price_tiers: "Client volume tiers",
+  internal_price_tiers: "Supplier volume tiers",
+};
+
+function fmtPriceValue(v: unknown): string {
+  if (v == null) return "—";
+  if (typeof v === "number") return `$${v.toFixed(2)}`;
+  if (Array.isArray(v)) {
+    const tiers = v as Array<{ moq?: number; unit_price_usd?: number }>;
+    if (tiers.length === 0) return "no tiers";
+    return tiers
+      .slice()
+      .sort((a, b) => (a.moq ?? 0) - (b.moq ?? 0))
+      .map((t) => `${t.moq ?? "?"}@$${(t.unit_price_usd ?? 0).toFixed(2)}`)
+      .join(", ");
+  }
+  return String(v);
+}
+
+function priceDelta(field: string, oldV: unknown, newV: unknown): { text: string; positive: boolean | null } | null {
+  if (typeof oldV !== "number" || typeof newV !== "number") return null;
+  const diff = newV - oldV;
+  if (oldV === 0) return { text: `${diff >= 0 ? "+" : ""}$${diff.toFixed(2)}`, positive: null };
+  const pct = (diff / Math.abs(oldV)) * 100;
+  // Cost fields: increase = bad (red). Revenue field: increase = good (green).
+  const isCost = field === "target_cost_usd" || field === "quoted_cost_usd";
+  const positive = isCost ? diff < 0 : diff > 0;
+  const sign = diff >= 0 ? "+" : "";
+  return { text: `${sign}$${diff.toFixed(2)} (${sign}${pct.toFixed(1)}%)`, positive };
+}
+
+function PriceHistoryCard({ history }: { history: ProductPriceHistoryEntry[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? history : history.slice(0, 8);
+
+  return (
+    <section className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-bg)]">
+      <div className="flex items-center justify-between px-4 py-3 panel-border-b">
+        <div>
+          <span className="text-[12px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">Price history</span>
+          <span className="ml-2 text-[10px] text-[var(--sa-text-tertiary)]">{history.length} change{history.length !== 1 ? "s" : ""} logged</span>
+        </div>
+        {history.length > 8 && (
+          <button
+            onClick={() => setShowAll((v) => !v)}
+            className="text-[11px] text-[var(--sa-accent)] hover:underline"
+          >
+            {showAll ? "Show less" : `Show all (${history.length})`}
+          </button>
+        )}
+      </div>
+      <div className="p-4">
+        {history.length === 0 ? (
+          <p className="text-[12px] text-[var(--sa-text-tertiary)] italic">
+            No price changes yet. Every time you save a new target cost, supplier quote, client price, or volume tier, it'll be logged here automatically.
+          </p>
+        ) : (
+          <ol className="flex flex-col gap-2.5">
+            {visible.map((entry) => {
+              const label = PRICE_FIELD_LABELS[entry.field_name] ?? entry.field_name;
+              const oldStr = fmtPriceValue(entry.old_value);
+              const newStr = fmtPriceValue(entry.new_value);
+              const delta = priceDelta(entry.field_name, entry.old_value, entry.new_value);
+              const when = new Date(entry.changed_at).toLocaleString("en-GB", {
+                day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+              });
+              return (
+                <li key={entry.id} className="rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-3 py-2.5">
+                  <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                    <p className="text-[12px] font-medium text-[var(--sa-text-primary)]">{label}</p>
+                    <p className="text-[10px] text-[var(--sa-text-tertiary)] whitespace-nowrap">{when}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    <span className="font-mono text-[12px] text-[var(--sa-text-tertiary)] line-through">{oldStr}</span>
+                    <ChevronRight size={11} className="text-[var(--sa-text-tertiary)] shrink-0" />
+                    <span className="font-mono text-[12px] font-semibold text-[var(--sa-text-primary)]">{newStr}</span>
+                    {delta && (
+                      <span className={cn(
+                        "ml-1 font-mono text-[10px] font-semibold",
+                        delta.positive === true ? "text-emerald-600" : delta.positive === false ? "text-red-500" : "text-[var(--sa-text-tertiary)]",
+                      )}>
+                        {delta.text}
+                      </span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function PricingCard({ product, onSaved }: { product: Product; onSaved: (p: Partial<Product>) => void }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1272,6 +1372,7 @@ export function ProductDetailClient({
   costs,
   project,
   client,
+  priceHistory,
 }: Props) {
   const router = useRouter();
   const [product, setProduct] = useState(initialProduct);
@@ -1678,6 +1779,9 @@ export function ProductDetailClient({
           {/* Volume pricing tiers */}
           <VolumePricingCard kind="client" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
           <VolumePricingCard kind="internal" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
+
+          {/* Price history */}
+          <PriceHistoryCard history={priceHistory} />
 
           {/* Milestones */}
           <section className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-bg)]">

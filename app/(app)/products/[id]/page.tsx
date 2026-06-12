@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { notFound } from "next/navigation";
 import {
   getProduct, getFactory, getMilestones, getUpdates, getSamples, getCosts,
-  getProject, getClient, getFactories,
+  getProject, getClient, getFactories, getProductPriceHistory,
 } from "@/lib/data";
 import { ProductDetailClient } from "./ProductDetailClient";
 
@@ -17,7 +17,7 @@ export default async function ProductDetailPage({ params }: Props) {
   const product = await getProduct(id);
   if (!product) notFound();
 
-  const [factory, milestones, updates, samples, costs, project, factories] = await Promise.all([
+  const [factory, milestones, updates, samples, costs, project, factories, priceHistory] = await Promise.all([
     getFactory(product.factory_id ?? ""),
     getMilestones(id),
     getUpdates(id),
@@ -25,6 +25,7 @@ export default async function ProductDetailPage({ params }: Props) {
     getCosts({ productId: id }),
     getProject(product.project_id),
     getFactories(),
+    getProductPriceHistory(id),
   ]);
 
   const client = project
@@ -42,6 +43,7 @@ export default async function ProductDetailPage({ params }: Props) {
       project={project}
       client={client}
       factories={factories}
+      priceHistory={priceHistory}
     />
   );
 }

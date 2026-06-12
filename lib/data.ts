@@ -3,12 +3,14 @@ import type {
   Client, Project, Factory, Product, Sample, Milestone,
   Cost, Update, Task, Contract, PortalFile, Lead, Stage,
   Rfq, RfqInvite, RfqSubmission, RfqTier, RfqQuotedProduct,
+  ProductPriceHistoryEntry,
 } from "./mock-data";
 
 export type {
   Client, Project, Factory, Product, Sample, Milestone,
   Cost, Update, Task, Contract, PortalFile, Lead,
   Rfq, RfqInvite, RfqSubmission, RfqTier, RfqQuotedProduct,
+  ProductPriceHistoryEntry,
 };
 
 // ── Clients ────────────────────────────────────────
@@ -61,6 +63,17 @@ export async function getProducts(projectId?: string): Promise<Product[]> {
 export async function getProduct(id: string): Promise<Product | null> {
   const { data } = await supabase.from("products").select("*").eq("id", id).single();
   return (data ?? null) as Product | null;
+}
+
+export async function getProductPriceHistory(productId: string): Promise<ProductPriceHistoryEntry[]> {
+  const { data, error } = await supabase
+    .from("product_price_history")
+    .select("*")
+    .eq("product_id", productId)
+    .order("changed_at", { ascending: false })
+    .limit(200);
+  if (error) return [];
+  return (data ?? []) as ProductPriceHistoryEntry[];
 }
 
 // ── Samples ────────────────────────────────────────
