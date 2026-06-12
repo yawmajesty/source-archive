@@ -465,8 +465,17 @@ function CollectionTable({
                       </div>
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", STAGE_COLORS[p.stage])}>
-                        {p.stage}
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", STAGE_COLORS[p.stage])}>
+                          {p.stage}
+                        </span>
+                        {p.production_excluded_at && (
+                          <span
+                            className="inline-block h-1.5 w-1.5 rounded-full bg-red-500"
+                            title={`Excluded from P&L${p.production_excluded_reason ? ` · ${p.production_excluded_reason}` : ""}`}
+                            aria-label="Excluded from P&L"
+                          />
+                        )}
                       </span>
                     </td>
                     <td className="px-3 py-2.5 font-mono text-[var(--sa-text-secondary)]">{fmt(p.sample_cost_usd)}</td>
@@ -525,8 +534,17 @@ function CollectionTable({
                       </div>
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", STAGE_COLORS[p.stage])}>
-                        {p.stage}
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", STAGE_COLORS[p.stage])}>
+                          {p.stage}
+                        </span>
+                        {p.production_excluded_at && (
+                          <span
+                            className="inline-block h-1.5 w-1.5 rounded-full bg-red-500"
+                            title={`Excluded from P&L${p.production_excluded_reason ? ` · ${p.production_excluded_reason}` : ""}`}
+                            aria-label="Excluded from P&L"
+                          />
+                        )}
                       </span>
                     </td>
                     <td className="px-3 py-2.5 text-[var(--sa-text-secondary)] whitespace-nowrap">
@@ -592,8 +610,17 @@ function CollectionTable({
                       {p.category && <p className="text-[10px] text-[var(--sa-text-tertiary)]">{p.category}</p>}
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", STAGE_COLORS[p.stage])}>
-                        {p.stage}
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", STAGE_COLORS[p.stage])}>
+                          {p.stage}
+                        </span>
+                        {p.production_excluded_at && (
+                          <span
+                            className="inline-block h-1.5 w-1.5 rounded-full bg-red-500"
+                            title={`Excluded from P&L${p.production_excluded_reason ? ` · ${p.production_excluded_reason}` : ""}`}
+                            aria-label="Excluded from P&L"
+                          />
+                        )}
                       </span>
                     </td>
                     <td className="px-3 py-2.5 font-mono text-[var(--sa-text-secondary)] whitespace-nowrap">

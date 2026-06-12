@@ -121,7 +121,16 @@ export function ProductRow({ product, factory, selected, onClick, onDoubleClick 
         </span>
 
         {/* Stage dot — far right */}
-        <StageDot stage={product.stage} />
+        <div className="flex items-center gap-1 shrink-0">
+          {product.production_excluded_at && (
+            <span
+              className="inline-block h-1.5 w-1.5 rounded-full bg-red-500"
+              title={`Excluded from P&L${product.production_excluded_reason ? ` · ${product.production_excluded_reason}` : ""}`}
+              aria-label="Excluded from P&L"
+            />
+          )}
+          <StageDot stage={product.stage} />
+        </div>
       </div>
     </ContextMenu>
   );

@@ -343,8 +343,17 @@ function ProductTile({ product, onClick }: { product: Product; onClick: () => vo
           <p className="text-[10px] text-[var(--sa-text-tertiary)] truncate">{product.category}</p>
         )}
         <div className="flex items-center justify-between gap-1">
-          <span className={cn("inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium capitalize", STAGE_COLORS[product.stage])}>
-            {product.stage}
+          <span className="inline-flex items-center gap-1">
+            <span className={cn("inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium capitalize", STAGE_COLORS[product.stage])}>
+              {product.stage}
+            </span>
+            {product.production_excluded_at && (
+              <span
+                className="inline-block h-1.5 w-1.5 rounded-full bg-red-500"
+                title={`Excluded from P&L${product.production_excluded_reason ? ` · ${product.production_excluded_reason}` : ""}`}
+                aria-label="Excluded from P&L"
+              />
+            )}
           </span>
           {product.quoted_cost_usd != null && (
             <span className="text-[11px] font-mono font-semibold text-[var(--sa-text-primary)]">
