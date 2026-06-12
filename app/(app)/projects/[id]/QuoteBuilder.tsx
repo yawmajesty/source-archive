@@ -138,6 +138,7 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
       if (kind === "production") {
         const qty = qtys[id] ?? 0;
         const unit = unitPrices[id] ?? 0;
+        const firstImage = Array.isArray(p.images) && p.images.length > 0 ? p.images[0] : null;
         return {
           name: p.name,
           category: p.category,
@@ -147,6 +148,7 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
           kind: "product",
           qty,
           unit_price_usd: unit,
+          image_url: firstImage,
         };
       }
       return {

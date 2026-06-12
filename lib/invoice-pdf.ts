@@ -11,7 +11,29 @@ export function buildSavedInvoiceHTML(invoice: SavedInvoice, client: Client, age
   const dueNow = projectTotal * (deposit / 100);
   const balanceLater = projectTotal - dueNow;
   const grandTotal = isProduction ? dueNow : projectTotal;
-  const rows = invoice.line_items.map((li, i) => `
+  const escAttr = (s: string) => s.replace(/"/g, "&quot;").replace(/&/g, "&amp;").replace(/</g, "&lt;");
+
+  const rows = invoice.line_items.map((li, i) => {
+    if (isProduction) {
+      const photoCell = li.image_url
+        ? `<img src="${escAttr(li.image_url)}" crossorigin="anonymous" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid #eee;display:block" />`
+        : `<div style="width:56px;height:56px;border-radius:6px;border:1px dashed #ddd;background:#fafaf7;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:18px">·</div>`;
+      const qty = li.qty != null ? li.qty.toLocaleString() : "—";
+      const unit = li.unit_price_usd != null ? `$${li.unit_price_usd.toFixed(2)}` : "—";
+      return `
+    <tr style="background:${i % 2 === 0 ? "#fff" : "#f9f9f7"}">
+      <td style="padding:10px 12px;font-size:11px;color:#888;text-align:right;vertical-align:middle">${i + 1}</td>
+      <td style="padding:10px 12px;vertical-align:middle;width:64px">${photoCell}</td>
+      <td style="padding:10px 12px;vertical-align:middle">
+        <div style="font-size:12px;font-weight:600;color:#1d1d1f">${li.name}</div>
+        <div style="font-size:10px;color:#888;margin-top:2px">${[li.category, li.project_name].filter(Boolean).join(" · ")}</div>
+      </td>
+      <td style="padding:10px 12px;font-size:12px;font-family:monospace;text-align:right;white-space:nowrap;vertical-align:middle;color:#1d1d1f">${qty}</td>
+      <td style="padding:10px 12px;font-size:12px;font-family:monospace;text-align:right;white-space:nowrap;vertical-align:middle;color:#1d1d1f">${unit}</td>
+      <td style="padding:10px 12px;font-size:13px;font-weight:700;font-family:monospace;white-space:nowrap;text-align:right;vertical-align:middle">$${li.amount_usd.toFixed(2)}</td>
+    </tr>`;
+    }
+    return `
     <tr style="background:${i % 2 === 0 ? "#fff" : "#f9f9f7"}">
       <td style="padding:10px 16px;font-size:11px;color:#888;text-align:right">${i + 1}</td>
       <td style="padding:10px 16px">
@@ -21,7 +43,8 @@ export function buildSavedInvoiceHTML(invoice: SavedInvoice, client: Client, age
       </td>
       <td style="padding:10px 16px;font-size:11px;color:#555;white-space:nowrap">${li.expected_date ? new Date(li.expected_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}</td>
       <td style="padding:10px 16px;font-size:13px;font-weight:600;font-family:monospace;white-space:nowrap;text-align:right">$${li.amount_usd.toFixed(2)}</td>
-    </tr>`).join("");
+    </tr>`;
+  }).join("");
 
   const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
   const bRow = (label: string, val: string) => val ? `<tr><td style="padding:4px 0;font-size:10px;color:#aaa;white-space:nowrap;width:140px">${label}</td><td style="padding:4px 0 4px 12px;font-size:11px;color:#333;font-weight:500">${esc(val)}</td></tr>` : "";
@@ -96,7 +119,11 @@ ${deposit < 100 ? `
 ${invoice.notes ? `<p style="font-size:12px;color:#555;margin-bottom:20px;line-height:1.6">${esc(invoice.notes)}</p>` : "<div style='margin-bottom:20px'></div>"}
 <div style="border:1px solid #eee;border-radius:10px;overflow:hidden">
 <table>
-  <thead><tr><th style="width:2rem">#</th><th>Item</th><th>Expected Date</th><th style="text-align:right">Amount</th></tr></thead>
+  <thead>
+    ${isProduction
+      ? `<tr><th style="width:2rem">#</th><th style="width:64px">Photo</th><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit price</th><th style="text-align:right">Line total</th></tr>`
+      : `<tr><th style="width:2rem">#</th><th>Item</th><th>Expected Date</th><th style="text-align:right">Amount</th></tr>`}
+  </thead>
   <tbody>${rows}</tbody>
 </table>
 ${totalsBreakdown}

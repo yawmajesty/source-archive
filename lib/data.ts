@@ -329,6 +329,7 @@ export interface InvoiceLineItem {
   kind?: "product" | "service";
   qty?: number | null;
   unit_price_usd?: number | null;
+  image_url?: string | null;
 }
 
 export interface SavedInvoice {

@@ -1263,38 +1263,78 @@ function SamplingInvoice({
                   </div>
                 </div>
 
-                <div className="grid px-6 py-1.5" style={{ gridTemplateColumns: "2rem 1fr auto auto", gap: "0.75rem", borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
-                  {["#", "Item", "Date", "Amount"].map((h) => (
-                    <span key={h} className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: "var(--portal-text-muted)" }}>{h}</span>
-                  ))}
-                </div>
-                {activeInvoice.line_items.map((li, i) => (
-                  <div key={i} className="grid px-6 py-3 items-center"
-                    style={{
-                      gridTemplateColumns: "2rem 1fr auto auto",
-                      gap: "0.75rem",
-                      borderBottom: i < activeInvoice.line_items.length - 1 ? "1px solid var(--portal-border-subtle)" : undefined,
-                      background: i % 2 === 0 ? "transparent" : "var(--portal-row-alt)",
-                    }}
-                  >
-                    <span className="text-[11px] text-right" style={{ color: "var(--portal-text-muted)" }}>{i + 1}</span>
-                    <div className="min-w-0">
-                      <p className="text-[12px] font-medium truncate" style={{ color: "var(--portal-text-primary)" }}>{li.name}</p>
-                      {(li.category || li.project_name) && (
-                        <p className="text-[10px] mt-0.5" style={{ color: "var(--portal-text-secondary)" }}>
-                          {[li.category, li.project_name].filter(Boolean).join(" · ")}
-                        </p>
-                      )}
-                      {li.qty != null && li.unit_price_usd != null && (
-                        <p className="text-[10px] mt-0.5" style={{ color: "var(--portal-text-muted)" }}>
-                          {li.qty.toLocaleString()} × ${li.unit_price_usd.toFixed(2)}
-                        </p>
-                      )}
+                {isProduction ? (
+                  <>
+                    <div className="grid px-6 py-1.5" style={{ gridTemplateColumns: "2rem 56px 1fr auto auto auto", gap: "0.75rem", borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
+                      {["#", "Photo", "Item", "Qty", "Unit", "Total"].map((h) => (
+                        <span key={h} className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: "var(--portal-text-muted)" }}>{h}</span>
+                      ))}
                     </div>
-                    <span className="text-[11px] whitespace-nowrap" style={{ color: "var(--portal-text-secondary)" }}>{li.expected_date ? formatDate(li.expected_date) : "—"}</span>
-                    <span className="font-mono text-[13px] font-semibold whitespace-nowrap" style={{ color: "var(--portal-text-primary)" }}>${li.amount_usd.toFixed(2)}</span>
-                  </div>
-                ))}
+                    {activeInvoice.line_items.map((li, i) => (
+                      <div key={i} className="grid px-6 py-3 items-center"
+                        style={{
+                          gridTemplateColumns: "2rem 56px 1fr auto auto auto",
+                          gap: "0.75rem",
+                          borderBottom: i < activeInvoice.line_items.length - 1 ? "1px solid var(--portal-border-subtle)" : undefined,
+                          background: i % 2 === 0 ? "transparent" : "var(--portal-row-alt)",
+                        }}
+                      >
+                        <span className="text-[11px] text-right" style={{ color: "var(--portal-text-muted)" }}>{i + 1}</span>
+                        {li.image_url ? (
+                          <img src={li.image_url} alt={li.name} className="h-14 w-14 rounded-md object-cover border" style={{ borderColor: "var(--portal-border-subtle)" }} />
+                        ) : (
+                          <div className="h-14 w-14 rounded-md border border-dashed flex items-center justify-center text-[10px]" style={{ borderColor: "var(--portal-border-subtle)", color: "var(--portal-text-muted)" }}>—</div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-[12px] font-semibold truncate" style={{ color: "var(--portal-text-primary)" }}>{li.name}</p>
+                          {(li.category || li.project_name) && (
+                            <p className="text-[10px] mt-0.5" style={{ color: "var(--portal-text-secondary)" }}>
+                              {[li.category, li.project_name].filter(Boolean).join(" · ")}
+                            </p>
+                          )}
+                        </div>
+                        <span className="font-mono text-[12px] text-right whitespace-nowrap" style={{ color: "var(--portal-text-primary)" }}>{li.qty != null ? li.qty.toLocaleString() : "—"}</span>
+                        <span className="font-mono text-[12px] text-right whitespace-nowrap" style={{ color: "var(--portal-text-primary)" }}>{li.unit_price_usd != null ? `$${li.unit_price_usd.toFixed(2)}` : "—"}</span>
+                        <span className="font-mono text-[13px] font-semibold text-right whitespace-nowrap" style={{ color: "var(--portal-text-primary)" }}>${li.amount_usd.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <div className="grid px-6 py-1.5" style={{ gridTemplateColumns: "2rem 1fr auto auto", gap: "0.75rem", borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
+                      {["#", "Item", "Date", "Amount"].map((h) => (
+                        <span key={h} className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: "var(--portal-text-muted)" }}>{h}</span>
+                      ))}
+                    </div>
+                    {activeInvoice.line_items.map((li, i) => (
+                      <div key={i} className="grid px-6 py-3 items-center"
+                        style={{
+                          gridTemplateColumns: "2rem 1fr auto auto",
+                          gap: "0.75rem",
+                          borderBottom: i < activeInvoice.line_items.length - 1 ? "1px solid var(--portal-border-subtle)" : undefined,
+                          background: i % 2 === 0 ? "transparent" : "var(--portal-row-alt)",
+                        }}
+                      >
+                        <span className="text-[11px] text-right" style={{ color: "var(--portal-text-muted)" }}>{i + 1}</span>
+                        <div className="min-w-0">
+                          <p className="text-[12px] font-medium truncate" style={{ color: "var(--portal-text-primary)" }}>{li.name}</p>
+                          {(li.category || li.project_name) && (
+                            <p className="text-[10px] mt-0.5" style={{ color: "var(--portal-text-secondary)" }}>
+                              {[li.category, li.project_name].filter(Boolean).join(" · ")}
+                            </p>
+                          )}
+                          {li.qty != null && li.unit_price_usd != null && (
+                            <p className="text-[10px] mt-0.5" style={{ color: "var(--portal-text-muted)" }}>
+                              {li.qty.toLocaleString()} × ${li.unit_price_usd.toFixed(2)}
+                            </p>
+                          )}
+                        </div>
+                        <span className="text-[11px] whitespace-nowrap" style={{ color: "var(--portal-text-secondary)" }}>{li.expected_date ? formatDate(li.expected_date) : "—"}</span>
+                        <span className="font-mono text-[13px] font-semibold whitespace-nowrap" style={{ color: "var(--portal-text-primary)" }}>${li.amount_usd.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </>
+                )}
 
                 <div className="flex flex-col gap-1 px-6 py-4" style={{ borderTop: "2px solid var(--portal-border)" }}>
                   <div className="flex items-center justify-between">
