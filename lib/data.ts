@@ -92,10 +92,12 @@ export async function getMilestones(productId: string): Promise<Milestone[]> {
 
 // ── Costs ────────────────────────────────────────
 
-export async function getCosts(options?: { projectId?: string; productId?: string }): Promise<Cost[]> {
+export async function getCosts(options?: { projectId?: string; productId?: string; includeDeleted?: boolean }): Promise<Cost[]> {
   let q = supabase.from("costs").select("*").order("date_paid", { ascending: false });
   if (options?.projectId) q = q.eq("project_id", options.projectId);
   if (options?.productId) q = q.eq("product_id", options.productId);
+  // Default: hide soft-deleted rows. Caller opts in to see them.
+  if (!options?.includeDeleted) q = q.is("deleted_at", null);
   const { data } = await q;
   return (data ?? []) as Cost[];
 }

@@ -2,7 +2,8 @@
 
 import { useState, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
-import { Plus, ChevronDown, ChevronRight, ArrowDownLeft, ArrowUpRight, Pencil } from "lucide-react";
+import { Plus, ChevronDown, ChevronRight, ArrowDownLeft, ArrowUpRight, Pencil, Trash2, RotateCcw, Eye, EyeOff } from "lucide-react";
+import { softDeleteCost, restoreCost } from "./actions";
 import {
   Dialog,
   DialogContent,
@@ -253,23 +254,58 @@ function PLView({ costs, projects, clients, products }: { costs: Cost[]; project
 }
 
 export function CostsPageClient({ costs, clients, projects, products }: Props) {
+  const router = useRouter();
   const [view, setView] = useState<"costs" | "pl">("costs");
   const [filterProject, setFilterProject] = useState<string>("all");
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterBillable, setFilterBillable] = useState<string>("all");
+  const [showDeleted, setShowDeleted] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [showModal, setShowModal] = useState(false);
   const [editingCost, setEditingCost] = useState<Cost | null>(null);
+  const [deletingCost, setDeletingCost] = useState<Cost | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+
+  const deletedCount = costs.filter((c) => c.deleted_at).length;
+
+  async function handleConfirmDelete() {
+    if (!deletingCost) return;
+    setDeleting(true);
+    const res = await softDeleteCost(deletingCost.id, deleteReason || null);
+    setDeleting(false);
+    if (!res.success) {
+      alert(`Couldn't delete: ${res.error ?? "unknown error"}`);
+      return;
+    }
+    setDeletingCost(null);
+    setDeleteReason("");
+    router.refresh();
+  }
+
+  async function handleRestore(cost: Cost) {
+    setRestoringId(cost.id);
+    const res = await restoreCost(cost.id);
+    setRestoringId(null);
+    if (!res.success) {
+      alert(`Couldn't restore: ${res.error ?? "unknown error"}`);
+      return;
+    }
+    router.refresh();
+  }
 
   // Filter
   const filtered = useMemo(() => {
     let r = costs;
+    // Default view hides soft-deleted rows; trash view shows only them.
+    r = showDeleted ? r.filter((c) => c.deleted_at) : r.filter((c) => !c.deleted_at);
     if (filterProject !== "all") r = r.filter((c) => c.project_id === filterProject);
     if (filterCategory !== "all") r = r.filter((c) => c.category === filterCategory);
     if (filterBillable === "yes") r = r.filter((c) => c.billable_to_client);
     if (filterBillable === "no") r = r.filter((c) => !c.billable_to_client);
     return r;
-  }, [costs, filterProject, filterCategory, filterBillable]);
+  }, [costs, filterProject, filterCategory, filterBillable, showDeleted]);
 
   // Group by project
   const grouped = useMemo(() => {
@@ -388,6 +424,20 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
             <option value="yes">Billable only</option>
             <option value="no">Non-billable only</option>
           </select>
+
+          <button
+            onClick={() => setShowDeleted((v) => !v)}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] transition-colors",
+              showDeleted
+                ? "border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300"
+                : "border-[var(--sa-border)] bg-[var(--sa-window)] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]",
+            )}
+            title={showDeleted ? "Switch back to active entries" : "Show deleted entries"}
+          >
+            {showDeleted ? <EyeOff size={12} /> : <Eye size={12} />}
+            {showDeleted ? "Viewing trash" : `Trash${deletedCount > 0 ? ` (${deletedCount})` : ""}`}
+          </button>
         </div>
 
         {/* Table */}
@@ -425,8 +475,10 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
                   </button>
 
                   {/* Rows */}
-                  {!isCollapsed && rows.map((cost) => (
-                    <div key={cost.id} className="border-b border-[var(--sa-border)] last:border-0 hover:bg-[var(--sa-hover)] transition-colors group">
+                  {!isCollapsed && rows.map((cost) => {
+                    const isDeleted = !!cost.deleted_at;
+                    return (
+                    <div key={cost.id} className={cn("border-b border-[var(--sa-border)] last:border-0 hover:bg-[var(--sa-hover)] transition-colors group", isDeleted && "opacity-60")}>
                       {/* Mobile card */}
                       <div className="sm:hidden flex flex-col gap-1 px-4 py-3 text-[12px]">
                         <div className="flex items-center justify-between">
@@ -436,51 +488,109 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
                               : <ArrowUpRight size={12} className="text-[var(--sa-danger)]" />
                             }
                             <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", CATEGORY_COLORS[cost.category])}>{cost.category}</span>
+                            {isDeleted && <span className="rounded-full bg-amber-100 dark:bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-300">Deleted</span>}
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className={cn("font-mono font-semibold", cost.direction === "in" ? "text-[var(--sa-success)]" : "text-[var(--sa-text-primary)]")}>
+                            <span className={cn("font-mono font-semibold", cost.direction === "in" ? "text-[var(--sa-success)]" : "text-[var(--sa-text-primary)]", isDeleted && "line-through")}>
                               {cost.direction === "in" ? "+" : ""}£{cost.amount_gbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
                             </span>
-                            <button onClick={() => setEditingCost(cost)} className="p-1 rounded text-[var(--sa-text-tertiary)] hover:text-[var(--sa-accent)]">
-                              <Pencil size={12} />
-                            </button>
+                            {!isDeleted && (
+                              <>
+                                <button onClick={() => setEditingCost(cost)} className="p-1 rounded text-[var(--sa-text-tertiary)] hover:text-[var(--sa-accent)]" title="Edit">
+                                  <Pencil size={12} />
+                                </button>
+                                <button onClick={() => { setDeletingCost(cost); setDeleteReason(""); }} className="p-1 rounded text-[var(--sa-text-tertiary)] hover:text-red-500" title="Delete">
+                                  <Trash2 size={12} />
+                                </button>
+                              </>
+                            )}
+                            {isDeleted && (
+                              <button
+                                onClick={() => handleRestore(cost)}
+                                disabled={restoringId === cost.id}
+                                className="p-1 rounded text-[var(--sa-text-tertiary)] hover:text-[var(--sa-success)] disabled:opacity-50"
+                                title="Restore"
+                              >
+                                <RotateCcw size={12} />
+                              </button>
+                            )}
                           </div>
                         </div>
-                        <span className="text-[var(--sa-text-primary)] font-medium">{cost.description}</span>
-                        <div className="flex items-center gap-2 text-[var(--sa-text-tertiary)]">
+                        <span className={cn("text-[var(--sa-text-primary)] font-medium", isDeleted && "line-through")}>{cost.description}</span>
+                        <div className="flex items-center gap-2 text-[var(--sa-text-tertiary)] flex-wrap">
                           <span>{formatDate(cost.date_paid)}</span>
                           <span>·</span>
                           <span>{cost.paid_by}</span>
                           {cost.billable_to_client && <span className="text-[var(--sa-success)] font-medium">· Billable</span>}
+                          {isDeleted && cost.deleted_at && (
+                            <span className="text-amber-700 dark:text-amber-400">
+                              · deleted {formatDate(cost.deleted_at)}{cost.deleted_reason ? ` · ${cost.deleted_reason}` : ""}
+                            </span>
+                          )}
                         </div>
                       </div>
                       {/* Desktop row */}
-                      <div className="hidden sm:grid grid-cols-[24px_120px_1fr_1fr_100px_110px_80px_60px_32px] gap-3 items-center px-4 py-2.5 text-[12px]">
+                      <div className="hidden sm:grid grid-cols-[24px_120px_1fr_1fr_100px_110px_80px_60px_60px] gap-3 items-center px-4 py-2.5 text-[12px]">
                         <span>
                           {cost.direction === "in"
                             ? <ArrowDownLeft size={13} className="text-[var(--sa-success)]" />
                             : <ArrowUpRight size={13} className="text-[var(--sa-danger)]" />
                           }
                         </span>
-                        <span className="text-[var(--sa-text-tertiary)]">{formatDate(cost.date_paid)}</span>
+                        <span className="text-[var(--sa-text-tertiary)]">
+                          {formatDate(cost.date_paid)}
+                          {isDeleted && cost.deleted_at && (
+                            <span className="block text-[10px] text-amber-700 dark:text-amber-400">
+                              deleted {formatDate(cost.deleted_at)}
+                            </span>
+                          )}
+                        </span>
                         <span className="truncate text-[var(--sa-text-secondary)]">{getProductName(cost.product_id)}</span>
                         <span><span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium capitalize", CATEGORY_COLORS[cost.category])}>{cost.category}</span></span>
-                        <span className="truncate text-[var(--sa-text-primary)]">{cost.description}</span>
-                        <span className={cn("font-mono", cost.direction === "in" ? "text-[var(--sa-success)] font-semibold" : "text-[var(--sa-text-primary)]")}>
+                        <span className={cn("truncate text-[var(--sa-text-primary)]", isDeleted && "line-through")}
+                          title={isDeleted && cost.deleted_reason ? `Reason: ${cost.deleted_reason}` : undefined}
+                        >
+                          {cost.description}
+                        </span>
+                        <span className={cn("font-mono", cost.direction === "in" ? "text-[var(--sa-success)] font-semibold" : "text-[var(--sa-text-primary)]", isDeleted && "line-through")}>
                           {cost.direction === "in" ? "+" : ""}£{cost.amount_gbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
                           <span className="text-[10px] text-[var(--sa-text-tertiary)] ml-1">{cost.currency !== "GBP" ? `(${cost.currency} ${cost.amount})` : ""}</span>
                         </span>
                         <span>{cost.billable_to_client ? <span className="text-[11px] text-[var(--sa-success)] font-medium">Yes</span> : <span className="text-[11px] text-[var(--sa-text-tertiary)]">No</span>}</span>
                         <span className="truncate text-[var(--sa-text-secondary)]">{cost.paid_by}</span>
-                        <button
-                          onClick={() => setEditingCost(cost)}
-                          className="opacity-0 group-hover:opacity-100 flex items-center justify-center rounded p-1 text-[var(--sa-text-tertiary)] hover:text-[var(--sa-accent)] hover:bg-[var(--sa-hover)] transition-all"
-                        >
-                          <Pencil size={12} />
-                        </button>
+                        <span className="flex items-center justify-end gap-0.5">
+                          {!isDeleted ? (
+                            <>
+                              <button
+                                onClick={() => setEditingCost(cost)}
+                                className="opacity-0 group-hover:opacity-100 flex items-center justify-center rounded p-1 text-[var(--sa-text-tertiary)] hover:text-[var(--sa-accent)] hover:bg-[var(--sa-hover)] transition-all"
+                                title="Edit"
+                              >
+                                <Pencil size={12} />
+                              </button>
+                              <button
+                                onClick={() => { setDeletingCost(cost); setDeleteReason(""); }}
+                                className="opacity-0 group-hover:opacity-100 flex items-center justify-center rounded p-1 text-[var(--sa-text-tertiary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all"
+                                title="Delete"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => handleRestore(cost)}
+                              disabled={restoringId === cost.id}
+                              className="flex items-center justify-center rounded p-1 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/10 transition-all disabled:opacity-50"
+                              title={`Restore — ${cost.deleted_reason ?? "no reason given"}`}
+                            >
+                              <RotateCcw size={12} />
+                            </button>
+                          )}
+                        </span>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
 
                   {/* Group subtotal */}
                   {!isCollapsed && (
@@ -540,6 +650,57 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
               />
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation */}
+      <Dialog open={!!deletingCost} onOpenChange={(open) => { if (!open && !deleting) { setDeletingCost(null); setDeleteReason(""); } }}>
+        <DialogContent className="max-w-md bg-[var(--sa-window)]">
+          <DialogHeader>
+            <DialogTitle className="text-[var(--sa-text-primary)]">Delete entry?</DialogTitle>
+          </DialogHeader>
+          {deletingCost && (
+            <div className="grid gap-3 pt-1">
+              <div className="rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[12px]">
+                <p className="font-medium text-[var(--sa-text-primary)]">{deletingCost.description || "(no description)"}</p>
+                <p className="text-[11px] text-[var(--sa-text-tertiary)] mt-0.5">
+                  {formatDate(deletingCost.date_paid)} · {deletingCost.direction === "in" ? "+" : ""}£{deletingCost.amount_gbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
+                </p>
+              </div>
+              <p className="text-[12px] text-[var(--sa-text-secondary)]">
+                This will be hidden from totals and the default list, but kept in the trash so you have a history.
+                You can restore it from <strong>Trash</strong> at the top of the page.
+              </p>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">
+                  Reason (optional)
+                </label>
+                <input
+                  value={deleteReason}
+                  onChange={(e) => setDeleteReason(e.target.value)}
+                  placeholder="Duplicate entry, wrong amount, posted by mistake…"
+                  className="w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)]"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  onClick={() => { setDeletingCost(null); setDeleteReason(""); }}
+                  disabled={deleting}
+                  className="rounded-lg border border-[var(--sa-border)] px-3 py-2 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] disabled:opacity-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmDelete}
+                  disabled={deleting}
+                  className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-2 text-[12px] font-medium text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+                >
+                  <Trash2 size={12} />
+                  {deleting ? "Deleting…" : "Delete"}
+                </button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

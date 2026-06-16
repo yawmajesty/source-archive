@@ -321,6 +321,10 @@ export interface Cost {
   paid_by: string;
   date_paid: string;
   created_at: string;
+  // Soft-delete: when non-null, this entry is hidden from totals and the
+  // default list but kept for history. Recoverable via the trash view.
+  deleted_at?: string | null;
+  deleted_reason?: string | null;
 }
 
 export interface Task {
