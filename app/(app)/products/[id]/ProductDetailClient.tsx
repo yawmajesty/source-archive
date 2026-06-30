@@ -42,17 +42,20 @@ function EditProductDrawer({
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Never use String(value) on a possibly-null field — it produces the literal
+  // string "null" which contaminates the input and corrupts saves.
+  const numStr = (v: number | null | undefined) => (v != null ? String(v) : "");
   const [form, setForm] = useState({
     name: product.name,
     category: product.category,
     stage: product.stage as Stage,
     factory_id: product.factory_id ?? "",
-    moq: String(product.moq),
-    order_qty: product.order_qty != null ? String(product.order_qty) : "",
-    target_cost_usd: String(product.target_cost_usd),
-    quoted_cost_usd: product.quoted_cost_usd != null ? String(product.quoted_cost_usd) : "",
+    moq: numStr(product.moq),
+    order_qty: numStr(product.order_qty),
+    target_cost_usd: numStr(product.target_cost_usd),
+    quoted_cost_usd: numStr(product.quoted_cost_usd),
     quoted_cost_currency: product.quoted_cost_currency,
-    lead_time_days: String(product.lead_time_days),
+    lead_time_days: numStr(product.lead_time_days),
     colorways: product.colorways.join(", "),
     notes: product.notes ?? "",
   });
@@ -65,17 +68,25 @@ function EditProductDrawer({
   async function handleSave() {
     if (!form.name.trim()) { setError("Name is required"); return; }
     setSaving(true); setError("");
+    // Parse a numeric field. Empty / invalid input becomes null instead of 0
+    // so we don't silently overwrite real prices with zero.
+    const parseNum = (raw: string): number | null => {
+      const t = raw.trim();
+      if (!t) return null;
+      const n = Number(t);
+      return Number.isFinite(n) ? n : null;
+    };
     const updates: any = {
       name: form.name.trim(),
       category: form.category.trim(),
       stage: form.stage,
       factory_id: form.factory_id || null,
-      moq: parseInt(form.moq) || 0,
-      order_qty: form.order_qty ? parseInt(form.order_qty) : null,
-      target_cost_usd: parseFloat(form.target_cost_usd) || 0,
-      quoted_cost_usd: form.quoted_cost_usd ? parseFloat(form.quoted_cost_usd) : null,
+      moq: parseNum(form.moq),
+      order_qty: parseNum(form.order_qty),
+      target_cost_usd: parseNum(form.target_cost_usd),
+      quoted_cost_usd: parseNum(form.quoted_cost_usd),
       quoted_cost_currency: form.quoted_cost_currency,
-      lead_time_days: parseInt(form.lead_time_days) || 0,
+      lead_time_days: parseNum(form.lead_time_days),
       colorways: form.colorways.split(",").map((s) => s.trim()).filter(Boolean),
       notes: form.notes?.trim() ?? "",
     };
@@ -1024,7 +1035,10 @@ function PriceHistoryCard({ history }: { history: ProductPriceHistoryEntry[] }) 
 function PricingCard({ product, onSaved }: { product: Product; onSaved: (p: Partial<Product>) => void }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [target, setTarget] = useState(String(product.target_cost_usd));
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // IMPORTANT: do not use String(value) directly — when value is null it produces
+  // the literal string "null" which contaminates the input. Render empty instead.
+  const [target, setTarget] = useState(product.target_cost_usd != null ? String(product.target_cost_usd) : "");
   const [quoted, setQuoted] = useState(product.quoted_cost_usd != null ? String(product.quoted_cost_usd) : "");
   const [currency, setCurrency] = useState<"USD" | "GBP" | "EUR" | "CNY">((product.quoted_cost_currency as any) ?? "USD");
   const [orderQty, setOrderQty] = useState(product.order_qty != null ? String(product.order_qty) : "");
@@ -1032,20 +1046,31 @@ function PricingCard({ product, onSaved }: { product: Product; onSaved: (p: Part
   const [sampleCost, setSampleCost] = useState(product.sample_cost_usd != null ? String(product.sample_cost_usd) : "");
   const [sampleDate, setSampleDate] = useState(product.expected_sample_date ?? "");
 
+  // Parse a user-entered numeric string. Returns null for empty/invalid input
+  // so we don't silently write 0 over a real price.
+  const parseNum = (raw: string): number | null => {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : null;
+  };
+
   async function handleSave() {
     setSaving(true);
+    setSaveError(null);
     const updates: Partial<Product> = {
-      target_cost_usd: parseFloat(target) || 0,
-      quoted_cost_usd: quoted ? parseFloat(quoted) : null,
+      target_cost_usd: parseNum(target),
+      quoted_cost_usd: parseNum(quoted),
       quoted_cost_currency: currency,
-      order_qty: orderQty ? parseInt(orderQty) : null,
-      sample_fee_usd: sampleFee ? parseFloat(sampleFee) : null,
-      sample_cost_usd: sampleCost ? parseFloat(sampleCost) : null,
+      order_qty: parseNum(orderQty),
+      sample_fee_usd: parseNum(sampleFee),
+      sample_cost_usd: parseNum(sampleCost),
       expected_sample_date: sampleDate || null,
     };
-    await supabase.from("products").update(updates).eq("id", product.id);
-    onSaved(updates);
+    const { error } = await supabase.from("products").update(updates).eq("id", product.id);
     setSaving(false);
+    if (error) { setSaveError(error.message); return; }
+    onSaved(updates);
     setEditing(false);
   }
 
@@ -1095,6 +1120,9 @@ function PricingCard({ product, onSaved }: { product: Product; onSaved: (p: Part
               <div><p className={labelCls}>Expected sample date</p>
                 <input className={inputCls} type="date" value={sampleDate} onChange={(e) => setSampleDate(e.target.value)} /></div>
             </div>
+            {saveError && (
+              <p className="text-[11px] text-red-500 mt-1">Couldn't save: {saveError}</p>
+            )}
           </>
         ) : (
           <div className="space-y-2">
