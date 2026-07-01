@@ -3,11 +3,11 @@
 import { useState, useMemo, useRef, useEffect, useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon, Plus, Trash2, X } from "lucide-react";
+import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon, Plus, Trash2, X, CreditCard } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { uploadFile } from "@/lib/storage";
 import type { Client, Contract, PortalFile, AgencySettings, SavedInvoice } from "@/lib/data";
-import { updateInvoiceStatus, deleteInvoice, logPortalVisit, updateVisitDuration } from "./actions";
+import { updateInvoiceStatus, deleteInvoice, logPortalVisit, updateVisitDuration, createInvoiceCheckout } from "./actions";
 import { downloadInvoicePDF } from "@/lib/invoice-pdf";
 import type { Stage } from "@/lib/mock-data";
 import type { PortalProject, PortalProduct } from "./page";
@@ -1179,6 +1179,30 @@ function SamplingInvoice({
     }
   }
 
+  const [payLoading, setPayLoading] = useState(false);
+  async function handlePay(invoice: SavedInvoice) {
+    if (payLoading) return;
+    setPayLoading(true);
+    try {
+      const res = await createInvoiceCheckout(invoice.id);
+      if ("error" in res) {
+        alert(res.error);
+        setPayLoading(false);
+        return;
+      }
+      if (!res.url) {
+        alert("Stripe returned no checkout URL — try again in a moment.");
+        setPayLoading(false);
+        return;
+      }
+      window.location.assign(res.url);
+    } catch (err) {
+      console.error("[Stripe checkout] failed:", err);
+      alert(`Couldn't start checkout: ${err instanceof Error ? err.message : String(err)}`);
+      setPayLoading(false);
+    }
+  }
+
   useEffect(() => { setInvoices(initialInvoices); }, [initialInvoices]);
   useEffect(() => {
     if (initialInvoices.length > 0 && !initialInvoices.find((i) => i.round === activeRound)) {
@@ -1375,6 +1399,23 @@ function SamplingInvoice({
                   >
                     <Download size={12} /> Download PDF
                   </button>
+                  {activeInvoice.status === "sent" && (
+                    <button
+                      onClick={() => handlePay(activeInvoice)}
+                      disabled={payLoading}
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:opacity-60"
+                      style={{ background: "#635bff", color: "#fff" }}
+                      title="Pay this invoice with card via Stripe"
+                    >
+                      <CreditCard size={12} />
+                      {payLoading ? "Redirecting…" : `Pay $${(activeInvoice.line_items.reduce((s, li) => s + li.amount_usd, 0) * ((activeInvoice.deposit_percent ?? 100) / 100)).toFixed(2)}`}
+                    </button>
+                  )}
+                  {activeInvoice.status === "paid" && activeInvoice.paid_at && (
+                    <span className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium" style={{ background: "#EAF3DE", color: "#27500A" }}>
+                      <CheckCircle2 size={12} /> Paid {new Date(activeInvoice.paid_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                    </span>
+                  )}
                   {isAgency && (
                     <>
                       <select

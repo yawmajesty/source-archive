@@ -345,6 +345,9 @@ export interface SavedInvoice {
   created_at: string;
   invoice_kind?: "sampling" | "production" | null;
   deposit_percent?: number | null;
+  paid_at?: string | null;
+  stripe_session_id?: string | null;
+  stripe_payment_intent_id?: string | null;
 }
 
 export async function getSamplingInvoices(clientId: string, includeDrafts = true): Promise<SavedInvoice[]> {
