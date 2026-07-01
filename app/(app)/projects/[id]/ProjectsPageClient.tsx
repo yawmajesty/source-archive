@@ -380,8 +380,12 @@ function CollectionTable({
   // Production P&L rows — per-product projected revenue/cost/margin
   const productionRows = includedRows.map(({ product: p }) => {
     const qty = p.order_qty ?? p.moq ?? 0;
-    const clientUnit = representativePrice(p.price_tiers, p.client_unit_price_usd);
-    const supplierUnit = representativePrice(p.internal_price_tiers, p.quoted_cost_usd);
+    // Revenue side: client tier -> client_unit_price_usd -> quoted_cost_usd
+    // (the last is what users typically type into the "Quoted cost" field —
+    // it's semantically the price we quote the client).
+    const clientUnit = representativePrice(p.price_tiers, p.client_unit_price_usd ?? p.quoted_cost_usd);
+    // Cost side: internal (supplier) tier -> internal target cost.
+    const supplierUnit = representativePrice(p.internal_price_tiers, p.target_cost_usd);
     const unitMargin = clientUnit != null && supplierUnit != null ? clientUnit - supplierUnit : null;
     const lineRevenue = clientUnit != null && qty > 0 ? clientUnit * qty : null;
     const lineCost = supplierUnit != null && qty > 0 ? supplierUnit * qty : null;

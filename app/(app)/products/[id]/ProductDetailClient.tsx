@@ -133,12 +133,12 @@ function EditProductDrawer({
             <div><label className={labelCls}>Order qty</label><input className={inputCls} type="number" value={form.order_qty} onChange={(e) => set("order_qty", e.target.value)} placeholder="TBD" /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className={labelCls}>Target cost (USD)</label><input className={inputCls} type="number" step="0.01" value={form.target_cost_usd} onChange={(e) => set("target_cost_usd", e.target.value)} /></div>
-            <div><label className={labelCls}>Quoted cost</label><input className={inputCls} type="number" step="0.01" value={form.quoted_cost_usd} onChange={(e) => set("quoted_cost_usd", e.target.value)} placeholder="TBD" /></div>
+            <div><label className={labelCls}>Target cost (USD) · our internal target</label><input className={inputCls} type="number" step="0.01" value={form.target_cost_usd} onChange={(e) => set("target_cost_usd", e.target.value)} /></div>
+            <div><label className={labelCls}>Price to client · what we quote</label><input className={inputCls} type="number" step="0.01" value={form.quoted_cost_usd} onChange={(e) => set("quoted_cost_usd", e.target.value)} placeholder="TBD" /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>Quote currency</label>
+              <label className={labelCls}>Price currency</label>
               <select className={inputCls} value={form.quoted_cost_currency} onChange={(e) => set("quoted_cost_currency", e.target.value)}>
                 {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -1096,10 +1096,16 @@ function PricingCard({ product, onSaved }: { product: Product; onSaved: (p: Part
         {editing ? (
           <>
             <div className="grid grid-cols-2 gap-2">
-              <div><p className={labelCls}>Target cost (USD)</p>
-                <input className={inputCls} type="number" step="0.01" value={target} onChange={(e) => setTarget(e.target.value)} /></div>
-              <div><p className={labelCls}>Quoted cost</p>
-                <input className={inputCls} type="number" step="0.01" value={quoted} onChange={(e) => setQuoted(e.target.value)} placeholder="TBD" /></div>
+              <div>
+                <p className={labelCls}>Target cost (USD)</p>
+                <p className="text-[10px] text-[var(--sa-text-tertiary)] -mt-0.5 mb-1">Our internal target — cost side of P&L</p>
+                <input className={inputCls} type="number" step="0.01" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="e.g. 17" />
+              </div>
+              <div>
+                <p className={labelCls}>Price to client</p>
+                <p className="text-[10px] text-[var(--sa-text-tertiary)] -mt-0.5 mb-1">Final unit price you quote the client — revenue side</p>
+                <input className={inputCls} type="number" step="0.01" value={quoted} onChange={(e) => setQuoted(e.target.value)} placeholder="e.g. 24" />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div><p className={labelCls}>Currency</p>
@@ -1129,7 +1135,7 @@ function PricingCard({ product, onSaved }: { product: Product; onSaved: (p: Part
             <div className="grid grid-cols-2 gap-2">
               {[
                 { label: "Target", value: product.target_cost_usd != null ? `$${product.target_cost_usd.toFixed(2)}` : "—" },
-                { label: "Quoted", value: product.quoted_cost_usd != null ? `${product.quoted_cost_currency} ${product.quoted_cost_usd.toFixed(2)}` : "—" },
+                { label: "Price to client", value: product.quoted_cost_usd != null ? `${product.quoted_cost_currency} ${product.quoted_cost_usd.toFixed(2)}` : "—" },
                 { label: "Order qty", value: product.order_qty?.toLocaleString() ?? "—" },
                 { label: "Sample fee", value: product.sample_fee_usd != null ? `$${product.sample_fee_usd.toFixed(2)}` : "—" },
               ].map(({ label, value }) => (

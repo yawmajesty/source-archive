@@ -66,17 +66,27 @@ export function CollectionDashboard({ products, onOpenProduct }: Props) {
   for (const p of includedProducts) {
     const qty = p.order_qty ?? p.moq ?? 0;
     if (qty <= 0) continue;
-    const clientUnit = representativePrice(p.price_tiers, p.client_unit_price_usd);
-    const supplierUnit = representativePrice(p.internal_price_tiers, p.quoted_cost_usd);
+    // Revenue side: prefer the explicit client tier / client_unit_price_usd
+    // when set, but fall back to quoted_cost_usd — historically labelled
+    // "Quoted cost" but semantically the price we quoted the client.
+    const clientUnit = representativePrice(p.price_tiers, p.client_unit_price_usd ?? p.quoted_cost_usd);
+    // Cost side: prefer the internal (supplier) tier when set, otherwise the
+    // internal target cost. We no longer use quoted_cost_usd here — it was
+    // being read as the supplier cost, which produced negative P&L whenever
+    // a user entered their client sell price there.
+    const supplierUnit = representativePrice(p.internal_price_tiers, p.target_cost_usd);
     if (clientUnit == null && supplierUnit == null && p.target_cost_usd == null) continue;
     totalQty += qty;
     if (p.target_cost_usd != null) totalTargetCost += p.target_cost_usd * qty;
     if (clientUnit != null) totalRevenue += clientUnit * qty;
     if (supplierUnit != null) totalCost += supplierUnit * qty;
     if (clientUnit != null && supplierUnit != null) productsWithMargin++;
-    // Quoted-vs-target spread: only counts when both quoted and target exist
-    if (supplierUnit != null && p.target_cost_usd != null) {
-      spreadTotalQuoted += supplierUnit * qty;
+    // Supplier-quote vs target spread: only counts when we have a real
+    // supplier quote (internal tier) AND the target — target_cost_usd fallback
+    // would make the spread trivially zero.
+    const supplierQuoted = representativePrice(p.internal_price_tiers, null);
+    if (supplierQuoted != null && p.target_cost_usd != null) {
+      spreadTotalQuoted += supplierQuoted * qty;
       spreadTotalTarget += p.target_cost_usd * qty;
       spreadProductCount++;
     }
