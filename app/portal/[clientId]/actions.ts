@@ -99,6 +99,15 @@ export async function deleteInvoice(id: string, clientId: string): Promise<void>
 export async function createInvoiceCheckout(invoiceId: string): Promise<
   { url: string } | { error: string }
 > {
+  // Force the module hash to change so any cached client bundle bound to the
+  // old server-action id will fall through to the new endpoint. (Deploy tag: v3)
+  console.log("[stripe checkout] createInvoiceCheckout called", {
+    invoiceId,
+    invoiceIdType: typeof invoiceId,
+    invoiceIdLen: invoiceId?.length,
+    time: new Date().toISOString(),
+  });
+
   // Load the invoice we want to charge for and confirm it's chargeable.
   // NB: we don't rely on PostgREST FK embeds (sampling_invoices → clients is
   // not FK-linked in this schema), so fetch the client separately.
@@ -107,8 +116,22 @@ export async function createInvoiceCheckout(invoiceId: string): Promise<
     .select("*")
     .eq("id", invoiceId)
     .single();
+
+  console.log("[stripe checkout] invoice load result", {
+    hasInvoice: !!invoice,
+    invoiceId: invoice?.id,
+    status: invoice?.status,
+    loadErrCode: loadErr?.code,
+    loadErrMsg: loadErr?.message,
+  });
+
   if (loadErr || !invoice) {
-    return { error: `Invoice not found${loadErr?.message ? `: ${loadErr.message}` : ""}` };
+    const parts = [
+      `invoiceId="${invoiceId}"`,
+      loadErr?.code ? `code=${loadErr.code}` : null,
+      loadErr?.message ? `msg=${loadErr.message}` : null,
+    ].filter(Boolean).join(" · ");
+    return { error: `Invoice not found (${parts || "no error message returned"})` };
   }
   if (invoice.status === "paid") return { error: "This invoice is already paid" };
   if (invoice.status === "draft") return { error: "Invoice is still in draft — send it before taking payment" };
