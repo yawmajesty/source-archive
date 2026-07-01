@@ -100,14 +100,24 @@ export async function createInvoiceCheckout(invoiceId: string): Promise<
   { url: string } | { error: string }
 > {
   // Load the invoice we want to charge for and confirm it's chargeable.
+  // NB: we don't rely on PostgREST FK embeds (sampling_invoices → clients is
+  // not FK-linked in this schema), so fetch the client separately.
   const { data: invoice, error: loadErr } = await supabase
     .from("sampling_invoices")
-    .select("*, clients(name, contact_email)")
+    .select("*")
     .eq("id", invoiceId)
     .single();
-  if (loadErr || !invoice) return { error: "Invoice not found" };
+  if (loadErr || !invoice) {
+    return { error: `Invoice not found${loadErr?.message ? `: ${loadErr.message}` : ""}` };
+  }
   if (invoice.status === "paid") return { error: "This invoice is already paid" };
   if (invoice.status === "draft") return { error: "Invoice is still in draft — send it before taking payment" };
+
+  const { data: clientRow } = await supabase
+    .from("clients")
+    .select("name, contact_email")
+    .eq("id", invoice.client_id)
+    .maybeSingle();
 
   const lineItems = (invoice.line_items ?? []) as InvoiceLineItem[];
   const projectTotal = lineItems.reduce((s, li) => s + (li.amount_usd ?? 0), 0);
@@ -143,12 +153,12 @@ export async function createInvoiceCheckout(invoiceId: string): Promise<
             unit_amount: Math.round(amountDueUsd * 100), // Stripe uses minor units
             product_data: {
               name: description,
-              description: `${(invoice.clients as any)?.name ?? "Client"} · ${lineItems.length} line item${lineItems.length !== 1 ? "s" : ""}`,
+              description: `${clientRow?.name ?? "Client"} · ${lineItems.length} line item${lineItems.length !== 1 ? "s" : ""}`,
             },
           },
         },
       ],
-      customer_email: (invoice.clients as any)?.contact_email ?? undefined,
+      customer_email: clientRow?.contact_email ?? undefined,
       success_url: successUrl,
       cancel_url: cancelUrl,
       // metadata is what the webhook reads back to identify the invoice.
