@@ -3,8 +3,9 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Lock, Globe, Package, ChevronRight, Calendar, Plus, Activity, Clock } from "lucide-react";
+import { ArrowRight, Lock, Globe, Package, ChevronRight, Calendar, Plus, Activity, Clock, Copy, Check } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { buildPublicUrl } from "@/lib/url";
 import { ResizablePanel } from "@/components/layout/ResizablePanel";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { StageTrack } from "@/components/shared/StageTrack";
@@ -63,6 +64,13 @@ function formatDuration(ms: number): string {
 function PortalActivityPanel({ activity, client, portalEnabled, onBack, backLabel }: { activity: PortalActivity; client: Client; portalEnabled: boolean; onBack?: () => void; backLabel?: string }) {
   const maxDayVisits = Math.max(1, ...activity.perDay.map((d) => d.visits));
   const portalUrl = `/portal/${client.id}`;
+  const publicPortalUrl = buildPublicUrl(portalUrl);
+  const [copied, setCopied] = useState(false);
+  function copyPortalLink() {
+    navigator.clipboard?.writeText(publicPortalUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   return (
     <div className="h-full overflow-y-auto bg-[var(--sa-bg)]">
@@ -89,11 +97,25 @@ function PortalActivityPanel({ activity, client, portalEnabled, onBack, backLabe
             </p>
           </div>
           {portalEnabled && (
-            <a href={portalUrl} target="_blank" rel="noreferrer"
-              className="text-[11px] text-[var(--sa-accent)] hover:underline"
-            >
-              Open portal ↗
-            </a>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                onClick={copyPortalLink}
+                title={publicPortalUrl}
+                className={cn(
+                  "flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
+                  copied
+                    ? "border-emerald-500 text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10"
+                    : "border-[var(--sa-border)] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]",
+                )}
+              >
+                {copied ? <><Check size={11} /> Copied</> : <><Copy size={11} /> Copy portal link</>}
+              </button>
+              <a href={portalUrl} target="_blank" rel="noreferrer"
+                className="rounded-md border border-[var(--sa-border)] px-2 py-1 text-[11px] font-medium text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
+              >
+                Open ↗
+              </a>
+            </div>
           )}
         </div>
 

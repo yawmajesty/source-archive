@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { getPublicOrigin } from "@/lib/url";
 import type { Factory, Product, Project, Rfq } from "@/lib/mock-data";
 import { createRfq, closeRfq, getRfqDetail, assignQuotedProduct } from "./actions";
 
@@ -277,7 +278,7 @@ function RfqDetailPanel({ rfq, projects, products, onClose }: { rfq: Rfq; projec
   const [loading, setLoading] = useState(true);
   const [closing, startClose] = useTransition();
   const [assignTarget, setAssignTarget] = useState<{ id: string; name: string; factoryId: string | null } | null>(null);
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const origin = getPublicOrigin();
 
   useEffect(() => {
     getRfqDetail(rfq.id).then((d) => { setData(d); setLoading(false); });

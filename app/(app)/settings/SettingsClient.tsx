@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Shield, User, Copy, Check } from "lucide-react";
 import { updateUserRole, saveAgencySettings } from "./actions";
+import { buildPublicUrl } from "@/lib/url";
 import type { ClerkUserProfile } from "./page";
 import type { AgencySettings } from "@/lib/data";
 
@@ -141,9 +142,7 @@ function InvoiceSettings({ initial }: { initial: AgencySettings }) {
 }
 
 export function SettingsClient({ currentUser, team, isAdmin, agencySettings }: Props) {
-  const signupUrl = typeof window !== "undefined"
-    ? `${window.location.origin}/sign-up`
-    : "/sign-up";
+  const signupUrl = buildPublicUrl("/sign-up");
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">

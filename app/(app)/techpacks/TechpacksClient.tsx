@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Download, ExternalLink, Copy, CheckCheck } from "lucide-react";
 import { supabaseData as supabase } from "@/lib/supabase-data";
 import { cn } from "@/lib/utils";
+import { buildPublicUrl } from "@/lib/url";
 import type { TechpackSubmission } from "@/lib/data";
 
 interface Props { submissions: TechpackSubmission[] }
@@ -395,8 +396,7 @@ function TechpackDetail({
 function CopyLink({ label, path }: { label: string; path: string }) {
   const [copied, setCopied] = useState(false);
   function copy() {
-    const url = typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
-    navigator.clipboard?.writeText(url);
+    navigator.clipboard?.writeText(buildPublicUrl(path));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }

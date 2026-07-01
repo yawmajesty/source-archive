@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Check, Plus, Trash2, Copy, CheckCheck, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { updateLeadStatus, convertLeadToClient, createLead, deleteLead } from "./actions";
+import { buildPublicUrl } from "@/lib/url";
 import type { Lead } from "@/lib/data";
 
 interface Props { leads: Lead[] }
@@ -24,8 +25,7 @@ const SOURCE_OPTIONS = ["brief_form", "referral", "direct", "cold_outreach", "ev
 function CopyLink({ label, path }: { label: string; path: string }) {
   const [copied, setCopied] = useState(false);
   function copy() {
-    const url = typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
-    navigator.clipboard?.writeText(url);
+    navigator.clipboard?.writeText(buildPublicUrl(path));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
