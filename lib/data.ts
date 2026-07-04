@@ -301,7 +301,20 @@ export interface AgencySettings {
   bank_address: string;
   account_created_on: string;
   invoice_terms: string;
+  // Brand + SEO
+  site_title: string;
+  site_tagline: string;
+  site_description: string;
+  icon_url: string;
+  wordmark_url: string;
+  favicon_url: string;
+  og_image_url: string;
+  google_verification: string;
 }
+
+// Sensible defaults so the site keeps rendering even when the DB is empty.
+const DEFAULT_SITE_TITLE = "Source[Archive]";
+const DEFAULT_SITE_DESCRIPTION = "A sourcing agency helping brands build considered products with vetted factories.";
 
 export async function getAgencySettings(): Promise<AgencySettings> {
   const { data } = await supabase.from("agency_settings").select("*").eq("id", "default").single();
@@ -317,6 +330,14 @@ export async function getAgencySettings(): Promise<AgencySettings> {
     bank_address: d?.bank_address ?? "",
     account_created_on: d?.account_created_on ?? "",
     invoice_terms: d?.invoice_terms ?? "",
+    site_title: d?.site_title ?? DEFAULT_SITE_TITLE,
+    site_tagline: d?.site_tagline ?? "",
+    site_description: d?.site_description ?? DEFAULT_SITE_DESCRIPTION,
+    icon_url: d?.icon_url ?? "",
+    wordmark_url: d?.wordmark_url ?? "",
+    favicon_url: d?.favicon_url ?? "",
+    og_image_url: d?.og_image_url ?? "",
+    google_verification: d?.google_verification ?? "",
   };
 }
 

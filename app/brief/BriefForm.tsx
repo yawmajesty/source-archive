@@ -6,6 +6,7 @@ import { CheckCircle, Plus, Trash2, ChevronRight, ChevronLeft, ExternalLink, Upl
 import { submitBrief } from "./actions";
 import { uploadFile } from "@/lib/storage";
 import type { BriefProduct } from "@/lib/mock-data";
+import type { AgencySettings } from "@/lib/data";
 
 const CATEGORIES = ["Tops", "Bottoms", "Outerwear", "Dresses & Skirts", "Knitwear", "Activewear", "Accessories", "Footwear", "Homeware", "Beauty", "Other"];
 const INDUSTRIES = ["Womenswear", "Menswear", "Unisex / Genderless", "Kids & Baby", "Accessories", "Homeware & Lifestyle", "Beauty & Wellness", "Sportswear", "Other"];
@@ -245,7 +246,7 @@ function StepIndicator({ step, total }: { step: number; total: number }) {
 
 const TOTAL_STEPS = 4;
 
-export function BriefForm() {
+export function BriefForm({ agencySettings }: { agencySettings: AgencySettings }) {
   const [step, setStep] = useState(1);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -352,8 +353,20 @@ export function BriefForm() {
   return (
     <div className="min-h-screen bg-[#F5F5F7]" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" }}>
       <header className="flex items-center gap-2.5 px-8 py-5 border-b border-black/[0.08] bg-white sticky top-0 z-10">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#1A1A2E] text-white text-[13px] font-bold">K</div>
-        <span className="text-[15px] font-semibold text-[#1D1D1F]">Source[Archive]</span>
+        {agencySettings.icon_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={agencySettings.icon_url} alt="" style={{ height: 28, width: 28, objectFit: "contain" }} />
+        ) : (
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#1A1A2E] text-white text-[13px] font-bold">
+            {(agencySettings.site_title || "S")[0].toUpperCase()}
+          </div>
+        )}
+        {agencySettings.wordmark_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={agencySettings.wordmark_url} alt={agencySettings.site_title} style={{ height: 22, maxWidth: 180, objectFit: "contain" }} />
+        ) : (
+          <span className="text-[15px] font-semibold text-[#1D1D1F]">{agencySettings.site_title || "Source[Archive]"}</span>
+        )}
         <span className="ml-auto text-[12px] text-[#AEAEB2]">Step {step} of {TOTAL_STEPS} — {STEP_LABELS[step - 1]}</span>
       </header>
 

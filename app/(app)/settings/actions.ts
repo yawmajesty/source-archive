@@ -40,3 +40,27 @@ export async function saveAgencySettings(settings: {
     .upsert({ id: "default", ...settings, updated_at: new Date().toISOString() });
   revalidatePath("/settings");
 }
+
+export async function saveBrandSettings(brand: {
+  site_title: string;
+  site_tagline: string;
+  site_description: string;
+  icon_url: string;
+  wordmark_url: string;
+  favicon_url: string;
+  og_image_url: string;
+  google_verification: string;
+}) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthenticated");
+
+  const client = await clerkClient();
+  const caller = await client.users.getUser(userId);
+  if (caller.publicMetadata?.role !== "admin") throw new Error("Only admins can update brand settings");
+
+  await supabaseData
+    .from("agency_settings")
+    .upsert({ id: "default", ...brand, updated_at: new Date().toISOString() });
+  // Revalidate the whole site so the new metadata/favicon takes effect everywhere.
+  revalidatePath("/", "layout");
+}

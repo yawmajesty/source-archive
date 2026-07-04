@@ -93,15 +93,39 @@ function fmtSize(kb: number) {
   return kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`;
 }
 
+// ── Brand lockup (icon + wordmark, with graceful fallbacks) ──
+function AgencyBrand({ settings, compact }: { settings: AgencySettings; compact?: boolean }) {
+  const iconSize = compact ? 24 : 28;
+  const title = settings.site_title || "Source[Archive]";
+  return (
+    <div className="flex items-center gap-2">
+      {settings.icon_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={settings.icon_url} alt="" style={{ height: iconSize, width: iconSize, objectFit: "contain" }} />
+      ) : (
+        <div
+          className="flex items-center justify-center rounded-lg text-white text-[13px] font-bold"
+          style={{ height: iconSize, width: iconSize, background: "var(--portal-brand)" }}
+        >
+          {title[0]?.toUpperCase() ?? "K"}
+        </div>
+      )}
+      {settings.wordmark_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={settings.wordmark_url} alt={title} style={{ height: iconSize - 6, maxWidth: 160, objectFit: "contain" }} />
+      ) : (
+        <span className="text-[15px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>{title}</span>
+      )}
+    </div>
+  );
+}
+
 // ── Locked gate ──────────────────────────────────────────────
-function PortalGate({ client }: { client: Client }) {
+function PortalGate({ client, agencySettings }: { client: Client; agencySettings: AgencySettings }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--portal-bg)", fontFamily: "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" }}>
       <header className="flex items-center justify-between px-8 py-5" style={{ borderBottom: "1px solid var(--portal-border)", background: "var(--portal-nav-bg)" }}>
-        <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg text-white text-[13px] font-bold" style={{ background: "var(--portal-brand)" }}>K</div>
-          <span className="text-[15px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>Source[Archive]</span>
-        </div>
+        <AgencyBrand settings={agencySettings} />
         <span className="text-[13px]" style={{ color: "var(--portal-text-secondary)" }}>{client.name}</span>
       </header>
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-20">
@@ -1846,7 +1870,7 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
 
   usePortalVisitTracker(client.id, tab, !locked && !isAgency);
 
-  if (locked) return <PortalGate client={client} />;
+  if (locked) return <PortalGate client={client} agencySettings={agencySettings} />;
 
   return (
     <div
@@ -1903,7 +1927,7 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
       </main>
 
       <footer className="py-8 text-center text-[11px]" style={{ color: "var(--portal-text-muted)" }}>
-        Powered by Source[Archive]
+        Powered by {agencySettings.site_title || "Source[Archive]"}
       </footer>
 
       <AnimatePresence>

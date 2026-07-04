@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Shield, User, Copy, Check } from "lucide-react";
-import { updateUserRole, saveAgencySettings } from "./actions";
+import { useRef, useState, useTransition } from "react";
+import { Shield, User, Copy, Check, Upload, ExternalLink, Trash2 } from "lucide-react";
+import { updateUserRole, saveAgencySettings, saveBrandSettings } from "./actions";
 import { buildPublicUrl } from "@/lib/url";
+import { uploadFile } from "@/lib/storage";
 import type { ClerkUserProfile } from "./page";
 import type { AgencySettings } from "@/lib/data";
 
@@ -75,6 +76,240 @@ function Field({ label, value, onChange, placeholder, span2 }: {
         className={INPUT_CLS}
       />
     </div>
+  );
+}
+
+// ── Brand & SEO ─────────────────────────────────────────────────
+type BrandKey = "site_title" | "site_tagline" | "site_description" | "icon_url" | "wordmark_url" | "favicon_url" | "og_image_url" | "google_verification";
+
+function AssetUpload({
+  label, description, url, onChange, kind, aspect,
+}: {
+  label: string;
+  description: string;
+  url: string;
+  onChange: (u: string) => void;
+  kind: "icon" | "wordmark" | "favicon" | "og";
+  aspect: "square" | "wide" | "banner";
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleFile(f: File) {
+    setUploading(true);
+    setErr(null);
+    const ext = f.name.split(".").pop()?.toLowerCase() ?? "png";
+    const path = `brand/${kind}-${Date.now()}.${ext}`;
+    const { url: newUrl, error } = await uploadFile("brand-assets", path, f);
+    setUploading(false);
+    if (error || !newUrl) { setErr(error ?? "Upload failed"); return; }
+    onChange(newUrl);
+  }
+
+  const aspectCls =
+    aspect === "square" ? "aspect-square max-w-[128px]" :
+    aspect === "wide"   ? "aspect-[3/1] max-w-[240px]"  :
+                          "aspect-[1200/630] max-w-[320px]";
+
+  return (
+    <div>
+      <div className="flex items-baseline justify-between mb-1">
+        <label className={LABEL_CLS}>{label}</label>
+        {url && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="flex items-center gap-1 text-[10px] text-[var(--sa-text-tertiary)] hover:text-red-500 transition-colors"
+          >
+            <Trash2 size={9} /> Remove
+          </button>
+        )}
+      </div>
+      <p className="text-[10px] text-[var(--sa-text-tertiary)] mb-2">{description}</p>
+      <div className="flex items-start gap-3 flex-wrap">
+        <div
+          className={`${aspectCls} w-full flex-shrink-0 rounded-lg border border-dashed border-[var(--sa-border)] bg-[var(--sa-bg)] flex items-center justify-center overflow-hidden`}
+        >
+          {url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={url} alt="" className="max-w-full max-h-full object-contain" />
+          ) : (
+            <span className="text-[10px] text-[var(--sa-text-tertiary)]">Empty</span>
+          )}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <input
+            ref={ref}
+            type="file"
+            accept={kind === "favicon" ? "image/png,image/svg+xml,image/x-icon" : "image/png,image/jpeg,image/svg+xml,image/webp"}
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+          />
+          <button
+            type="button"
+            onClick={() => ref.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors disabled:opacity-50"
+          >
+            <Upload size={12} /> {uploading ? "Uploading…" : url ? "Replace" : "Upload"}
+          </button>
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 text-[10px] text-[var(--sa-accent)] hover:underline"
+            >
+              <ExternalLink size={9} /> View file
+            </a>
+          )}
+        </div>
+      </div>
+      {err && <p className="mt-1 text-[11px] text-red-500">{err}</p>}
+    </div>
+  );
+}
+
+function BrandSettings({ initial }: { initial: AgencySettings }) {
+  const [b, setB] = useState({
+    site_title: initial.site_title,
+    site_tagline: initial.site_tagline,
+    site_description: initial.site_description,
+    icon_url: initial.icon_url,
+    wordmark_url: initial.wordmark_url,
+    favicon_url: initial.favicon_url,
+    og_image_url: initial.og_image_url,
+    google_verification: initial.google_verification,
+  });
+  const [isPending, startTransition] = useTransition();
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  function set(k: BrandKey) {
+    return (v: string) => setB((prev) => ({ ...prev, [k]: v }));
+  }
+
+  function handleSave() {
+    setSaveError(null);
+    startTransition(async () => {
+      try {
+        await saveBrandSettings(b);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      } catch (e) {
+        setSaveError(e instanceof Error ? e.message : String(e));
+      }
+    });
+  }
+
+  return (
+    <section>
+      <h2 className="text-[11px] font-semibold uppercase tracking-widest text-[var(--sa-text-tertiary)] mb-3">Brand &amp; SEO</h2>
+      <div className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] divide-y divide-[var(--sa-border)]">
+
+        {/* Identity */}
+        <div className="px-4 py-4 flex flex-col gap-3">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-[var(--sa-text-tertiary)]">Identity</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <Field label="Site title" value={b.site_title} onChange={set("site_title")} placeholder="Source[Archive]" />
+            <Field label="Tagline" value={b.site_tagline} onChange={set("site_tagline")} placeholder="Sourcing for considered brands" />
+            <div className="col-span-2">
+              <label className={LABEL_CLS}>Meta description</label>
+              <textarea
+                value={b.site_description}
+                onChange={(e) => set("site_description")(e.target.value)}
+                rows={2}
+                placeholder="What Google shows in search results. Keep it under ~155 characters."
+                className={`${INPUT_CLS} resize-none`}
+              />
+              <p className="mt-1 text-[10px] text-[var(--sa-text-tertiary)]">
+                {b.site_description.length} / 155 characters ideal
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Assets */}
+        <div className="px-4 py-4 flex flex-col gap-4">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-[var(--sa-text-tertiary)]">Logo assets</p>
+
+          <AssetUpload
+            label="Icon (mark)"
+            description="Square mark shown next to the wordmark and used as the fallback favicon. SVG or PNG, ideally 512×512 with transparent background."
+            url={b.icon_url}
+            onChange={set("icon_url")}
+            kind="icon"
+            aspect="square"
+          />
+
+          <AssetUpload
+            label="Wordmark"
+            description="Full logo including brand name. Shown in the client portal header, brief form, and enquiry page. SVG or transparent PNG."
+            url={b.wordmark_url}
+            onChange={set("wordmark_url")}
+            kind="wordmark"
+            aspect="wide"
+          />
+
+          <AssetUpload
+            label="Favicon"
+            description="Browser tab icon. If empty, the Icon above is used as the favicon. PNG / SVG / ICO, 32–192 px square."
+            url={b.favicon_url}
+            onChange={set("favicon_url")}
+            kind="favicon"
+            aspect="square"
+          />
+
+          <AssetUpload
+            label="Social share image"
+            description="Shown when the site is linked on WhatsApp, LinkedIn, Slack, etc. 1200 × 630 PNG or JPG."
+            url={b.og_image_url}
+            onChange={set("og_image_url")}
+            kind="og"
+            aspect="banner"
+          />
+        </div>
+
+        {/* SEO */}
+        <div className="px-4 py-4 flex flex-col gap-3">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-[var(--sa-text-tertiary)]">Search engine</p>
+          <div>
+            <label className={LABEL_CLS}>Google Search Console verification token</label>
+            <input
+              type="text"
+              value={b.google_verification}
+              onChange={(e) => set("google_verification")(e.target.value)}
+              placeholder="e.g. google-site-verification content string"
+              className={INPUT_CLS}
+            />
+            <p className="mt-1 text-[10px] text-[var(--sa-text-tertiary)]">
+              Paste the content string Google gives you from the &quot;HTML tag&quot; verification method — no need to paste the whole &lt;meta&gt; tag.
+              We render the meta tag site-wide for you.
+            </p>
+          </div>
+        </div>
+
+        {saveError && (
+          <div className="px-4 py-3 bg-red-50 dark:bg-red-500/10">
+            <p className="text-[11px] text-red-600 dark:text-red-400">Couldn&apos;t save: {saveError}</p>
+          </div>
+        )}
+
+        <div className="px-4 py-3 flex justify-end">
+          <button
+            onClick={handleSave}
+            disabled={isPending}
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-4 py-1.5 text-[12px] font-medium text-white disabled:opacity-50 transition-opacity"
+          >
+            {saved ? <><Check size={12} /> Saved</> : isPending ? "Saving…" : "Save brand settings"}
+          </button>
+        </div>
+      </div>
+      <p className="mt-2 text-[11px] text-[var(--sa-text-tertiary)]">
+        Changes take effect across the site (favicon, page titles, share previews, portal header, brief form) after saving.
+      </p>
+    </section>
   );
 }
 
@@ -221,6 +456,7 @@ export function SettingsClient({ currentUser, team, isAdmin, agencySettings }: P
           </section>
         )}
 
+        {isAdmin && <BrandSettings initial={agencySettings} />}
         {isAdmin && <InvoiceSettings initial={agencySettings} />}
 
         {!isAdmin && (
