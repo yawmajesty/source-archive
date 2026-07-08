@@ -433,19 +433,43 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                       {pct === 100 ? "100% (full)" : `${pct}% deposit`}
                     </button>
                   ))}
-                  <div className="flex items-center gap-1 ml-2 text-[11px] text-[var(--sa-text-tertiary)]">
-                    <span>Custom:</span>
+                </div>
+
+                {/* Custom amount — either as a percentage OR as a raw dollar
+                    figure. Both inputs write to depositPct so the source of
+                    truth stays a single value. */}
+                <div className="flex flex-wrap items-center gap-3 mb-3 text-[11px] text-[var(--sa-text-tertiary)]">
+                  <span>Or enter a custom amount:</span>
+                  <div className="flex items-center gap-1">
+                    <span>$</span>
                     <input
                       type="number"
-                      min="1"
-                      max="100"
-                      step="1"
-                      value={depositPct}
+                      min="0"
+                      step="0.01"
+                      value={Number.isFinite(amountDueNow) ? amountDueNow.toFixed(2) : ""}
                       onChange={(e) => {
-                        const v = parseInt(e.target.value);
-                        if (Number.isFinite(v)) setDepositPct(Math.max(1, Math.min(100, v)));
+                        const dollars = parseFloat(e.target.value);
+                        if (!Number.isFinite(dollars) || projectTotal <= 0) return;
+                        const nextPct = (dollars / projectTotal) * 100;
+                        setDepositPct(Math.max(0, Math.min(100, nextPct)));
                       }}
-                      className="rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[11px] font-mono outline-none w-16 text-right text-[var(--sa-text-primary)]"
+                      disabled={projectTotal <= 0}
+                      className="rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[11px] font-mono outline-none w-28 text-right text-[var(--sa-text-primary)] disabled:opacity-50"
+                    />
+                  </div>
+                  <span className="text-[var(--sa-text-tertiary)]">or</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={Number(depositPct.toFixed(2))}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value);
+                        if (Number.isFinite(v)) setDepositPct(Math.max(0, Math.min(100, v)));
+                      }}
+                      className="rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[11px] font-mono outline-none w-20 text-right text-[var(--sa-text-primary)]"
                     />
                     <span>%</span>
                   </div>
@@ -456,7 +480,7 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                     <p className="mt-0.5 font-mono text-[14px] font-semibold text-[var(--sa-text-primary)]">${projectTotal.toFixed(2)}</p>
                   </div>
                   <div className="rounded-lg border border-[var(--sa-accent)] bg-[var(--sa-accent)]/5 p-2.5">
-                    <p className="text-[10px] uppercase tracking-wide text-[var(--sa-accent)] font-semibold">Due now ({depositPct}%)</p>
+                    <p className="text-[10px] uppercase tracking-wide text-[var(--sa-accent)] font-semibold">Due now ({depositPct.toFixed(depositPct % 1 === 0 ? 0 : 2)}%)</p>
                     <p className="mt-0.5 font-mono text-[14px] font-semibold text-[var(--sa-text-primary)]">${amountDueNow.toFixed(2)}</p>
                   </div>
                   <div className="rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] p-2.5">
@@ -480,7 +504,7 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                 </span>
                 {kind === "production" && depositPct < 100 && (
                   <span className="ml-1 text-[10px] text-[var(--sa-text-tertiary)]">
-                    ({depositPct}% of ${projectTotal.toFixed(2)})
+                    ({depositPct.toFixed(depositPct % 1 === 0 ? 0 : 2)}% of ${projectTotal.toFixed(2)})
                   </span>
                 )}
               </div>
