@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Trash2, X, Send, CheckCircle2, FileText, Factory as FactoryIcon, Wallet, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Client, Product, Project, SavedInvoice, InvoiceLineItem, AgencySettings } from "@/lib/data";
-import { createProjectQuote, sendQuote, deleteQuote } from "./actions";
+import { createProjectQuote, sendQuote, deleteQuote, markInvoicePaid, createBalanceInvoice } from "./actions";
 import { downloadInvoicePDF } from "@/lib/invoice-pdf";
 
 const SERVICE_PRESETS: string[] = [
@@ -194,6 +194,19 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
   async function handleDelete(id: string, round: number) {
     if (!window.confirm(`Delete Round ${round} quote? This cannot be undone.`)) return;
     await deleteQuote(id, client.id, project.id);
+    startTransition(() => router.refresh());
+  }
+
+  async function handleMarkPaid(id: string, dueAmount: number) {
+    if (!window.confirm(`Mark this invoice as paid ($${dueAmount.toFixed(2)})? Use this for payments received outside Stripe (bank transfer, cash, etc.).`)) return;
+    const res = await markInvoicePaid(id, client.id, project.id);
+    if (!res.success) { alert(res.error ?? "Failed to mark paid"); return; }
+    startTransition(() => router.refresh());
+  }
+
+  async function handleGenerateBalance(parentId: string) {
+    const res = await createBalanceInvoice(parentId, project.id);
+    if (!res.success) { alert(res.error); return; }
     startTransition(() => router.refresh());
   }
 
@@ -537,8 +550,12 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
               const total = inv.line_items.reduce((s, li) => s + li.amount_usd, 0);
               const cfg = STATUS_CFG[inv.status] ?? STATUS_CFG.draft;
               const isProduction = inv.invoice_kind === "production";
-              const deposit = inv.deposit_percent ?? 100;
+              const deposit = Number(inv.deposit_percent ?? 100);
               const dueNow = total * (deposit / 100);
+              const isBalance = !!inv.parent_invoice_id;
+              const isDeposit = isProduction && !isBalance && deposit < 100;
+              const balanceForThis = savedInvoices.find((x) => x.parent_invoice_id === inv.id);
+              const canGenerateBalance = isDeposit && inv.status === "paid" && !balanceForThis;
               return (
                 <div key={inv.id} className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] overflow-hidden">
                   <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
@@ -552,13 +569,24 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                       )}>
                         {isProduction ? <><FactoryIcon size={9} /> Production</> : <><FileText size={9} /> Sampling</>}
                       </span>
+                      {isDeposit && (
+                        <span className="rounded-full bg-amber-50 dark:bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 leading-none">
+                          Deposit ({deposit.toFixed(deposit % 1 === 0 ? 0 : 2)}%)
+                        </span>
+                      )}
+                      {isBalance && (
+                        <span className="rounded-full bg-purple-50 dark:bg-purple-500/15 px-2 py-0.5 text-[10px] font-medium text-purple-700 dark:text-purple-300 leading-none">
+                          Balance
+                        </span>
+                      )}
                       <div>
                         <p className="text-[13px] font-semibold text-[var(--sa-text-primary)]">
-                          {isProduction ? "Production" : `Round ${inv.round}`}
+                          {isProduction ? (isBalance ? "Balance" : "Production") : `Round ${inv.round}`}
                         </p>
                         <p className="text-[10px] text-[var(--sa-text-tertiary)]">
                           {new Date(inv.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                           {" · "}{inv.line_items.length} line item{inv.line_items.length !== 1 ? "s" : ""}
+                          {inv.paid_at && ` · paid ${new Date(inv.paid_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`}
                         </p>
                       </div>
                     </div>
@@ -578,7 +606,35 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                           <Send size={11} /> Send
                         </button>
                       )}
-                      {inv.status !== "draft" && (
+                      {inv.status === "sent" && (
+                        <button
+                          onClick={() => handleMarkPaid(inv.id, dueNow)}
+                          className="flex items-center gap-1 rounded-lg border border-emerald-500 px-2.5 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
+                          title="Mark this invoice as paid manually (bank transfer, cash, etc.)"
+                        >
+                          <CheckCircle2 size={11} /> Mark paid
+                        </button>
+                      )}
+                      {canGenerateBalance && (
+                        <button
+                          onClick={() => handleGenerateBalance(inv.id)}
+                          className="flex items-center gap-1 rounded-lg bg-purple-600 px-2.5 py-1 text-[11px] font-medium text-white hover:opacity-90 transition-opacity"
+                          title="Create a follow-up invoice for the remaining balance"
+                        >
+                          <Plus size={11} /> Balance invoice
+                        </button>
+                      )}
+                      {balanceForThis && (
+                        <span className="flex items-center gap-1 text-[10px] text-[var(--sa-text-tertiary)]" title="A balance invoice has already been generated">
+                          <CheckCircle2 size={10} /> Balance generated
+                        </span>
+                      )}
+                      {inv.status === "paid" && !isDeposit && (
+                        <span className="flex items-center gap-1 text-[11px] text-emerald-600">
+                          <CheckCircle2 size={11} /> Paid
+                        </span>
+                      )}
+                      {inv.status !== "draft" && inv.status !== "sent" && inv.status !== "paid" && (
                         <span className="flex items-center gap-1 text-[11px] text-emerald-600">
                           <CheckCircle2 size={11} /> Visible to client
                         </span>

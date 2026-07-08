@@ -369,6 +369,7 @@ export interface SavedInvoice {
   paid_at?: string | null;
   stripe_session_id?: string | null;
   stripe_payment_intent_id?: string | null;
+  parent_invoice_id?: string | null;
 }
 
 export async function getSamplingInvoices(clientId: string, includeDrafts = true): Promise<SavedInvoice[]> {
