@@ -64,6 +64,8 @@ export interface Collection {
   cover_image_url: string | null;
   status: "planning" | "in_development" | "in_production" | "delivered" | "archived";
   base_currency: string;
+  fx_rates: Record<string, number>; // { CNY: 0.14, EUR: 1.09, ... } — "1 unit of X in base currency"
+  target_margin_pct: number;
   kickoff_date: string | null;
   sample_deadline: string | null;
   production_start: string | null;
@@ -77,6 +79,16 @@ export interface Colorway {
   name: string;
   hex: string | null;
   swatch_image_url: string | null;
+}
+
+export interface CostBreakdown {
+  fabric?: number;
+  trims?: number;
+  labor?: number;
+  wash_finish?: number;
+  packaging?: number;
+  freight_duty?: number;
+  other?: number;
 }
 
 export interface Product {
@@ -100,6 +112,12 @@ export interface Product {
   spec_wash: string | null;
   spec_customization: string | null;
   spec_packaging: string | null;
+  // Costing — Phase 4
+  estimated_cost: number | null;              // per-unit cost in cost_currency
+  cost_currency: string | null;               // e.g. "CNY"
+  cost_breakdown: CostBreakdown | null;       // optional itemised split
+  sale_price_retail: number | null;           // per-unit retail (in collection base currency)
+  sale_price_wholesale: number | null;        // per-unit wholesale (in collection base currency)
   created_at: string;
   updated_at: string;
 }
@@ -176,6 +194,11 @@ function normalizeProduct(row: any): Product {
     spec_wash: row.spec_wash,
     spec_customization: row.spec_customization,
     spec_packaging: row.spec_packaging,
+    estimated_cost: row.estimated_cost != null ? Number(row.estimated_cost) : null,
+    cost_currency: row.cost_currency,
+    cost_breakdown: (row.cost_breakdown ?? null) as CostBreakdown | null,
+    sale_price_retail: row.sale_price_retail != null ? Number(row.sale_price_retail) : null,
+    sale_price_wholesale: row.sale_price_wholesale != null ? Number(row.sale_price_wholesale) : null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };

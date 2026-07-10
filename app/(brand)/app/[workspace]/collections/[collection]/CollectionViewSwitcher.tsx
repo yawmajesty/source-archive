@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Rows3, Kanban } from "lucide-react";
+import { LayoutGrid, Rows3, Kanban, Coins } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const VIEWS = [
-  { key: "",       label: "Gallery", icon: LayoutGrid },
-  { key: "table",  label: "Table",   icon: Rows3 },
-  { key: "kanban", label: "Kanban",  icon: Kanban },
+  { key: "",        label: "Gallery", icon: LayoutGrid },
+  { key: "table",   label: "Table",   icon: Rows3 },
+  { key: "kanban",  label: "Kanban",  icon: Kanban },
+  { key: "costing", label: "Costing", icon: Coins },
 ] as const;
 
 export function CollectionViewSwitcher({ slug, collectionId }: { slug: string; collectionId: string }) {

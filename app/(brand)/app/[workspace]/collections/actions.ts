@@ -4,7 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { getBrandSupabase } from "@/lib/supabase-brand";
 import { can, type Role, type WorkspaceMode } from "@/lib/mode-policy";
-import { categoryPrefix, type CategoryKey, type Stage } from "@/lib/brand-catalog";
+import { categoryPrefix, type CategoryKey, type Stage, type CostBreakdown } from "@/lib/brand-catalog";
 
 // ── Collections ───────────────────────────────────────────────────
 
@@ -197,6 +197,55 @@ export async function changeProductStage(input: {
     .from("brand_products")
     .update({ stage: input.next_stage, stage_entered_at: new Date().toISOString() })
     .eq("id", input.product_id);
+  if (error) return { success: false, error: error.message };
+  revalidatePath(`/app/${input.workspace_slug}/collections/${input.collection_id}`);
+  return { success: true };
+}
+
+export async function updateProductCosting(input: {
+  workspace_slug: string;
+  collection_id: string;
+  product_id: string;
+  mode: WorkspaceMode;
+  role: Role;
+  patch: Partial<{
+    estimated_cost: number | null;
+    cost_currency: string | null;
+    cost_breakdown: CostBreakdown | null;
+    sale_price_retail: number | null;
+    sale_price_wholesale: number | null;
+  }>;
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const { userId } = await auth();
+  if (!userId) return { success: false, error: "Not authenticated" };
+  if (!can(input.role, "cost.edit", input.mode)) {
+    return { success: false, error: "You don't have permission to edit costing" };
+  }
+  const supabase = await getBrandSupabase();
+  const { error } = await supabase.from("brand_products").update(input.patch).eq("id", input.product_id);
+  if (error) return { success: false, error: error.message };
+  revalidatePath(`/app/${input.workspace_slug}/collections/${input.collection_id}`);
+  return { success: true };
+}
+
+export async function updateCollectionFx(input: {
+  workspace_slug: string;
+  collection_id: string;
+  mode: WorkspaceMode;
+  role: Role;
+  fx_rates: Record<string, number>;
+  target_margin_pct: number;
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const { userId } = await auth();
+  if (!userId) return { success: false, error: "Not authenticated" };
+  if (!can(input.role, "collection.update", input.mode)) {
+    return { success: false, error: "You don't have permission" };
+  }
+  const supabase = await getBrandSupabase();
+  const { error } = await supabase
+    .from("collections")
+    .update({ fx_rates: input.fx_rates, target_margin_pct: input.target_margin_pct })
+    .eq("id", input.collection_id);
   if (error) return { success: false, error: error.message };
   revalidatePath(`/app/${input.workspace_slug}/collections/${input.collection_id}`);
   return { success: true };

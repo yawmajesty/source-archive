@@ -8,6 +8,7 @@ import { listSampleRounds, listSampleComments, type SampleComment } from "@/lib/
 import { StageBadge } from "@/components/brand/StageBadge";
 import { CategoryChip } from "@/components/brand/CategoryChip";
 import { SampleRoundsPanel } from "./SampleRoundsPanel";
+import { CostingPanel } from "./CostingPanel";
 
 export default async function ProductDetailPage({
   params,
@@ -67,6 +68,14 @@ export default async function ProductDetailPage({
       </div>
 
       <div className="space-y-6">
+        <CostingPanel
+          product={product}
+          collection={collection}
+          workspaceSlug={slug}
+          mode={ctx.workspace.mode}
+          role={ctx.role}
+        />
+
         <SampleRoundsPanel
           workspaceId={ctx.workspace.id}
           workspaceSlug={slug}
@@ -81,7 +90,7 @@ export default async function ProductDetailPage({
 
         <div className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] px-6 py-6 text-center">
           <p className="text-[13px] text-[var(--sa-text-secondary)] mb-1">
-            Costing / Files / Activity tabs land here in Phases 4 – 6.
+            Files / Activity tabs land here in Phases 5 – 6.
           </p>
         </div>
       </div>
