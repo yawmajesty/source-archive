@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "seed:brand": "node scripts/seed-brand.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
