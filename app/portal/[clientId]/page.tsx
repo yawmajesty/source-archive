@@ -1,4 +1,14 @@
-import { getClient, getProjects, getProducts, getMilestones, getUpdates, getContracts, getPortalFiles, getAgencySettings, getSamplingInvoices } from "@/lib/data";
+import {
+  getPortalClient,
+  getPortalProjects,
+  getPortalProducts,
+  getPortalMilestones,
+  getPortalUpdates,
+  getPortalContracts,
+  getPortalFilesForClient,
+  getPortalAgencySettings,
+  getPortalSamplingInvoices,
+} from "@/lib/portal-data";
 import { notFound } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { PortalClient } from "./PortalClient";
@@ -41,15 +51,15 @@ export default async function PortalPage({ params }: Props) {
   const { userId } = await auth();
   const isAgency = !!userId;
 
-  const client = await getClient(clientId);
+  const client = await getPortalClient(clientId);
   if (!client) notFound();
 
   const [projects, contracts, files, agencySettings, savedInvoices] = await Promise.all([
-    getProjects(clientId),
-    getContracts(clientId),
-    getPortalFiles(clientId),
-    getAgencySettings(),
-    getSamplingInvoices(clientId, false),
+    getPortalProjects(clientId),
+    getPortalContracts(clientId),
+    getPortalFilesForClient(clientId),
+    getPortalAgencySettings(clientId),
+    getPortalSamplingInvoices(clientId, false),
   ]);
 
   if (!client.portal_enabled) {
@@ -58,14 +68,14 @@ export default async function PortalPage({ params }: Props) {
 
   const portalProjects: PortalProject[] = await Promise.all(
     projects.map(async (project) => {
-      const allProducts = await getProducts(project.id);
+      const allProducts = await getPortalProducts(project.id);
       // Excluded-from-production items are never shown to the client.
       const products = allProducts.filter((p) => !p.production_excluded_at);
       const enriched: PortalProduct[] = await Promise.all(
         products.map(async (product) => {
           const [milestones, updates] = await Promise.all([
-            getMilestones(product.id),
-            getUpdates(product.id),
+            getPortalMilestones(product.id),
+            getPortalUpdates(product.id),
           ]);
           // Strip all internal fields — only expose client-safe shape
           return {

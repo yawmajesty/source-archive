@@ -4,10 +4,20 @@ import { useState, useMemo, useRef, useEffect, useCallback, useTransition } from
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon, Plus, Trash2, X, CreditCard } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import { uploadFile } from "@/lib/storage";
 import type { Client, Contract, PortalFile, AgencySettings, SavedInvoice } from "@/lib/data";
-import { updateInvoiceStatus, deleteInvoice, logPortalVisit, updateVisitDuration, createInvoiceCheckout } from "./actions";
+import {
+  updateInvoiceStatus,
+  deleteInvoice,
+  logPortalVisit,
+  updateVisitDuration,
+  createInvoiceCheckout,
+  approveSampleFromPortal,
+  submitPortalFeedback,
+  setProductImages,
+  listReferenceSamplesForPortal,
+  submitReferenceSampleFromPortal,
+} from "./actions";
 import { downloadInvoicePDF } from "@/lib/invoice-pdf";
 import type { Stage } from "@/lib/mock-data";
 import type { PortalProject, PortalProduct } from "./page";
@@ -391,12 +401,13 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
     setApproving(true);
     setApproveError(null);
 
-    const { error: stageErr } = await supabase
-      .from("products")
-      .update({ stage: "approved" })
-      .eq("id", product.id);
-
-    if (stageErr) { setApproveError(stageErr.message); setApproving(false); return; }
+    const res = await approveSampleFromPortal({
+      product_id: product.id,
+      client_id: client.id,
+      client_name: client.name,
+      client_initial: client.logo_initial ?? client.name[0].toUpperCase(),
+    });
+    if (!res.success) { setApproveError(res.error); setApproving(false); return; }
 
     const approvalNote = {
       id: "upd-" + Date.now(),
@@ -405,10 +416,8 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
       author_initials: client.logo_initial ?? client.name[0].toUpperCase(),
       text: `Sample approved by ${client.name}.`,
       visible_to_client: true,
-      created_at: new Date().toISOString(),
+      created_at: res.created_at,
     };
-    await supabase.from("updates").insert(approvalNote);
-
     setUpdates((prev) => [approvalNote, ...prev]);
     setStage("approved");
     setApproving(false);
@@ -417,18 +426,26 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
   async function submitFeedback() {
     if (!feedback.trim()) return;
     setSendingFeedback(true);
-    const newUpdate = {
-      id: "upd-" + Date.now(),
+    const res = await submitPortalFeedback({
       product_id: product.id,
-      author: client.name,
-      author_initials: client.logo_initial ?? client.name[0].toUpperCase(),
+      client_id: client.id,
+      client_name: client.name,
+      client_initial: client.logo_initial ?? client.name[0].toUpperCase(),
       text: feedback.trim(),
-      visible_to_client: true,
-      created_at: new Date().toISOString(),
-    };
-    await supabase.from("updates").insert(newUpdate);
-    setUpdates((prev) => [newUpdate, ...prev]);
-    setFeedback("");
+    });
+    if (res.success) {
+      const newUpdate = {
+        id: res.id,
+        product_id: product.id,
+        author: client.name,
+        author_initials: client.logo_initial ?? client.name[0].toUpperCase(),
+        text: feedback.trim(),
+        visible_to_client: true,
+        created_at: res.created_at,
+      };
+      setUpdates((prev) => [newUpdate, ...prev]);
+      setFeedback("");
+    }
     setSendingFeedback(false);
   }
 
@@ -446,7 +463,7 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
     }
     if (newUrls.length) {
       const updated = [...images, ...newUrls];
-      await supabase.from("products").update({ images: updated }).eq("id", product.id);
+      await setProductImages(product.id, updated, client.id);
       setImages(updated);
     }
     setUploadingPhoto(false);
@@ -455,7 +472,7 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
 
   async function handleDeletePhoto(url: string) {
     const updated = images.filter((u) => u !== url);
-    await supabase.from("products").update({ images: updated }).eq("id", product.id);
+    await setProductImages(product.id, updated, client.id);
     setImages(updated);
   }
 
@@ -1544,12 +1561,10 @@ function ReferencesTab({ client, projects }: { client: Client; projects: PortalP
   });
 
   useEffect(() => {
-    supabase
-      .from("reference_samples")
-      .select("*")
-      .eq("client_id", client.id)
-      .order("created_at", { ascending: false })
-      .then(({ data }) => { setSamples(data ?? []); setLoading(false); });
+    listReferenceSamplesForPortal(client.id).then((data) => {
+      setSamples(data);
+      setLoading(false);
+    });
   }, [client.id]);
 
   function togglePurpose(p: string) {
@@ -1596,9 +1611,9 @@ function ReferencesTab({ client, projects }: { client: Client; projects: PortalP
       status: "submitted",
       submitted_at: new Date().toISOString(),
     };
-    const { data, error } = await supabase.from("reference_samples").insert(payload).select().single();
-    if (!error && data) {
-      setSamples((prev) => [data, ...prev]);
+    const res = await submitReferenceSampleFromPortal(payload);
+    if (res.success) {
+      setSamples((prev) => [res.sample, ...prev]);
       setShowForm(false);
       setForm({ item_description: "", brand: "", size: "", reference_for: [], reference_for_other: "", product_id: "", courier: "", tracking_number: "", expected_arrival_date: "", client_notes: "" });
       setClientImages([]);

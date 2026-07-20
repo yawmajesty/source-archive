@@ -116,6 +116,126 @@ export async function deleteInvoice(id: string, clientId: string): Promise<void>
   revalidatePath(`/portal/${clientId}`);
 }
 
+// ── Portal-side write actions ─────────────────────────────────────
+// These are called from PortalClient.tsx. Both agency-side and
+// client-side visitors may hit them; service-role bypasses RLS for
+// both. Every write is scoped by the row id or product id, and we
+// stamp agency_id from the resolved client_id where the schema needs
+// it.
+
+export async function approveSampleFromPortal(input: {
+  product_id: string;
+  client_id: string;
+  client_name: string;
+  client_initial: string;
+}): Promise<{ success: true; created_at: string } | { success: false; error: string }> {
+  const supabase = getAgencyServiceSupabase();
+  const { error: stageErr } = await supabase
+    .from("products")
+    .update({ stage: "approved" })
+    .eq("id", input.product_id);
+  if (stageErr) return { success: false, error: stageErr.message };
+
+  const agencyId = await agencyForClient(supabase, input.client_id).catch(() => null);
+  if (!agencyId) return { success: false, error: "Client has no agency" };
+
+  const createdAt = new Date().toISOString();
+  await supabase.from("updates").insert({
+    id: "upd-" + Date.now(),
+    agency_id: agencyId,
+    product_id: input.product_id,
+    author: input.client_name,
+    author_initials: input.client_initial,
+    text: `Sample approved by ${input.client_name}.`,
+    visible_to_client: true,
+    created_at: createdAt,
+  });
+
+  revalidatePath(`/portal/${input.client_id}`);
+  return { success: true, created_at: createdAt };
+}
+
+export async function submitPortalFeedback(input: {
+  product_id: string;
+  client_id: string;
+  client_name: string;
+  client_initial: string;
+  text: string;
+}): Promise<{ success: true; id: string; created_at: string } | { success: false; error: string }> {
+  const trimmed = input.text.trim();
+  if (!trimmed) return { success: false, error: "Feedback can't be empty" };
+  const supabase = getAgencyServiceSupabase();
+  const agencyId = await agencyForClient(supabase, input.client_id).catch(() => null);
+  if (!agencyId) return { success: false, error: "Client has no agency" };
+
+  const id = "upd-" + Date.now();
+  const createdAt = new Date().toISOString();
+  const { error } = await supabase.from("updates").insert({
+    id,
+    agency_id: agencyId,
+    product_id: input.product_id,
+    author: input.client_name,
+    author_initials: input.client_initial,
+    text: trimmed,
+    visible_to_client: true,
+    created_at: createdAt,
+  });
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/portal/${input.client_id}`);
+  return { success: true, id, created_at: createdAt };
+}
+
+export async function setProductImages(productId: string, images: string[], clientId: string): Promise<{ success: boolean; error?: string }> {
+  const supabase = getAgencyServiceSupabase();
+  const { error } = await supabase.from("products").update({ images }).eq("id", productId);
+  if (error) return { success: false, error: error.message };
+  revalidatePath(`/portal/${clientId}`);
+  return { success: true };
+}
+
+export async function listReferenceSamplesForPortal(clientId: string): Promise<any[]> {
+  const supabase = getAgencyServiceSupabase();
+  const { data } = await supabase
+    .from("reference_samples")
+    .select("*")
+    .eq("client_id", clientId)
+    .order("created_at", { ascending: false });
+  return data ?? [];
+}
+
+export async function submitReferenceSampleFromPortal(payload: {
+  id: string;
+  client_id: string;
+  product_id: string | null;
+  item_description: string;
+  brand: string | null;
+  size: string | null;
+  reference_for: string[];
+  reference_for_other: string | null;
+  courier: string | null;
+  tracking_number: string | null;
+  expected_arrival_date: string | null;
+  client_notes: string | null;
+  client_images: string[];
+  status: string;
+  submitted_at: string;
+}): Promise<{ success: true; sample: any } | { success: false; error: string }> {
+  const supabase = getAgencyServiceSupabase();
+  const agencyId = await agencyForClient(supabase, payload.client_id).catch(() => null);
+  if (!agencyId) return { success: false, error: "Client has no agency" };
+
+  const { data, error } = await supabase
+    .from("reference_samples")
+    .insert({ agency_id: agencyId, ...payload })
+    .select()
+    .single();
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/portal/${payload.client_id}`);
+  return { success: true, sample: data };
+}
+
 // ── Stripe Checkout ────────────────────────────────────────────────
 
 export async function createInvoiceCheckout(invoiceId: string): Promise<
