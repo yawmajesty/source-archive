@@ -17,6 +17,7 @@ export default async function CollectionCostingPage({
 
   return (
     <CostingRollup
+      workspaceId={ctx.workspace.id}
       workspaceSlug={slug}
       mode={ctx.workspace.mode}
       role={ctx.role}

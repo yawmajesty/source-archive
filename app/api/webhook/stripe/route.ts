@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
-import { supabaseData as supabase } from "@/lib/supabase-data";
+import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { revalidatePath } from "next/cache";
+
+// The webhook is called by Stripe with no Clerk auth, so RLS would block
+// every write. Service role bypasses RLS; the invoice + client lookups
+// give us the agency_id we need to stamp on the new cost entry.
+const supabase = getAgencyServiceSupabase();
 
 // Stripe requires the raw body for signature verification. Next disables body
 // parsing when we read req.text() directly.
@@ -95,8 +100,16 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
     .maybeSingle();
 
   if (!existingCost) {
-    const fxRate = 0.79; // USD → GBP fallback; agency can adjust the entry later
+    const { data: clientRow } = await supabase.from("clients").select("agency_id").eq("id", clientId).maybeSingle();
+    const agencyId = (clientRow as any)?.agency_id;
+    if (!agencyId) {
+      console.warn("[stripe webhook] client has no agency_id — skipping cost entry:", clientId);
+      revalidatePath(`/portal/${clientId}`);
+      return;
+    }
+    const fxRate = 1; // Base currency is USD, so Stripe's USD amount stores 1:1.
     await supabase.from("costs").insert({
+      agency_id: agencyId,
       id: "cost-" + Date.now(),
       client_id: clientId,
       project_id: null,

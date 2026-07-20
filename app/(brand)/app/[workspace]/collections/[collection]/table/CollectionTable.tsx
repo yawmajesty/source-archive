@@ -14,12 +14,14 @@ import { cn } from "@/lib/utils";
 // Inline editing follows a "click, edit, blur to save" pattern with a
 // tiny Saved indicator so users can see writes land.
 export function CollectionTable({
+  workspaceId,
   workspaceSlug,
   collectionId,
   mode,
   role,
   products: initial,
 }: {
+  workspaceId: string;
   workspaceSlug: string;
   collectionId: string;
   mode: WorkspaceMode;
@@ -63,6 +65,7 @@ export function CollectionTable({
               <ProductRow
                 key={p.id}
                 product={p}
+                workspaceId={workspaceId}
                 workspaceSlug={workspaceSlug}
                 collectionId={collectionId}
                 mode={mode}
@@ -94,6 +97,7 @@ export function CollectionTable({
 
 function ProductRow({
   product: p,
+  workspaceId,
   workspaceSlug,
   collectionId,
   mode,
@@ -101,6 +105,7 @@ function ProductRow({
   onLocalUpdate,
 }: {
   product: Product;
+  workspaceId: string;
   workspaceSlug: string;
   collectionId: string;
   mode: WorkspaceMode;
@@ -115,6 +120,7 @@ function ProductRow({
     setSaveState("saving");
     startTransition(async () => {
       const res = await updateProduct({
+        workspace_id: workspaceId,
         workspace_slug: workspaceSlug,
         collection_id: collectionId,
         product_id: p.id,
@@ -136,12 +142,14 @@ function ProductRow({
     setSaveState("saving");
     startTransition(async () => {
       const res = await changeProductStage({
+        workspace_id: workspaceId,
         workspace_slug: workspaceSlug,
         collection_id: collectionId,
         product_id: p.id,
         mode,
         role,
         next_stage: next,
+        previous_stage: p.stage,
       });
       if (!res.success) {
         setSaveState("error");

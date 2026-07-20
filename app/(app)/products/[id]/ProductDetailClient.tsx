@@ -1867,7 +1867,7 @@ export function ProductDetailClient({
                       </td>
                       <td className="py-2 pr-4 text-[var(--sa-text-primary)]">{c.description}</td>
                       <td className="py-2 pr-4 font-mono text-[var(--sa-text-primary)]">
-                        £{c.amount_gbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
+                        ${c.amount_gbp.toLocaleString("en-US", { maximumFractionDigits: 0 })}
                       </td>
                       <td className="py-2">
                         {c.billable_to_client ? (

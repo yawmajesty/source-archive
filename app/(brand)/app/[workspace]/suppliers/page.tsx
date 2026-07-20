@@ -57,6 +57,7 @@ export default async function SuppliersPage({
         </div>
       ) : (
         <SupplierList
+          workspaceId={ctx.workspace.id}
           workspaceSlug={slug}
           mode={ctx.workspace.mode}
           role={ctx.role}

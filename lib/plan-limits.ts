@@ -22,6 +22,12 @@ export interface PlanLimits {
   collections: number;          // -1 = unlimited
   storageBytes: number;         // Total per workspace
   seatsIncluded: string;        // Human copy for pricing page
+  // Marketing / pricing copy
+  monthlyPriceUsd: number;      // 0 for trial, listed price for others
+  yearlyPriceUsd: number;       // annual/12 in USD, 0 for trial
+  tagline: string;              // one-liner for pricing cards
+  audience: string;             // "Solo designer", "Small studio", etc.
+  highlights: string[];         // 3-5 short feature bullets
   // Feature toggles reserved for later phases
   activityRetentionDays: number;
   csvExport: boolean;
@@ -35,6 +41,16 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     collections: 3,
     storageBytes: 500 * 1024 * 1024,          // 500 MB
     seatsIncluded: "5 seats",
+    monthlyPriceUsd: 0,
+    yearlyPriceUsd: 0,
+    tagline: "Kick the tyres for two weeks. No card required.",
+    audience: "New signups",
+    highlights: [
+      "14-day access to every Studio feature",
+      "Up to 3 collections",
+      "5 teammates",
+      "Real work saved — upgrade to keep going",
+    ],
     activityRetentionDays: 30,
     csvExport: true,
     pdfLineSheet: false,
@@ -45,6 +61,16 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     collections: 10,
     storageBytes: 2 * 1024 * 1024 * 1024,     // 2 GB
     seatsIncluded: "Up to 3 seats",
+    monthlyPriceUsd: 39,
+    yearlyPriceUsd: 32,
+    tagline: "The one-person label with a factory contact list.",
+    audience: "Solo designer",
+    highlights: [
+      "10 active collections",
+      "3 seats — bring in your assistant + factory",
+      "PDF line sheets, CSV export",
+      "90-day activity history",
+    ],
     activityRetentionDays: 90,
     csvExport: true,
     pdfLineSheet: true,
@@ -55,6 +81,16 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     collections: 50,
     storageBytes: 10 * 1024 * 1024 * 1024,    // 10 GB
     seatsIncluded: "Up to 10 seats",
+    monthlyPriceUsd: 129,
+    yearlyPriceUsd: 108,
+    tagline: "For growing brands running multiple drops in parallel.",
+    audience: "Small studio",
+    highlights: [
+      "50 active collections",
+      "10 seats across design, production, ops",
+      "Timeline & full costing rollups",
+      "1-year activity history",
+    ],
     activityRetentionDays: 365,
     csvExport: true,
     pdfLineSheet: true,
@@ -65,6 +101,16 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     collections: -1,
     storageBytes: 50 * 1024 * 1024 * 1024,    // 50 GB
     seatsIncluded: "Up to 25 seats",
+    monthlyPriceUsd: 349,
+    yearlyPriceUsd: 289,
+    tagline: "Larger houses juggling seasonal calendars year-round.",
+    audience: "Established brand",
+    highlights: [
+      "Unlimited collections",
+      "25 seats + supplier guest access",
+      "Priority support",
+      "Unlimited activity retention",
+    ],
     activityRetentionDays: -1,
     csvExport: true,
     pdfLineSheet: true,

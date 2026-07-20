@@ -1,18 +1,24 @@
 "use server";
 
-import { supabaseData } from "@/lib/supabase-data";
+import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
+
+// Public techpack form — no Clerk auth. Every submission lands in the
+// Source Archive agency for now; per-agency public techpack forms are
+// a future enhancement.
+const OWNER_AGENCY_ID = "ag-source-archive";
 
 export async function uploadTechpackFile(formData: FormData): Promise<string | null> {
   const file = formData.get("file") as File | null;
   if (!file) return null;
+  const supabase = getAgencyServiceSupabase();
   const ext = file.name.split(".").pop() ?? "bin";
   const path = `techpacks/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const bytes = await file.arrayBuffer();
-  const { data, error } = await supabaseData.storage
+  const { data, error } = await supabase.storage
     .from("product-media")
     .upload(path, bytes, { contentType: file.type, upsert: false });
   if (error || !data) return null;
-  const { data: { publicUrl } } = supabaseData.storage.from("product-media").getPublicUrl(data.path);
+  const { data: { publicUrl } } = supabase.storage.from("product-media").getPublicUrl(data.path);
   return publicUrl;
 }
 
@@ -62,7 +68,9 @@ export interface TechpackPayload {
 }
 
 export async function submitTechpack(payload: TechpackPayload): Promise<void> {
-  await supabaseData.from("techpack_submissions").insert({
+  const supabase = getAgencyServiceSupabase();
+  await supabase.from("techpack_submissions").insert({
+    agency_id: OWNER_AGENCY_ID,
     ...payload,
     status: "new",
   });

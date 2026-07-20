@@ -1,8 +1,15 @@
 "use server";
 
 import Anthropic from "@anthropic-ai/sdk";
-import { supabaseData as supabase } from "@/lib/supabase-data";
 import { revalidatePath } from "next/cache";
+import { getAgencySupabase } from "@/lib/supabase-agency";
+import { getAgencyContext } from "@/lib/agency-data";
+
+async function ctxOrThrow() {
+  const ctx = await getAgencyContext();
+  if (!ctx) throw new Error("Not a member of any agency");
+  return ctx;
+}
 
 export interface AutoTags {
   auto_type: string;
@@ -50,6 +57,8 @@ export async function autoTagProduct(productId: string): Promise<
   if (!process.env.ANTHROPIC_API_KEY) {
     return { success: false, error: "ANTHROPIC_API_KEY is not set in the server environment." };
   }
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
 
   const { data: product, error: fetchErr } = await supabase
     .from("products")
@@ -154,6 +163,8 @@ export async function autoTagProduct(productId: string): Promise<
 }
 
 export async function updateAutoTags(productId: string, tags: AutoTags): Promise<{ success: boolean; error?: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   const { error } = await supabase.from("products").update(tags).eq("id", productId);
   if (error) return { success: false, error: error.message };
   revalidatePath(`/products/${productId}`);

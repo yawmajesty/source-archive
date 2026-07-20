@@ -31,7 +31,7 @@ export default async function WorkspaceLayout({
 
   return (
     <WorkspaceContextProvider value={ctx}>
-      <div className="min-h-screen bg-[var(--sa-bg)] flex">
+      <div className="h-screen bg-[var(--sa-bg)] flex">
         <aside className="w-56 shrink-0 border-r border-[var(--sa-border)] bg-[var(--sa-window)] px-3 py-4 flex flex-col gap-1">
           <Link href={`/app/${slug}`} className="px-2 py-1.5 text-[13px] font-semibold text-[var(--sa-text-primary)] hover:bg-[var(--sa-hover)] rounded">
             {ctx.workspace.name}
@@ -45,6 +45,9 @@ export default async function WorkspaceLayout({
             </Link>
             <Link href={`/app/${slug}/collections`} className="px-2 py-1.5 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] hover:text-[var(--sa-text-primary)] rounded">
               Collections
+            </Link>
+            <Link href={`/app/${slug}/activity`} className="px-2 py-1.5 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] hover:text-[var(--sa-text-primary)] rounded">
+              Activity
             </Link>
             {/* Suppliers is primary in independent, hidden in managed unless SA views it */}
             {(ctx.workspace.mode === "independent" || isSARole(ctx.role)) && (

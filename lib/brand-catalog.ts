@@ -106,6 +106,8 @@ export interface Product {
   target_quantity: number | null;
   stage: Stage;
   stage_entered_at: string;
+  target_sample_date: string | null;
+  target_delivery: string | null;
   // Spec notes (rich text, HTML string blobs for v1; can be structured later)
   spec_fabric: string | null;
   spec_trims: string | null;
@@ -189,6 +191,8 @@ function normalizeProduct(row: any): Product {
     target_quantity: row.target_quantity,
     stage: row.stage,
     stage_entered_at: row.stage_entered_at,
+    target_sample_date: row.target_sample_date,
+    target_delivery: row.target_delivery,
     spec_fabric: row.spec_fabric,
     spec_trims: row.spec_trims,
     spec_wash: row.spec_wash,

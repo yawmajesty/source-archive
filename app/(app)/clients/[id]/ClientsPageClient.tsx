@@ -318,7 +318,7 @@ function ProjectDetailPanel({ data, portalEnabled, onNavigate, onBack, onShowAct
           {[
             { label: "Products", value: products.length },
             { label: "Progress", value: `${progress}%` },
-            { label: "Cost (GBP)", value: `£${totalCostGbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}` },
+            { label: "Cost (USD)", value: `$${totalCostGbp.toLocaleString("en-US", { maximumFractionDigits: 0 })}` },
           ].map(({ label, value }) => (
             <div key={label} className="rounded-lg border border-[var(--sa-border)] p-3 bg-[var(--sa-window)]">
               <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{label}</p>

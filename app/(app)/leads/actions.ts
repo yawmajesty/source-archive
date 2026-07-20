@@ -1,10 +1,19 @@
 "use server";
 
-import { supabaseData as supabase } from "@/lib/supabase-data";
 import { revalidatePath } from "next/cache";
+import { getAgencySupabase } from "@/lib/supabase-agency";
+import { getAgencyContext } from "@/lib/agency-data";
 import type { BriefProduct } from "@/lib/mock-data";
 
+async function ctxOrThrow() {
+  const ctx = await getAgencyContext();
+  if (!ctx) throw new Error("Not a member of any agency");
+  return ctx;
+}
+
 export async function updateLeadStatus(leadId: string, status: string) {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   await supabase.from("leads").update({ status }).eq("id", leadId);
   revalidatePath("/leads");
 }
@@ -20,7 +29,10 @@ export async function createLead(data: {
   source?: string | null;
   message?: string | null;
 }) {
+  const ctx = await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   await supabase.from("leads").insert({
+    agency_id: ctx.agency.id,
     ...data,
     status: "new",
     brief_products: [],
@@ -29,11 +41,15 @@ export async function createLead(data: {
 }
 
 export async function deleteLead(leadId: string) {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   await supabase.from("leads").delete().eq("id", leadId);
   revalidatePath("/leads");
 }
 
 export async function convertLeadToClient(leadId: string): Promise<{ clientId: string }> {
+  const ctx = await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   const { data: lead } = await supabase.from("leads").select("*").eq("id", leadId).single();
   if (!lead) throw new Error("Lead not found");
 
@@ -47,6 +63,7 @@ export async function convertLeadToClient(leadId: string): Promise<{ clientId: s
     .replace(/^-|-$/g, "");
 
   await supabase.from("clients").insert({
+    agency_id: ctx.agency.id,
     id: clientId,
     name: lead.company_name,
     slug,
@@ -64,6 +81,7 @@ export async function convertLeadToClient(leadId: string): Promise<{ clientId: s
     : `${lead.company_name} · Initial Collection`;
 
   await supabase.from("projects").insert({
+    agency_id: ctx.agency.id,
     id: projectId,
     client_id: clientId,
     name: projectName,
@@ -77,6 +95,7 @@ export async function convertLeadToClient(leadId: string): Promise<{ clientId: s
     const p = products[i];
     if (!p.name) continue;
     await supabase.from("products").insert({
+      agency_id: ctx.agency.id,
       id: `prod-${ts}-${i}`,
       project_id: projectId,
       name: p.name,

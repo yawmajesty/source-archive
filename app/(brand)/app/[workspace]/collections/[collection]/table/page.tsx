@@ -18,6 +18,7 @@ export default async function CollectionTablePage({
 
   return (
     <CollectionTable
+      workspaceId={ctx.workspace.id}
       workspaceSlug={slug}
       collectionId={collection.id}
       mode={ctx.workspace.mode}

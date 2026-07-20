@@ -1,4 +1,4 @@
-import { supabaseData as supabase } from "./supabase-data";
+import { getAgencySupabase } from "./supabase-agency";
 import type {
   Client, Project, Factory, Product, Sample, Milestone,
   Cost, Update, Task, Contract, PortalFile, Lead, Stage,
@@ -16,11 +16,13 @@ export type {
 // ── Clients ────────────────────────────────────────
 
 export async function getClients(): Promise<Client[]> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase.from("clients").select("*").order("created_at");
   return (data ?? []) as Client[];
 }
 
 export async function getClient(id: string): Promise<Client | null> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase.from("clients").select("*").eq("id", id).single();
   return (data ?? null) as Client | null;
 }
@@ -28,6 +30,7 @@ export async function getClient(id: string): Promise<Client | null> {
 // ── Projects ────────────────────────────────────────
 
 export async function getProjects(clientId?: string): Promise<Project[]> {
+  const supabase = await getAgencySupabase();
   let q = supabase.from("projects").select("*").order("created_at");
   if (clientId) q = q.eq("client_id", clientId);
   const { data } = await q;
@@ -35,6 +38,7 @@ export async function getProjects(clientId?: string): Promise<Project[]> {
 }
 
 export async function getProject(id: string): Promise<Project | null> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase.from("projects").select("*").eq("id", id).single();
   return (data ?? null) as Project | null;
 }
@@ -42,11 +46,13 @@ export async function getProject(id: string): Promise<Project | null> {
 // ── Factories ────────────────────────────────────────
 
 export async function getFactories(): Promise<Factory[]> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase.from("factories").select("*").order("name");
   return (data ?? []) as Factory[];
 }
 
 export async function getFactory(id: string): Promise<Factory | null> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase.from("factories").select("*").eq("id", id).single();
   return (data ?? null) as Factory | null;
 }
@@ -54,6 +60,7 @@ export async function getFactory(id: string): Promise<Factory | null> {
 // ── Products ────────────────────────────────────────
 
 export async function getProducts(projectId?: string): Promise<Product[]> {
+  const supabase = await getAgencySupabase();
   let q = supabase.from("products").select("*").order("created_at");
   if (projectId) q = q.eq("project_id", projectId);
   const { data } = await q;
@@ -61,11 +68,13 @@ export async function getProducts(projectId?: string): Promise<Product[]> {
 }
 
 export async function getProduct(id: string): Promise<Product | null> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase.from("products").select("*").eq("id", id).single();
   return (data ?? null) as Product | null;
 }
 
 export async function getProductPriceHistory(productId: string): Promise<ProductPriceHistoryEntry[]> {
+  const supabase = await getAgencySupabase();
   const { data, error } = await supabase
     .from("product_price_history")
     .select("*")
@@ -79,6 +88,7 @@ export async function getProductPriceHistory(productId: string): Promise<Product
 // ── Samples ────────────────────────────────────────
 
 export async function getSamples(productId: string): Promise<Sample[]> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase.from("samples").select("*").eq("product_id", productId).order("round");
   return (data ?? []) as Sample[];
 }
@@ -86,6 +96,7 @@ export async function getSamples(productId: string): Promise<Sample[]> {
 // ── Milestones ────────────────────────────────────────
 
 export async function getMilestones(productId: string): Promise<Milestone[]> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase.from("milestones").select("*").eq("product_id", productId).order("due_date");
   return (data ?? []) as Milestone[];
 }
@@ -93,6 +104,7 @@ export async function getMilestones(productId: string): Promise<Milestone[]> {
 // ── Costs ────────────────────────────────────────
 
 export async function getCosts(options?: { projectId?: string; productId?: string; includeDeleted?: boolean }): Promise<Cost[]> {
+  const supabase = await getAgencySupabase();
   let q = supabase.from("costs").select("*").order("date_paid", { ascending: false });
   if (options?.projectId) q = q.eq("project_id", options.projectId);
   if (options?.productId) q = q.eq("product_id", options.productId);
@@ -105,6 +117,7 @@ export async function getCosts(options?: { projectId?: string; productId?: strin
 // ── Updates ────────────────────────────────────────
 
 export async function getUpdates(productId: string): Promise<Update[]> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase.from("updates").select("*").eq("product_id", productId).order("created_at", { ascending: false });
   return (data ?? []) as Update[];
 }
@@ -112,6 +125,7 @@ export async function getUpdates(productId: string): Promise<Update[]> {
 // ── Contracts ────────────────────────────────────────
 
 export async function getContracts(clientId: string): Promise<Contract[]> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase.from("contracts").select("*").eq("client_id", clientId).order("date", { ascending: false });
   return (data ?? []) as Contract[];
 }
@@ -119,6 +133,7 @@ export async function getContracts(clientId: string): Promise<Contract[]> {
 // ── Portal Files ────────────────────────────────────────
 
 export async function getPortalFiles(clientId: string): Promise<PortalFile[]> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase.from("portal_files").select("*").eq("client_id", clientId).order("uploaded_at", { ascending: false });
   return (data ?? []) as PortalFile[];
 }
@@ -126,6 +141,7 @@ export async function getPortalFiles(clientId: string): Promise<PortalFile[]> {
 // ── Leads ────────────────────────────────────────
 
 export async function getLeads(): Promise<Lead[]> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase.from("leads").select("*").order("created_at", { ascending: false });
   return (data ?? []) as Lead[];
 }
@@ -133,6 +149,7 @@ export async function getLeads(): Promise<Lead[]> {
 // ── Tasks ────────────────────────────────────────
 
 export async function getTasks(options?: { projectId?: string; productId?: string }): Promise<Task[]> {
+  const supabase = await getAgencySupabase();
   let q = supabase.from("tasks").select("*").order("due_date");
   if (options?.projectId) q = q.eq("project_id", options.projectId);
   if (options?.productId) q = q.eq("product_id", options.productId);
@@ -151,6 +168,7 @@ export interface DashboardStats {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
+  const supabase = await getAgencySupabase();
   const now = new Date().toISOString();
 
   const [{ count: activeProjects }, { count: productsInSampling }, { data: allProducts }, { count: overdueMilestones }] =
@@ -193,6 +211,7 @@ export interface ActivityItem {
 }
 
 export async function getRecentActivity(limit = 10): Promise<ActivityItem[]> {
+  const supabase = await getAgencySupabase();
   const { data: updates } = await supabase
     .from("updates")
     .select("*, products(name, project_id, projects(client_id, clients(name)))")
@@ -221,6 +240,7 @@ export interface ClientSummary {
 }
 
 export async function getClientSummaries(): Promise<ClientSummary[]> {
+  const supabase = await getAgencySupabase();
   const clients = await getClients();
   const projects = await getProjects();
   const products = await getProducts();
@@ -271,6 +291,7 @@ export interface ReferenceSample {
 }
 
 export async function getReferenceSamples(clientId?: string): Promise<ReferenceSample[]> {
+  const supabase = await getAgencySupabase();
   let q = supabase
     .from("reference_samples")
     .select("*, clients(name), products(name), factories(name)")
@@ -316,8 +337,43 @@ export interface AgencySettings {
 const DEFAULT_SITE_TITLE = "Source[Archive]";
 const DEFAULT_SITE_DESCRIPTION = "A sourcing agency helping brands build considered products with vetted factories.";
 
+function blankAgencySettings(): AgencySettings {
+  return {
+    account_name: "",
+    account_number: "",
+    sort_code: "",
+    swift_code: "",
+    account_location: "",
+    iban: "",
+    bank_name: "",
+    bank_address: "",
+    account_created_on: "",
+    invoice_terms: "",
+    site_title: DEFAULT_SITE_TITLE,
+    site_tagline: "",
+    site_description: DEFAULT_SITE_DESCRIPTION,
+    icon_url: "",
+    wordmark_url: "",
+    favicon_url: "",
+    og_image_url: "",
+    google_verification: "",
+  };
+}
+
 export async function getAgencySettings(): Promise<AgencySettings> {
-  const { data } = await supabase.from("agency_settings").select("*").eq("id", "default").single();
+  const supabase = await getAgencySupabase();
+  const { getCurrentAgencyId } = await import("./agency-data");
+  const agencyId = await getCurrentAgencyId();
+  // Signed-out / no agency yet → return defaults so the root layout
+  // still renders metadata for public routes (marketing, sign-in).
+  if (!agencyId) {
+    return blankAgencySettings();
+  }
+  const { data } = await supabase
+    .from("agency_settings")
+    .select("*")
+    .eq("agency_id", agencyId)
+    .maybeSingle();
   const d = data as any;
   return {
     account_name: d?.account_name ?? "",
@@ -373,6 +429,7 @@ export interface SavedInvoice {
 }
 
 export async function getSamplingInvoices(clientId: string, includeDrafts = true): Promise<SavedInvoice[]> {
+  const supabase = await getAgencySupabase();
   let q = supabase
     .from("sampling_invoices")
     .select("*")
@@ -442,6 +499,7 @@ const TECHPACK_ARRAY_FIELDS = [
 ] as const;
 
 export async function getTechpackSubmissions(): Promise<TechpackSubmission[]> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase
     .from("techpack_submissions")
     .select("*")
@@ -453,6 +511,7 @@ export async function getTechpackSubmissions(): Promise<TechpackSubmission[]> {
 }
 
 export async function getTechpackSubmission(id: string): Promise<TechpackSubmission | null> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase.from("techpack_submissions").select("*").eq("id", id).single();
   if (!data) return null;
   const r = data as any;
@@ -501,6 +560,7 @@ export interface DashboardTask {
 }
 
 export async function getDashboardCollections(): Promise<CollectionActionItem[]> {
+  const supabase = await getAgencySupabase();
   const today = new Date().toISOString().slice(0, 10);
   const now = Date.now();
 
@@ -587,6 +647,7 @@ export async function getDashboardCollections(): Promise<CollectionActionItem[]>
 }
 
 export async function getDashboardTasks(): Promise<DashboardTask[]> {
+  const supabase = await getAgencySupabase();
   const today = new Date().toISOString().slice(0, 10);
   const inThreeDays = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
 
@@ -621,6 +682,7 @@ export async function getDashboardTasks(): Promise<DashboardTask[]> {
 // ── RFQs ────────────────────────────────────────
 
 export async function getRfqs(): Promise<Rfq[]> {
+  const supabase = await getAgencySupabase();
   try {
     const { data } = await supabase.from("rfqs").select("*").order("created_at", { ascending: false });
     return (data ?? []) as Rfq[];
@@ -630,6 +692,7 @@ export async function getRfqs(): Promise<Rfq[]> {
 }
 
 export async function getRfqInvites(rfqId: string): Promise<Array<RfqInvite & { factory_name: string; factory_email: string }>> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase
     .from("rfq_invites")
     .select("*, factories(name, contact_email)")
@@ -648,6 +711,7 @@ export async function getRfqByToken(token: string): Promise<{
   invite: RfqInvite;
   factoryName: string;
 } | null> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase
     .from("rfq_invites")
     .select("*, rfqs(*), factories(name)")
@@ -666,6 +730,7 @@ export async function getRfqSubmissions(rfqId: string): Promise<Array<{
   tiers: RfqTier[];
   factory_name: string;
 }>> {
+  const supabase = await getAgencySupabase();
   const { data: invites } = await supabase
     .from("rfq_invites")
     .select("id, factories(name)")
@@ -713,6 +778,7 @@ export interface PortalActivity {
 }
 
 export async function getPortalActivity(clientId: string): Promise<PortalActivity> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase
     .from("portal_visits")
     .select("*")
@@ -764,6 +830,7 @@ export async function getPortalActivity(clientId: string): Promise<PortalActivit
 }
 
 export async function getExistingSubmission(inviteId: string): Promise<(RfqSubmission & { products: RfqQuotedProduct[] }) | null> {
+  const supabase = await getAgencySupabase();
   const { data } = await supabase
     .from("rfq_submissions")
     .select("*, rfq_quoted_products(*)")
@@ -780,15 +847,18 @@ export async function getExistingSubmission(inviteId: string): Promise<(RfqSubmi
 // ── Helpers ────────────────────────────────────────
 
 export async function getFactoryById(id: string | null): Promise<Factory | null> {
+  const supabase = await getAgencySupabase();
   if (!id) return null;
   return getFactory(id);
 }
 
 export async function getProjectById(id: string): Promise<Project | null> {
+  const supabase = await getAgencySupabase();
   return getProject(id);
 }
 
 export async function getClientByProjectId(projectId: string): Promise<Client | null> {
+  const supabase = await getAgencySupabase();
   const project = await getProject(projectId);
   if (!project) return null;
   return getClient(project.client_id);

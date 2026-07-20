@@ -1,9 +1,10 @@
-import { supabaseData as supabase } from "@/lib/supabase-data";
+import { getAgencySupabase } from "@/lib/supabase-agency";
 import { StudioClient } from "./StudioClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function StudioPage() {
+  const supabase = await getAgencySupabase();
   const [{ data: expenses }, { data: products }, { data: items }] = await Promise.all([
     supabase.from("brand_expenses").select("*").order("date", { ascending: false }),
     supabase.from("brand_costing_products").select("*").order("created_at", { ascending: false }),

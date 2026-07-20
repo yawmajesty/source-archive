@@ -1,8 +1,15 @@
 "use server";
 
-import { supabaseData as supabase } from "@/lib/supabase-data";
 import { revalidatePath } from "next/cache";
+import { getAgencySupabase } from "@/lib/supabase-agency";
+import { getAgencyContext } from "@/lib/agency-data";
 import type { InvoiceLineItem } from "@/lib/data";
+
+async function ctxOrThrow() {
+  const ctx = await getAgencyContext();
+  if (!ctx) throw new Error("Not a member of any agency");
+  return ctx;
+}
 
 export async function createProjectQuote(data: {
   client_id: string;
@@ -13,7 +20,10 @@ export async function createProjectQuote(data: {
   deposit_percent?: number;
   title?: string | null;
 }): Promise<void> {
+  const ctx = await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   await supabase.from("sampling_invoices").insert({
+    agency_id: ctx.agency.id,
     client_id: data.client_id,
     round: data.round,
     title: data.title ?? null,
@@ -28,12 +38,16 @@ export async function createProjectQuote(data: {
 }
 
 export async function sendQuote(invoiceId: string, clientId: string, projectId: string): Promise<void> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   await supabase.from("sampling_invoices").update({ status: "sent" }).eq("id", invoiceId);
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/portal/${clientId}`);
 }
 
 export async function deleteQuote(invoiceId: string, clientId: string, projectId: string): Promise<void> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   await supabase.from("sampling_invoices").delete().eq("id", invoiceId);
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/portal/${clientId}`);
@@ -43,6 +57,8 @@ export async function deleteQuote(invoiceId: string, clientId: string, projectId
 // transfer or some other channel that isn't the Stripe webhook. Records the
 // paid_at timestamp so we know when the money arrived.
 export async function markInvoicePaid(invoiceId: string, clientId: string, projectId: string): Promise<{ success: boolean; error?: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   const { error } = await supabase
     .from("sampling_invoices")
     .update({ status: "paid", paid_at: new Date().toISOString() })
@@ -60,6 +76,8 @@ export async function markInvoicePaid(invoiceId: string, clientId: string, proje
 export async function createBalanceInvoice(parentInvoiceId: string, projectId: string): Promise<
   { success: true; newInvoiceId: string } | { success: false; error: string }
 > {
+  const ctx = await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   const { data: parent, error: loadErr } = await supabase
     .from("sampling_invoices")
     .select("*")
@@ -103,6 +121,7 @@ export async function createBalanceInvoice(parentInvoiceId: string, projectId: s
   const { data: inserted, error: insertErr } = await supabase
     .from("sampling_invoices")
     .insert({
+      agency_id: ctx.agency.id,
       client_id: parent.client_id,
       round: nextRound,
       title: parent.title ? `${parent.title} — Balance` : `Production invoice — Balance`,
@@ -130,6 +149,8 @@ export async function forkProductsToRound(
   projectId: string,
 ): Promise<void> {
   if (productIds.length === 0) return;
+  const ctx = await ctxOrThrow();
+  const supabase = await getAgencySupabase();
 
   const { data: originals } = await supabase
     .from("products")
@@ -139,6 +160,7 @@ export async function forkProductsToRound(
   if (!originals?.length) return;
 
   const clones = originals.map((p: any) => ({
+    agency_id: ctx.agency.id,
     project_id: p.project_id,
     name: p.name,
     category: p.category,

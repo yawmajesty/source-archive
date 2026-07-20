@@ -12,6 +12,7 @@ import type { Role, WorkspaceMode } from "@/lib/mode-policy";
 import { cn } from "@/lib/utils";
 
 interface Props {
+  workspaceId: string;
   workspaceSlug: string;
   mode: WorkspaceMode;
   role: Role;
@@ -19,7 +20,7 @@ interface Props {
   products: Product[];
 }
 
-export function CostingRollup({ workspaceSlug, mode, role, collection, products }: Props) {
+export function CostingRollup({ workspaceId, workspaceSlug, mode, role, collection, products }: Props) {
   const rollup = computeCollectionRollup(products, collection);
   const rowMargins = products.map((p) => ({ p, m: computeProductMargin(p, collection) }));
 
@@ -66,6 +67,7 @@ export function CostingRollup({ workspaceSlug, mode, role, collection, products 
 
       {/* FX + target margin editor */}
       <FxRateEditor
+        workspaceId={workspaceId}
         workspaceSlug={workspaceSlug}
         collectionId={collection.id}
         mode={mode}
@@ -201,8 +203,9 @@ export function CostingRollup({ workspaceSlug, mode, role, collection, products 
 // ── FX + target margin editor ─────────────────────────────────────
 
 function FxRateEditor({
-  workspaceSlug, collectionId, mode, role, baseCurrency, initialRates, initialTarget,
+  workspaceId, workspaceSlug, collectionId, mode, role, baseCurrency, initialRates, initialTarget,
 }: {
+  workspaceId: string;
   workspaceSlug: string;
   collectionId: string;
   mode: WorkspaceMode;
@@ -232,6 +235,7 @@ function FxRateEditor({
     }
     startTransition(async () => {
       const res = await updateCollectionFx({
+        workspace_id: workspaceId,
         workspace_slug: workspaceSlug,
         collection_id: collectionId,
         mode,

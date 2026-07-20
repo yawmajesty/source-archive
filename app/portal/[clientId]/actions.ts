@@ -1,20 +1,36 @@
 "use server";
 
-import { supabaseData as supabase } from "@/lib/supabase-data";
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "crypto";
 import { getStripe } from "@/lib/stripe";
 import { getPublicOrigin } from "@/lib/url";
+import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import type { InvoiceLineItem } from "@/lib/data";
+
+// The client portal is a public URL — visitors are not Clerk-authed.
+// We use the service-role client (bypasses RLS) and resolve the owning
+// agency from the client_id / invoice on every write. Never trust
+// caller-provided agency ids here.
+
+async function agencyForClient(supabase: ReturnType<typeof getAgencyServiceSupabase>, clientId: string): Promise<string> {
+  const { data } = await supabase.from("clients").select("agency_id").eq("id", clientId).maybeSingle();
+  const agencyId = (data as any)?.agency_id;
+  if (!agencyId) throw new Error(`Client ${clientId} has no agency`);
+  return agencyId as string;
+}
 
 export async function logPortalVisit(data: {
   client_id: string;
   session_id: string;
   path: string;
 }): Promise<string | null> {
+  const supabase = getAgencyServiceSupabase();
   const id = "pv-" + Date.now() + "-" + randomUUID().slice(0, 8);
+  const agencyId = await agencyForClient(supabase, data.client_id).catch(() => null);
+  if (!agencyId) return null;
   const { error } = await supabase.from("portal_visits").insert({
     id,
+    agency_id: agencyId,
     client_id: data.client_id,
     session_id: data.session_id,
     path: data.path,
@@ -25,6 +41,7 @@ export async function logPortalVisit(data: {
 
 export async function updateVisitDuration(visitId: string, durationMs: number): Promise<void> {
   if (!visitId || durationMs <= 0) return;
+  const supabase = getAgencyServiceSupabase();
   await supabase.from("portal_visits").update({ duration_ms: durationMs }).eq("id", visitId);
 }
 
@@ -35,15 +52,17 @@ export async function createSamplingInvoice(data: {
   line_items: InvoiceLineItem[];
   notes: string | null;
 }): Promise<void> {
-  await supabase.from("sampling_invoices").insert({ ...data, status: "draft" });
+  const supabase = getAgencyServiceSupabase();
+  const agencyId = await agencyForClient(supabase, data.client_id);
+  await supabase.from("sampling_invoices").insert({ agency_id: agencyId, ...data, status: "draft" });
   revalidatePath(`/portal/${data.client_id}`);
 }
 
 export async function updateInvoiceStatus(id: string, clientId: string, status: string): Promise<void> {
+  const supabase = getAgencyServiceSupabase();
   await supabase.from("sampling_invoices").update({ status }).eq("id", id);
 
   if (status === "paid") {
-    // Avoid double-inserting if already recorded
     const { data: existing } = await supabase
       .from("costs")
       .select("id")
@@ -58,12 +77,14 @@ export async function updateInvoiceStatus(id: string, clientId: string, status: 
         .single();
 
       if (invoice) {
+        const agencyId = await agencyForClient(supabase, clientId);
         const lineItems = (invoice.line_items ?? []) as Array<{ amount_usd?: number }>;
         const totalUsd = lineItems.reduce((s, li) => s + (li.amount_usd ?? 0), 0);
-        const fxRate = 0.79; // USD → GBP default; user can edit the entry later
+        const fxRate = 1; // Base currency is USD, so the incoming USD amount stores 1:1.
         const label = invoice.title ?? `Round ${invoice.round} Sampling`;
 
         await supabase.from("costs").insert({
+          agency_id: agencyId,
           id: "cost-" + Date.now(),
           client_id: clientId,
           project_id: null,
@@ -90,6 +111,7 @@ export async function updateInvoiceStatus(id: string, clientId: string, status: 
 }
 
 export async function deleteInvoice(id: string, clientId: string): Promise<void> {
+  const supabase = getAgencyServiceSupabase();
   await supabase.from("sampling_invoices").delete().eq("id", id);
   revalidatePath(`/portal/${clientId}`);
 }
@@ -99,31 +121,12 @@ export async function deleteInvoice(id: string, clientId: string): Promise<void>
 export async function createInvoiceCheckout(invoiceId: string): Promise<
   { url: string } | { error: string }
 > {
-  // Force the module hash to change so any cached client bundle bound to the
-  // old server-action id will fall through to the new endpoint. (Deploy tag: v3)
-  console.log("[stripe checkout] createInvoiceCheckout called", {
-    invoiceId,
-    invoiceIdType: typeof invoiceId,
-    invoiceIdLen: invoiceId?.length,
-    time: new Date().toISOString(),
-  });
-
-  // Load the invoice we want to charge for and confirm it's chargeable.
-  // NB: we don't rely on PostgREST FK embeds (sampling_invoices → clients is
-  // not FK-linked in this schema), so fetch the client separately.
+  const supabase = getAgencyServiceSupabase();
   const { data: invoice, error: loadErr } = await supabase
     .from("sampling_invoices")
     .select("*")
     .eq("id", invoiceId)
     .single();
-
-  console.log("[stripe checkout] invoice load result", {
-    hasInvoice: !!invoice,
-    invoiceId: invoice?.id,
-    status: invoice?.status,
-    loadErrCode: loadErr?.code,
-    loadErrMsg: loadErr?.message,
-  });
 
   if (loadErr || !invoice) {
     const parts = [
@@ -165,15 +168,13 @@ export async function createInvoiceCheckout(invoiceId: string): Promise<
   try {
     session = await stripe.checkout.sessions.create({
       mode: "payment",
-      // Cards + wallets by default. Stripe automatically enables more methods
-      // based on the merchant's Stripe Dashboard settings.
       payment_method_types: ["card"],
       line_items: [
         {
           quantity: 1,
           price_data: {
             currency: "usd",
-            unit_amount: Math.round(amountDueUsd * 100), // Stripe uses minor units
+            unit_amount: Math.round(amountDueUsd * 100),
             product_data: {
               name: description,
               description: `${clientRow?.name ?? "Client"} · ${lineItems.length} line item${lineItems.length !== 1 ? "s" : ""}`,
@@ -184,7 +185,6 @@ export async function createInvoiceCheckout(invoiceId: string): Promise<
       customer_email: clientRow?.contact_email ?? undefined,
       success_url: successUrl,
       cancel_url: cancelUrl,
-      // metadata is what the webhook reads back to identify the invoice.
       metadata: {
         invoice_id: invoice.id,
         client_id: invoice.client_id,
@@ -196,8 +196,6 @@ export async function createInvoiceCheckout(invoiceId: string): Promise<
     return { error: `Stripe error: ${e?.message ?? String(e)}` };
   }
 
-  // Store the session id so we can reconcile even if the webhook is delayed
-  // and so the UI can show "Payment in progress" style state if we want it later.
   await supabase
     .from("sampling_invoices")
     .update({ stripe_session_id: session.id })

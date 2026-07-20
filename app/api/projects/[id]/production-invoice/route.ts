@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
-import { supabaseData as supabase } from "@/lib/supabase-data";
+import { getAgencySupabase } from "@/lib/supabase-agency";
 import type { ProductionVariant, Stage } from "@/lib/mock-data";
 
 const STAGE_ORDER: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
@@ -20,6 +20,7 @@ async function fetchImageBuffer(url: string): Promise<{ buffer: Buffer; ext: "pn
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: projectId } = await params;
+  const supabase = await getAgencySupabase();
 
   const { data: project, error: projErr } = await supabase
     .from("projects")

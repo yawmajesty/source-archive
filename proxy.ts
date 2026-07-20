@@ -8,6 +8,7 @@ const isPublicRoute = createRouteMatcher([
   "/enquire(.*)",
   "/techpack(.*)",
   "/factory(.*)",
+  "/for-brands(.*)",
   "/api/webhook(.*)",
 ]);
 

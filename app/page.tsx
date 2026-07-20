@@ -1,33 +1,25 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { getAgencyContext } from "@/lib/agency-data";
 import { getUserWorkspaces } from "@/lib/brand-data";
 
 // Root dispatcher — where a signed-in user goes depends on WHO they are:
-//   - Agency team (Clerk publicMetadata.role in {admin, team})  → /dashboard
-//     (the existing Source Archive backend)
-//   - Brand-side user with 1+ workspaces                        → /app/{first-slug}
-//   - Brand-side user with 0 workspaces (just signed up)        → /onboarding
-//   - Signed-out visitors will land on the marketing homepage
-//     (Phase 7 replaces this file with the marketing landing).
-//
-// Phase 1 ships the dispatcher only; marketing is Phase 7.
+//   - Agency member (any role)              → /dashboard  (the agency backend)
+//   - Brand-side member with 1+ workspaces  → /app/{first-slug}
+//   - Brand-side, 0 workspaces              → /onboarding (brand workspace)
+//   - No memberships at all                 → /onboarding-agency (create their own agency)
+//   - Signed-out visitors                   → /for-brands (marketing landing)
 export default async function Home() {
   const { userId } = await auth();
-  if (!userId) redirect("/sign-in");
+  if (!userId) redirect("/for-brands");
 
-  // Agency team members keep going to the existing backend.
-  try {
-    const client = await clerkClient();
-    const user = await client.users.getUser(userId);
-    const agencyRole = user.publicMetadata?.role;
-    if (agencyRole === "admin" || agencyRole === "team") {
-      redirect("/dashboard");
-    }
-  } catch {
-    // If Clerk lookup fails, fall through to the brand-side path.
-  }
+  const agencyCtx = await getAgencyContext();
+  if (agencyCtx) redirect("/dashboard");
 
   const workspaces = await getUserWorkspaces();
-  if (workspaces.length === 0) redirect("/onboarding");
-  redirect(`/app/${workspaces[0].slug}`);
+  if (workspaces.length > 0) redirect(`/app/${workspaces[0].slug}`);
+
+  // Truly new user with nothing. Steer them into the agency onboarding
+  // by default — brands are a smaller share and can pivot later.
+  redirect("/onboarding-agency");
 }

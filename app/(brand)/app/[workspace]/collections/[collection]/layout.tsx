@@ -5,6 +5,7 @@ import { getWorkspaceContext } from "@/lib/brand-data";
 import { getCollection } from "@/lib/brand-catalog";
 import { CollectionViewSwitcher } from "./CollectionViewSwitcher";
 import { QuickAddProduct } from "./QuickAddProduct";
+import { PlanningStrip } from "./PlanningStrip";
 
 export default async function CollectionLayout({
   children,
@@ -55,6 +56,12 @@ export default async function CollectionLayout({
           <CollectionViewSwitcher slug={slug} collectionId={collection.id} />
         </div>
       </div>
+
+      <PlanningStrip
+        workspaceId={ctx.workspace.id}
+        workspaceSlug={slug}
+        collectionId={collection.id}
+      />
 
       {children}
     </div>

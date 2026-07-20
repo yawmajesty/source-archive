@@ -50,6 +50,10 @@ export type Action =
   // Files
   | "file.upload"
   | "file.delete"
+  // Milestones (Phase 5 — planning)
+  | "milestone.create"
+  | "milestone.update"
+  | "milestone.delete"
   // Comments / activity
   | "comment.create"
   | "activity.view"
@@ -106,6 +110,11 @@ const MATRIX: Matrix = {
   // ─ Files ─
   "file.upload":              { managed: ["sa_admin", "sa_team", "brand_owner", "brand_member"], independent: ["brand_owner", "brand_member"] },
   "file.delete":              { managed: ["sa_admin", "brand_owner"],                            independent: ["brand_owner", "brand_member"] },
+
+  // ─ Milestones ─
+  "milestone.create":         { managed: ["sa_admin", "sa_team", "brand_owner", "brand_member"], independent: ["brand_owner", "brand_member"] },
+  "milestone.update":         { managed: ["sa_admin", "sa_team", "brand_owner", "brand_member"], independent: ["brand_owner", "brand_member"] },
+  "milestone.delete":         { managed: ["sa_admin", "brand_owner", "brand_member"],            independent: ["brand_owner", "brand_member"] },
 
   // ─ Comments / activity ─
   "comment.create":           { managed: ["sa_admin", "sa_team", "brand_owner", "brand_member"], independent: ["brand_owner", "brand_member"] },

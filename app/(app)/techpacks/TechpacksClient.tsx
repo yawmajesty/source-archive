@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Download, ExternalLink, Copy, CheckCheck } from "lucide-react";
-import { supabaseData as supabase } from "@/lib/supabase-data";
+import { updateTechpackStatus, updateTechpackField } from "./actions";
 import { cn } from "@/lib/utils";
 import { buildPublicUrl } from "@/lib/url";
 import type { TechpackSubmission } from "@/lib/data";
@@ -235,7 +235,7 @@ function TechpackDetail({
     const updated = { ...sub, status };
     setSub(updated);
     startTransition(async () => {
-      await supabase.from("techpack_submissions").update({ status }).eq("id", sub.id);
+      await updateTechpackStatus(sub.id, status);
       onUpdate(updated);
     });
   }
@@ -244,7 +244,7 @@ function TechpackDetail({
     const updated = { ...sub, [key]: value };
     setSub(updated as TechpackSubmission);
     startTransition(async () => {
-      await supabase.from("techpack_submissions").update({ [key]: value }).eq("id", sub.id);
+      await updateTechpackField(sub.id, key, value);
       onUpdate(updated as TechpackSubmission);
     });
   }

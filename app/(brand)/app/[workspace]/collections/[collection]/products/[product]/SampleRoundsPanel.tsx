@@ -97,6 +97,7 @@ function RoundCard({
   function persistPatch<K extends string>(patch: Record<K, any>) {
     startTransition(async () => {
       const res = await updateSampleRound({
+        workspace_id: ctx.workspaceId,
         workspace_slug: ctx.workspaceSlug,
         collection_id: ctx.collectionId,
         product_id: ctx.productId,
@@ -164,6 +165,7 @@ function RoundCard({
                 startTransition(async () => {
                   await import("../../../../samples-actions").then((m) =>
                     m.deleteSampleRound({
+                      workspace_id: ctx.workspaceId,
                       workspace_slug: ctx.workspaceSlug,
                       collection_id: ctx.collectionId,
                       product_id: ctx.productId,

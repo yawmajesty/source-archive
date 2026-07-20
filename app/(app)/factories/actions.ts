@@ -1,8 +1,15 @@
 "use server";
 
-import { supabaseData as supabase } from "@/lib/supabase-data";
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "crypto";
+import { getAgencySupabase } from "@/lib/supabase-agency";
+import { getAgencyContext } from "@/lib/agency-data";
+
+async function ctxOrThrow() {
+  const ctx = await getAgencyContext();
+  if (!ctx) throw new Error("Not a member of any agency");
+  return ctx;
+}
 
 export async function createRfq(data: {
   title: string;
@@ -10,9 +17,12 @@ export async function createRfq(data: {
   deadline: string | null;
   factory_ids: string[];
 }): Promise<{ id: string } | { error: string }> {
+  const ctx = await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   const rfqId = "rfq-" + Date.now();
 
   const { error } = await supabase.from("rfqs").insert({
+    agency_id: ctx.agency.id,
     id: rfqId,
     title: data.title,
     description: data.description,
@@ -24,6 +34,7 @@ export async function createRfq(data: {
 
   for (const factoryId of data.factory_ids) {
     await supabase.from("rfq_invites").insert({
+      agency_id: ctx.agency.id,
       id: "inv-" + Date.now() + "-" + factoryId,
       rfq_id: rfqId,
       factory_id: factoryId,
@@ -36,6 +47,8 @@ export async function createRfq(data: {
 }
 
 export async function closeRfq(rfqId: string): Promise<void> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   await supabase.from("rfqs").update({ status: "closed" }).eq("id", rfqId);
   revalidatePath("/factories");
 }
@@ -45,6 +58,8 @@ export async function assignQuotedProduct(data: {
   target_product_id: string;
   factory_id: string | null;
 }): Promise<{ success: boolean; error?: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   const { data: qp } = await supabase
     .from("rfq_quoted_products")
     .select("unit_price_usd, sample_fee_usd, lead_time_days")
@@ -102,6 +117,8 @@ export async function getRfqDetail(rfqId: string): Promise<{
     }>;
   }>;
 }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   const { data: invites } = await supabase
     .from("rfq_invites")
     .select("id, factory_id, token, viewed_at, submitted_at, factories(name, contact_email)")

@@ -4,10 +4,9 @@ import { useState, useTransition, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, X, ChevronDown, Plus } from "lucide-react";
-import { supabaseData as supabase } from "@/lib/supabase-data";
 import { uploadFile } from "@/lib/storage";
 import { cn } from "@/lib/utils";
-import { createReferenceSample } from "./actions";
+import { createReferenceSample, updateReferenceSample, listProductsForClient } from "./actions";
 import type { ReferenceSample, Factory, Client } from "@/lib/data";
 
 interface Props {
@@ -74,13 +73,10 @@ function AddSamplePanel({ clients, onClose, onCreated }: { clients: Client[]; on
 
   useEffect(() => {
     if (!clientId) { setProducts([]); setProductId(""); return; }
-    supabase.from("products")
-      .select("id, name, projects!inner(client_id)")
-      .eq("projects.client_id", clientId)
-      .then(({ data }) => {
-        setProducts((data ?? []).map((p: any) => ({ id: p.id, name: p.name })));
-        setProductId("");
-      });
+    listProductsForClient(clientId).then((rows) => {
+      setProducts(rows);
+      setProductId("");
+    });
   }, [clientId]);
 
   function togglePurpose(p: string) {
@@ -243,7 +239,7 @@ function ReferenceDetail({
     const merged = { ...sample, ...patch };
     setSample(merged);
     startTransition(async () => {
-      await supabase.from("reference_samples").update(patch).eq("id", sample.id);
+      await updateReferenceSample(sample.id, patch as Record<string, unknown>);
       onUpdate(merged);
     });
   }

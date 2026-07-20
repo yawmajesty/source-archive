@@ -5,8 +5,10 @@ import { revalidatePath } from "next/cache";
 import { getBrandSupabase } from "@/lib/supabase-brand";
 import { can, type Role, type WorkspaceMode } from "@/lib/mode-policy";
 import type { SampleStatus } from "@/lib/brand-sampling";
+import { logActivity } from "@/lib/brand-activity";
 
 interface Ctx {
+  workspace_id: string;
   workspace_slug: string;
   collection_id: string;
   product_id: string;
@@ -21,7 +23,6 @@ function refresh(ctx: Ctx) {
 // ── Sample rounds ─────────────────────────────────────────────────
 
 export async function createSampleRound(input: Ctx & {
-  workspace_id: string;
   label: string;
   requested_at?: string | null;
   eta_at?: string | null;
@@ -61,6 +62,18 @@ export async function createSampleRound(input: Ctx & {
     .single();
 
   if (error || !data) return { success: false, error: error?.message ?? "Failed to create sample round" };
+
+  await logActivity({
+    workspaceId: input.workspace_id,
+    actorId: userId,
+    verb: "sample.round_created",
+    summary: `started ${input.label.trim() || `Sample ${nextOrder + 1}`}`,
+    targetType: "sample_round",
+    targetId: data.id,
+    collectionId: input.collection_id,
+    productId: input.product_id,
+  });
+
   refresh(input);
   return { success: true, sample_round_id: data.id };
 }
@@ -90,6 +103,22 @@ export async function updateSampleRound(input: Ctx & {
   const supabase = await getBrandSupabase();
   const { error } = await supabase.from("sample_rounds").update(input.patch).eq("id", input.sample_round_id);
   if (error) return { success: false, error: error.message };
+
+  const isStatusChange = "status" in input.patch;
+  await logActivity({
+    workspaceId: input.workspace_id,
+    actorId: userId,
+    verb: isStatusChange ? "sample.status_changed" : "sample.round_updated",
+    summary: isStatusChange
+      ? `sample marked ${String(input.patch.status).replace(/_/g, " ")}`
+      : `updated sample round (${Object.keys(input.patch).join(", ")})`,
+    targetType: "sample_round",
+    targetId: input.sample_round_id,
+    collectionId: input.collection_id,
+    productId: input.product_id,
+    meta: isStatusChange ? { status: input.patch.status } : { fields: Object.keys(input.patch) },
+  });
+
   refresh(input);
   return { success: true };
 }
@@ -103,6 +132,18 @@ export async function deleteSampleRound(input: Ctx & { sample_round_id: string }
   const supabase = await getBrandSupabase();
   const { error } = await supabase.from("sample_rounds").delete().eq("id", input.sample_round_id);
   if (error) return { success: false, error: error.message };
+
+  await logActivity({
+    workspaceId: input.workspace_id,
+    actorId: userId,
+    verb: "sample.round_updated",
+    summary: "deleted a sample round",
+    targetType: "sample_round",
+    targetId: null,
+    collectionId: input.collection_id,
+    productId: input.product_id,
+  });
+
   refresh(input);
   return { success: true };
 }
@@ -110,7 +151,6 @@ export async function deleteSampleRound(input: Ctx & { sample_round_id: string }
 // ── Comments ──────────────────────────────────────────────────────
 
 export async function addSampleComment(input: Ctx & {
-  workspace_id: string;
   sample_round_id: string;
   body: string;
 }): Promise<{ success: true } | { success: false; error: string }> {
@@ -127,6 +167,19 @@ export async function addSampleComment(input: Ctx & {
     body: input.body.trim(),
   });
   if (error) return { success: false, error: error.message };
+
+  await logActivity({
+    workspaceId: input.workspace_id,
+    actorId: userId,
+    verb: "sample.comment_added",
+    summary: "commented on sample",
+    targetType: "sample_round",
+    targetId: input.sample_round_id,
+    collectionId: input.collection_id,
+    productId: input.product_id,
+    meta: { excerpt: input.body.trim().slice(0, 140) },
+  });
+
   refresh(input);
   return { success: true };
 }

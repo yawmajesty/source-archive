@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { getBrandSupabase } from "@/lib/supabase-brand";
 import { can, type Role, type WorkspaceMode } from "@/lib/mode-policy";
+import { logActivity } from "@/lib/brand-activity";
 
 interface Base {
   workspace_slug: string;
@@ -51,11 +52,22 @@ export async function createSupplier(input: Base & {
     .select("id")
     .single();
   if (error || !data) return { success: false, error: error?.message ?? "Failed to create supplier" };
+
+  await logActivity({
+    workspaceId: input.workspace_id,
+    actorId: userId,
+    verb: "supplier.created",
+    summary: `added supplier "${input.name.trim()}"`,
+    targetType: "supplier",
+    targetId: data.id,
+  });
+
   revalidatePath(`/app/${input.workspace_slug}/suppliers`);
   return { success: true, supplier_id: data.id };
 }
 
 export async function updateSupplier(input: Base & {
+  workspace_id: string;
   supplier_id: string;
   patch: Partial<{
     name: string;
@@ -77,11 +89,22 @@ export async function updateSupplier(input: Base & {
   const supabase = await getBrandSupabase();
   const { error } = await supabase.from("suppliers").update(input.patch).eq("id", input.supplier_id);
   if (error) return { success: false, error: error.message };
+
+  await logActivity({
+    workspaceId: input.workspace_id,
+    actorId: userId,
+    verb: "supplier.updated",
+    summary: `updated supplier (${Object.keys(input.patch).join(", ")})`,
+    targetType: "supplier",
+    targetId: input.supplier_id,
+    meta: { fields: Object.keys(input.patch) },
+  });
+
   revalidatePath(`/app/${input.workspace_slug}/suppliers`);
   return { success: true };
 }
 
-export async function deleteSupplier(input: Base & { supplier_id: string })
+export async function deleteSupplier(input: Base & { workspace_id: string; supplier_id: string })
   : Promise<{ success: true } | { success: false; error: string }> {
   const { userId } = await auth();
   if (!userId) return { success: false, error: "Not authenticated" };
@@ -90,6 +113,16 @@ export async function deleteSupplier(input: Base & { supplier_id: string })
   const supabase = await getBrandSupabase();
   const { error } = await supabase.from("suppliers").delete().eq("id", input.supplier_id);
   if (error) return { success: false, error: error.message };
+
+  await logActivity({
+    workspaceId: input.workspace_id,
+    actorId: userId,
+    verb: "supplier.updated",
+    summary: "removed a supplier",
+    targetType: "supplier",
+    targetId: null,
+  });
+
   revalidatePath(`/app/${input.workspace_slug}/suppliers`);
   return { success: true };
 }

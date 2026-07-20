@@ -12,12 +12,14 @@ import { cn } from "@/lib/utils";
 // A pipeline-oriented kanban with drag-and-drop. Guardrails fire when
 // moving into 'approved_for_production' — we don't block, we warn.
 export function KanbanBoard({
+  workspaceId,
   workspaceSlug,
   collectionId,
   mode,
   role,
   products: initial,
 }: {
+  workspaceId: string;
   workspaceSlug: string;
   collectionId: string;
   mode: WorkspaceMode;
@@ -48,15 +50,18 @@ export function KanbanBoard({
   function performMove(productId: string, nextStage: Stage) {
     // Optimistic: update local state, revert on error
     const prev = products;
+    const previousStage = prev.find((p) => p.id === productId)?.stage;
     setProducts((cur) => cur.map((p) => (p.id === productId ? { ...p, stage: nextStage } : p)));
     startTransition(async () => {
       const res = await changeProductStage({
+        workspace_id: workspaceId,
         workspace_slug: workspaceSlug,
         collection_id: collectionId,
         product_id: productId,
         mode,
         role,
         next_stage: nextStage,
+        previous_stage: previousStage,
       });
       if (!res.success) {
         setProducts(prev);

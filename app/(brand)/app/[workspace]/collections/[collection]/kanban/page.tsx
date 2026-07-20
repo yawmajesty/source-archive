@@ -17,6 +17,7 @@ export default async function CollectionKanbanPage({
 
   return (
     <KanbanBoard
+      workspaceId={ctx.workspace.id}
       workspaceSlug={slug}
       collectionId={collection.id}
       mode={ctx.workspace.mode}

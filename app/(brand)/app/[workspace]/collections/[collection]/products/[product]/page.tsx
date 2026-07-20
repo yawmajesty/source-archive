@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight } from "lucide-react";
-import { clerkClient } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { getWorkspaceContext } from "@/lib/brand-data";
 import { getCollection, getProduct } from "@/lib/brand-catalog";
 import { listSampleRounds, listSampleComments, type SampleComment } from "@/lib/brand-sampling";
+import { listCommentsForProduct, resolveUserNames } from "@/lib/brand-comments";
+import { listProductActivity } from "@/lib/brand-activity";
 import { StageBadge } from "@/components/brand/StageBadge";
 import { CategoryChip } from "@/components/brand/CategoryChip";
+import { CommentThread } from "@/components/brand/CommentThread";
+import { ActivityFeed } from "@/components/brand/ActivityFeed";
 import { SampleRoundsPanel } from "./SampleRoundsPanel";
 import { CostingPanel } from "./CostingPanel";
 
@@ -23,28 +27,24 @@ export default async function ProductDetailPage({
   const product = await getProduct(productId);
   if (!product || product.collection_id !== collection.id) notFound();
 
-  // Load sample rounds + their comments in parallel.
-  const rounds = await listSampleRounds(product.id);
+  // Fan out all the reads for this page in parallel.
+  const { userId: currentUserId } = await auth();
+  const [rounds, productComments, productEvents] = await Promise.all([
+    listSampleRounds(product.id),
+    listCommentsForProduct(product.id),
+    listProductActivity(product.id, 30),
+  ]);
   const commentLists = await Promise.all(rounds.map((r) => listSampleComments(r.id)));
   const commentsByRound: Record<string, SampleComment[]> = {};
   rounds.forEach((r, i) => { commentsByRound[r.id] = commentLists[i]; });
 
-  // Resolve author display names (id → "First Last" or email) via Clerk.
-  const authorIds = Array.from(new Set(commentLists.flat().map((c) => c.user_id)));
-  const userMap: Record<string, string> = {};
-  if (authorIds.length > 0) {
-    try {
-      const client = await clerkClient();
-      const users = await client.users.getUserList({ userId: authorIds, limit: 100 });
-      users.data.forEach((u) => {
-        const email = u.emailAddresses?.[0]?.emailAddress ?? "";
-        const name = [u.firstName, u.lastName].filter(Boolean).join(" ");
-        userMap[u.id] = name || email || u.id.slice(0, 8);
-      });
-    } catch {
-      // Fall back to raw ids — feedback thread still renders.
-    }
-  }
+  // One display-name resolution for every user id that appears in any
+  // feed on this page (sample comments, product comments, activity).
+  const allIds = new Set<string>();
+  commentLists.flat().forEach((c) => allIds.add(c.user_id));
+  productComments.forEach((c) => allIds.add(c.user_id));
+  productEvents.forEach((e) => { if (e.actor_id) allIds.add(e.actor_id); });
+  const userMap = await resolveUserNames(Array.from(allIds));
 
   return (
     <div className="max-w-6xl mx-auto px-8 py-8">
@@ -71,6 +71,7 @@ export default async function ProductDetailPage({
         <CostingPanel
           product={product}
           collection={collection}
+          workspaceId={ctx.workspace.id}
           workspaceSlug={slug}
           mode={ctx.workspace.mode}
           role={ctx.role}
@@ -88,11 +89,30 @@ export default async function ProductDetailPage({
           userMap={userMap}
         />
 
-        <div className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] px-6 py-6 text-center">
-          <p className="text-[13px] text-[var(--sa-text-secondary)] mb-1">
-            Files / Activity tabs land here in Phases 5 – 6.
-          </p>
-        </div>
+        <CommentThread
+          workspaceId={ctx.workspace.id}
+          workspaceSlug={slug}
+          mode={ctx.workspace.mode}
+          role={ctx.role}
+          currentUserId={currentUserId}
+          collectionId={collection.id}
+          productId={product.id}
+          comments={productComments}
+          userMap={userMap}
+        />
+
+        <section className="rounded-xl border border-[var(--sa-border)] bg-transparent">
+          <header className="px-1 py-2">
+            <h2 className="text-[13px] font-semibold text-[var(--sa-text-primary)]">Activity</h2>
+            <p className="text-[11px] text-[var(--sa-text-tertiary)]">Everything that happened on this product.</p>
+          </header>
+          <ActivityFeed
+            events={productEvents}
+            userMap={userMap}
+            workspaceSlug={slug}
+            empty="Nothing yet. Stage changes, sample updates, and costing edits will show up here."
+          />
+        </section>
       </div>
     </div>
   );

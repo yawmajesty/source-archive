@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 interface Props {
   product: Product;
   collection: Collection;
+  workspaceId: string;
   workspaceSlug: string;
   mode: WorkspaceMode;
   role: Role;
@@ -27,7 +28,7 @@ const BREAKDOWN_FIELDS: Array<{ key: keyof CostBreakdown; label: string }> = [
   { key: "other",        label: "Other" },
 ];
 
-export function CostingPanel({ product, collection, workspaceSlug, mode, role }: Props) {
+export function CostingPanel({ product, collection, workspaceId, workspaceSlug, mode, role }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -64,6 +65,7 @@ export function CostingPanel({ product, collection, workspaceSlug, mode, role }:
   function persist(patch: Parameters<typeof updateProductCosting>[0]["patch"]) {
     startTransition(async () => {
       const res = await updateProductCosting({
+        workspace_id: workspaceId,
         workspace_slug: workspaceSlug,
         collection_id: collection.id,
         product_id: product.id,

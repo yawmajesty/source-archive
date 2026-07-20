@@ -1,9 +1,18 @@
 "use server";
 
-import { supabaseData as supabase } from "@/lib/supabase-data";
 import { revalidatePath } from "next/cache";
+import { getAgencySupabase } from "@/lib/supabase-agency";
+import { getAgencyContext } from "@/lib/agency-data";
+
+async function ctxOrThrow() {
+  const ctx = await getAgencyContext();
+  if (!ctx) throw new Error("Not a member of any agency");
+  return ctx;
+}
 
 export async function softDeleteCost(id: string, reason: string | null): Promise<{ success: boolean; error?: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   const { error } = await supabase
     .from("costs")
     .update({
@@ -17,6 +26,8 @@ export async function softDeleteCost(id: string, reason: string | null): Promise
 }
 
 export async function restoreCost(id: string): Promise<{ success: boolean; error?: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   const { error } = await supabase
     .from("costs")
     .update({ deleted_at: null, deleted_reason: null })
@@ -27,6 +38,8 @@ export async function restoreCost(id: string): Promise<{ success: boolean; error
 }
 
 export async function purgeCost(id: string): Promise<{ success: boolean; error?: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   // Permanent hard-delete. Only callable from the trash view, on already
   // soft-deleted rows.
   const { error } = await supabase.from("costs").delete().eq("id", id).not("deleted_at", "is", null);

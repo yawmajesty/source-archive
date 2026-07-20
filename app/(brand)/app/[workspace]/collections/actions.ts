@@ -4,7 +4,8 @@ import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { getBrandSupabase } from "@/lib/supabase-brand";
 import { can, type Role, type WorkspaceMode } from "@/lib/mode-policy";
-import { categoryPrefix, type CategoryKey, type Stage, type CostBreakdown } from "@/lib/brand-catalog";
+import { categoryPrefix, stageLabel, type CategoryKey, type Stage, type CostBreakdown } from "@/lib/brand-catalog";
+import { logActivity } from "@/lib/brand-activity";
 
 // ── Collections ───────────────────────────────────────────────────
 
@@ -41,11 +42,22 @@ export async function createCollection(input: {
     .single();
   if (error || !data) return { success: false, error: error?.message ?? "Failed to create collection" };
 
+  await logActivity({
+    workspaceId: input.workspace_id,
+    actorId: userId,
+    verb: "collection.created",
+    summary: `created collection "${input.name.trim()}"`,
+    targetType: "collection",
+    targetId: data.id,
+    collectionId: data.id,
+  });
+
   revalidatePath(`/app/${input.workspace_slug}/collections`);
   return { success: true, collection_id: data.id };
 }
 
 export async function updateCollection(input: {
+  workspace_id: string;
   workspace_slug: string;
   mode: WorkspaceMode;
   role: Role;
@@ -71,15 +83,30 @@ export async function updateCollection(input: {
   const supabase = await getBrandSupabase();
   const { error } = await supabase.from("collections").update(input.patch).eq("id", input.collection_id);
   if (error) return { success: false, error: error.message };
+
+  const changedKeys = Object.keys(input.patch);
+  await logActivity({
+    workspaceId: input.workspace_id,
+    actorId: userId,
+    verb: "collection.updated",
+    summary: `updated collection (${changedKeys.join(", ")})`,
+    targetType: "collection",
+    targetId: input.collection_id,
+    collectionId: input.collection_id,
+    meta: { fields: changedKeys },
+  });
+
   revalidatePath(`/app/${input.workspace_slug}/collections/${input.collection_id}`);
   return { success: true };
 }
 
 export async function deleteCollection(input: {
+  workspace_id: string;
   workspace_slug: string;
   mode: WorkspaceMode;
   role: Role;
   collection_id: string;
+  collection_name?: string;
 }): Promise<{ success: true } | { success: false; error: string }> {
   const { userId } = await auth();
   if (!userId) return { success: false, error: "Not authenticated" };
@@ -89,6 +116,20 @@ export async function deleteCollection(input: {
   const supabase = await getBrandSupabase();
   const { error } = await supabase.from("collections").delete().eq("id", input.collection_id);
   if (error) return { success: false, error: error.message };
+
+  // FK is ON DELETE CASCADE so the events targeting the collection are
+  // already gone; log a workspace-scoped one so the deletion still
+  // shows up in the workspace feed.
+  await logActivity({
+    workspaceId: input.workspace_id,
+    actorId: userId,
+    verb: "collection.deleted",
+    summary: `deleted collection${input.collection_name ? ` "${input.collection_name}"` : ""}`,
+    targetType: "collection",
+    targetId: null,
+    collectionId: null,
+  });
+
   revalidatePath(`/app/${input.workspace_slug}/collections`);
   return { success: true };
 }
@@ -139,11 +180,23 @@ export async function quickAddProduct(input: {
     .single();
   if (error || !data) return { success: false, error: error?.message ?? "Failed to create product" };
 
+  await logActivity({
+    workspaceId: input.workspace_id,
+    actorId: userId,
+    verb: "product.created",
+    summary: `added "${input.name.trim()}" (${data.style_code})`,
+    targetType: "product",
+    targetId: data.id,
+    collectionId: input.collection_id,
+    productId: data.id,
+  });
+
   revalidatePath(`/app/${input.workspace_slug}/collections/${input.collection_id}`);
   return { success: true, product_id: data.id, style_code: data.style_code };
 }
 
 export async function updateProduct(input: {
+  workspace_id: string;
   workspace_slug: string;
   collection_id: string;
   product_id: string;
@@ -175,17 +228,33 @@ export async function updateProduct(input: {
   const supabase = await getBrandSupabase();
   const { error } = await supabase.from("brand_products").update(input.patch).eq("id", input.product_id);
   if (error) return { success: false, error: error.message };
+
+  const changedKeys = Object.keys(input.patch);
+  await logActivity({
+    workspaceId: input.workspace_id,
+    actorId: userId,
+    verb: "product.updated",
+    summary: `updated product (${changedKeys.join(", ")})`,
+    targetType: "product",
+    targetId: input.product_id,
+    collectionId: input.collection_id,
+    productId: input.product_id,
+    meta: { fields: changedKeys },
+  });
+
   revalidatePath(`/app/${input.workspace_slug}/collections/${input.collection_id}`);
   return { success: true };
 }
 
 export async function changeProductStage(input: {
+  workspace_id: string;
   workspace_slug: string;
   collection_id: string;
   product_id: string;
   mode: WorkspaceMode;
   role: Role;
   next_stage: Stage;
+  previous_stage?: Stage;
 }): Promise<{ success: true } | { success: false; error: string }> {
   const { userId } = await auth();
   if (!userId) return { success: false, error: "Not authenticated" };
@@ -198,11 +267,27 @@ export async function changeProductStage(input: {
     .update({ stage: input.next_stage, stage_entered_at: new Date().toISOString() })
     .eq("id", input.product_id);
   if (error) return { success: false, error: error.message };
+
+  const from = input.previous_stage ? stageLabel(input.previous_stage) : null;
+  const to = stageLabel(input.next_stage);
+  await logActivity({
+    workspaceId: input.workspace_id,
+    actorId: userId,
+    verb: "product.stage_changed",
+    summary: from ? `moved to ${to} (from ${from})` : `moved to ${to}`,
+    targetType: "product",
+    targetId: input.product_id,
+    collectionId: input.collection_id,
+    productId: input.product_id,
+    meta: { from: input.previous_stage ?? null, to: input.next_stage },
+  });
+
   revalidatePath(`/app/${input.workspace_slug}/collections/${input.collection_id}`);
   return { success: true };
 }
 
 export async function updateProductCosting(input: {
+  workspace_id: string;
   workspace_slug: string;
   collection_id: string;
   product_id: string;
@@ -224,11 +309,25 @@ export async function updateProductCosting(input: {
   const supabase = await getBrandSupabase();
   const { error } = await supabase.from("brand_products").update(input.patch).eq("id", input.product_id);
   if (error) return { success: false, error: error.message };
+
+  await logActivity({
+    workspaceId: input.workspace_id,
+    actorId: userId,
+    verb: "product.costing_updated",
+    summary: "updated costing",
+    targetType: "product",
+    targetId: input.product_id,
+    collectionId: input.collection_id,
+    productId: input.product_id,
+    meta: { fields: Object.keys(input.patch) },
+  });
+
   revalidatePath(`/app/${input.workspace_slug}/collections/${input.collection_id}`);
   return { success: true };
 }
 
 export async function updateCollectionFx(input: {
+  workspace_id: string;
   workspace_slug: string;
   collection_id: string;
   mode: WorkspaceMode;
@@ -247,14 +346,28 @@ export async function updateCollectionFx(input: {
     .update({ fx_rates: input.fx_rates, target_margin_pct: input.target_margin_pct })
     .eq("id", input.collection_id);
   if (error) return { success: false, error: error.message };
+
+  await logActivity({
+    workspaceId: input.workspace_id,
+    actorId: userId,
+    verb: "collection.updated",
+    summary: "updated FX rates / target margin",
+    targetType: "collection",
+    targetId: input.collection_id,
+    collectionId: input.collection_id,
+    meta: { fields: ["fx_rates", "target_margin_pct"] },
+  });
+
   revalidatePath(`/app/${input.workspace_slug}/collections/${input.collection_id}`);
   return { success: true };
 }
 
 export async function deleteProduct(input: {
+  workspace_id: string;
   workspace_slug: string;
   collection_id: string;
   product_id: string;
+  product_name?: string;
   mode: WorkspaceMode;
   role: Role;
 }): Promise<{ success: true } | { success: false; error: string }> {
@@ -266,6 +379,17 @@ export async function deleteProduct(input: {
   const supabase = await getBrandSupabase();
   const { error } = await supabase.from("brand_products").delete().eq("id", input.product_id);
   if (error) return { success: false, error: error.message };
+
+  await logActivity({
+    workspaceId: input.workspace_id,
+    actorId: userId,
+    verb: "product.deleted",
+    summary: `deleted product${input.product_name ? ` "${input.product_name}"` : ""}`,
+    targetType: "product",
+    targetId: null,
+    collectionId: input.collection_id,
+  });
+
   revalidatePath(`/app/${input.workspace_slug}/collections/${input.collection_id}`);
   return { success: true };
 }

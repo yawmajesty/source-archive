@@ -1,8 +1,15 @@
 "use server";
 
 import Anthropic from "@anthropic-ai/sdk";
-import { supabaseData as supabase } from "@/lib/supabase-data";
 import { revalidatePath } from "next/cache";
+import { getAgencySupabase } from "@/lib/supabase-agency";
+import { getAgencyContext } from "@/lib/agency-data";
+
+async function ctxOrThrow() {
+  const ctx = await getAgencyContext();
+  if (!ctx) throw new Error("Not a member of any agency");
+  return ctx;
+}
 
 // ── AI receipt analysis ───────────────────────────────────────
 export async function analyzeReceipt(base64: string, mediaType: string): Promise<{
@@ -66,7 +73,9 @@ export async function createExpense(data: {
   image_url: string | null;
   notes: string | null;
 }) {
-  await supabase.from("brand_expenses").insert(data);
+  const ctx = await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  await supabase.from("brand_expenses").insert({ agency_id: ctx.agency.id, ...data });
   revalidatePath("/studio");
 }
 
@@ -74,11 +83,15 @@ export async function updateExpense(id: string, data: Partial<{
   date: string; description: string; vendor: string | null; amount: number;
   currency: string; category: string; project_tag: string | null; notes: string | null;
 }>) {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   await supabase.from("brand_expenses").update(data).eq("id", id);
   revalidatePath("/studio");
 }
 
 export async function deleteExpense(id: string) {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   await supabase.from("brand_expenses").delete().eq("id", id);
   revalidatePath("/studio");
 }
@@ -92,7 +105,9 @@ export async function createCostingProduct(data: {
   target_price: number | null;
   notes: string | null;
 }): Promise<string> {
-  const { data: row } = await supabase.from("brand_costing_products").insert(data).select("id").single();
+  const ctx = await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { data: row } = await supabase.from("brand_costing_products").insert({ agency_id: ctx.agency.id, ...data }).select("id").single();
   revalidatePath("/studio");
   return (row as any)?.id ?? "";
 }
@@ -101,11 +116,15 @@ export async function updateCostingProduct(id: string, data: Partial<{
   name: string; product_type: string | null; project_tag: string | null;
   base_currency: string; target_price: number | null; notes: string | null;
 }>) {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   await supabase.from("brand_costing_products").update(data).eq("id", id);
   revalidatePath("/studio");
 }
 
 export async function deleteCostingProduct(id: string) {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   await supabase.from("brand_costing_products").delete().eq("id", id);
   revalidatePath("/studio");
 }
@@ -119,7 +138,9 @@ export async function createCostingItem(data: {
   unit_amount: number;
   currency: string;
 }): Promise<string> {
-  const { data: row } = await supabase.from("brand_costing_items").insert(data).select("id").single();
+  const ctx = await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { data: row } = await supabase.from("brand_costing_items").insert({ agency_id: ctx.agency.id, ...data }).select("id").single();
   revalidatePath("/studio");
   return (row as any)?.id ?? "";
 }
@@ -127,11 +148,15 @@ export async function createCostingItem(data: {
 export async function updateCostingItem(id: string, data: Partial<{
   description: string; category: string; quantity: number; unit_amount: number; currency: string;
 }>) {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   await supabase.from("brand_costing_items").update(data).eq("id", id);
   revalidatePath("/studio");
 }
 
 export async function deleteCostingItem(id: string) {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
   await supabase.from("brand_costing_items").delete().eq("id", id);
   revalidatePath("/studio");
 }

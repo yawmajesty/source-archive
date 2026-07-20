@@ -1,6 +1,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { getClients } from "@/lib/data";
+import { getAgencyContext } from "@/lib/agency-data";
 import { db } from "@/lib/mock-data";
 import { Sidebar } from "@/components/layout/Sidebar";
 
@@ -9,6 +10,12 @@ export const revalidate = 30;
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
+
+  // Agency membership is now the auth gate — publicMetadata.role is
+  // legacy and only used inside individual actions. A user with no
+  // agency goes through /onboarding-agency to create one.
+  const agencyCtx = await getAgencyContext();
+  if (!agencyCtx) redirect("/onboarding-agency");
 
   const [clients, user] = await Promise.all([getClients(), currentUser()]);
 

@@ -8,8 +8,9 @@ import type { Role, WorkspaceMode } from "@/lib/mode-policy";
 import { deleteSupplier } from "./actions";
 
 export function SupplierList({
-  workspaceSlug, mode, role, suppliers, canManage,
+  workspaceId, workspaceSlug, mode, role, suppliers, canManage,
 }: {
+  workspaceId: string;
   workspaceSlug: string;
   mode: WorkspaceMode;
   role: Role;
@@ -23,6 +24,7 @@ export function SupplierList({
     if (!window.confirm(`Remove "${s.name}" from your suppliers?`)) return;
     startTransition(async () => {
       const res = await deleteSupplier({
+        workspace_id: workspaceId,
         workspace_slug: workspaceSlug,
         mode, role,
         supplier_id: s.id,

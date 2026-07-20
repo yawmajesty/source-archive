@@ -111,7 +111,7 @@ function ProductDrillDown({ products }: { products: Product[] }) {
 
 function PLView({ costs, projects, clients, products }: { costs: Cost[]; projects: Project[]; clients: Client[]; products: Product[] }) {
   const [selectedProjId, setSelectedProjId] = useState<string | null>(null);
-  const gbp = (v: number) => `£${v.toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  const fmt = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
   const usd = (v: number, sign = false) => `${sign && v > 0 ? "+" : ""}$${Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}${sign && v < 0 ? " loss" : ""}`;
 
   const byProject = projects.map((proj) => {
@@ -155,11 +155,11 @@ function PLView({ costs, projects, clients, products }: { costs: Cost[]; project
       {/* Summary cards — 8 across */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4">
         {[
-          { label: "Revenue",      value: gbp(totals.revenue),      sub: "Agency fees in",            pos: false },
-          { label: "COGS",         value: gbp(totals.cogs),         sub: "Billable production costs",  pos: false },
-          { label: "Gross profit", value: gbp(totals.gross),        sub: totals.revenue > 0 ? `${((totals.gross/totals.revenue)*100).toFixed(0)}% margin` : "—", pos: true },
-          { label: "Operating",    value: gbp(totals.operating),    sub: "Internal overhead",          pos: false },
-          { label: "Net profit",   value: gbp(totals.net),          sub: "After all costs",            pos: true },
+          { label: "Revenue",      value: fmt(totals.revenue),      sub: "Agency fees in",            pos: false },
+          { label: "COGS",         value: fmt(totals.cogs),         sub: "Billable production costs",  pos: false },
+          { label: "Gross profit", value: fmt(totals.gross),        sub: totals.revenue > 0 ? `${((totals.gross/totals.revenue)*100).toFixed(0)}% margin` : "—", pos: true },
+          { label: "Operating",    value: fmt(totals.operating),    sub: "Internal overhead",          pos: false },
+          { label: "Net profit",   value: fmt(totals.net),          sub: "After all costs",            pos: true },
           { label: "Sample fees",  value: usd(totals.sampleFees),   sub: "Charged to clients (USD)",   pos: false },
           { label: "Sample costs", value: usd(totals.sampleCosts),  sub: "Internal sample spend (USD)", pos: false },
           { label: "Sample P&L",   value: usd(totals.sampleMargin, true), sub: totals.sampleFees > 0 ? `${((totals.sampleMargin/totals.sampleFees)*100).toFixed(0)}% margin` : "—", pos: true },
@@ -205,9 +205,9 @@ function PLView({ costs, projects, clients, products }: { costs: Cost[]; project
                   </td>
                   <td className="px-3 py-3 text-[12px] font-medium text-[var(--sa-text-primary)] whitespace-nowrap">{proj.name}</td>
                   <td className="px-3 py-3 text-[12px] text-[var(--sa-text-secondary)] whitespace-nowrap">{clientName}</td>
-                  <TD v={gbp(revenue)} />
-                  <TD v={gbp(cogs)} />
-                  <TD v={gbp(gross)} pos />
+                  <TD v={fmt(revenue)} />
+                  <TD v={fmt(cogs)} />
+                  <TD v={fmt(gross)} pos />
                   <td className={cn("px-3 py-3 font-mono text-[12px] text-right", margin !== null && margin < 0 ? "text-[var(--sa-danger)]" : "text-[var(--sa-success)]")}>
                     {margin !== null ? `${margin.toFixed(0)}%` : "—"}
                   </td>
@@ -218,8 +218,8 @@ function PLView({ costs, projects, clients, products }: { costs: Cost[]; project
                   )}>
                     {projProducts.some(p => p.sample_fee_usd != null || p.sample_cost_usd != null) ? usd(sampleMargin, true) : "—"}
                   </td>
-                  <TD v={gbp(operating)} />
-                  <TD v={gbp(net)} pos bold />
+                  <TD v={fmt(operating)} />
+                  <TD v={fmt(net)} pos bold />
                 </tr>
                 {selectedProjId === proj.id && (
                   <tr>
@@ -233,17 +233,17 @@ function PLView({ costs, projects, clients, products }: { costs: Cost[]; project
             <tfoot className="bg-[var(--sa-bg)] border-t-2 border-[var(--sa-border-strong)]">
               <tr>
                 <td colSpan={3} className="px-4 py-3 text-[12px] font-semibold text-[var(--sa-text-secondary)]">Total</td>
-                <TD v={gbp(totals.revenue)} bold />
-                <TD v={gbp(totals.cogs)} bold />
-                <TD v={gbp(totals.gross)} pos bold />
+                <TD v={fmt(totals.revenue)} bold />
+                <TD v={fmt(totals.cogs)} bold />
+                <TD v={fmt(totals.gross)} pos bold />
                 <td className={cn("px-3 py-3 font-mono text-[12px] text-right font-semibold", totals.revenue > 0 && (totals.gross/totals.revenue) < 0 ? "text-[var(--sa-danger)]" : "text-[var(--sa-success)]")}>
                   {totals.revenue > 0 ? `${((totals.gross/totals.revenue)*100).toFixed(0)}%` : "—"}
                 </td>
                 <td className={cn("px-3 py-3 font-mono text-[12px] text-right font-bold", totals.sampleMargin >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]")}>
                   {usd(totals.sampleMargin, true)}
                 </td>
-                <TD v={gbp(totals.operating)} bold />
-                <TD v={gbp(totals.net)} pos bold />
+                <TD v={fmt(totals.operating)} bold />
+                <TD v={fmt(totals.net)} pos bold />
               </tr>
             </tfoot>
           </table>
@@ -376,10 +376,10 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
         {/* Summary cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 px-6 py-4">
           {[
-            { label: "Money In", value: `£${moneyIn.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`, color: "text-[var(--sa-success)]" },
-            { label: "Money Out", value: `£${moneyOut.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`, color: "text-[var(--sa-danger)]" },
-            { label: "Billable", value: `£${totalBillable.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`, color: "text-[var(--sa-text-primary)]" },
-            { label: "Net Balance", value: `£${netBalance.toLocaleString("en-GB", { maximumFractionDigits: 0, signDisplay: "always" })}`, color: netBalance >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]" },
+            { label: "Money In", value: `$${moneyIn.toLocaleString("en-US", { maximumFractionDigits: 0 })}`, color: "text-[var(--sa-success)]" },
+            { label: "Money Out", value: `$${moneyOut.toLocaleString("en-US", { maximumFractionDigits: 0 })}`, color: "text-[var(--sa-danger)]" },
+            { label: "Billable", value: `$${totalBillable.toLocaleString("en-US", { maximumFractionDigits: 0 })}`, color: "text-[var(--sa-text-primary)]" },
+            { label: "Net Balance", value: `$${netBalance.toLocaleString("en-US", { maximumFractionDigits: 0, signDisplay: "always" })}`, color: netBalance >= 0 ? "text-[var(--sa-success)]" : "text-[var(--sa-danger)]" },
           ].map(({ label, value, color }) => (
             <motion.div
               key={label}
@@ -470,7 +470,7 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
                     <span className="text-[12px] font-semibold text-[var(--sa-text-primary)]">{getProjectName(projectId)}</span>
                     <span className="text-[11px] text-[var(--sa-text-tertiary)]">· {getClientName(projectId)}</span>
                     <span className="ml-auto font-mono text-[12px] text-[var(--sa-text-secondary)]">
-                      £{groupTotal.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
+                      ${groupTotal.toLocaleString("en-US", { maximumFractionDigits: 0 })}
                     </span>
                   </button>
 
@@ -492,7 +492,7 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
                           </div>
                           <div className="flex items-center gap-2">
                             <span className={cn("font-mono font-semibold", cost.direction === "in" ? "text-[var(--sa-success)]" : "text-[var(--sa-text-primary)]", isDeleted && "line-through")}>
-                              {cost.direction === "in" ? "+" : ""}£{cost.amount_gbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
+                              {cost.direction === "in" ? "+" : ""}${cost.amount_gbp.toLocaleString("en-US", { maximumFractionDigits: 0 })}
                             </span>
                             {!isDeleted && (
                               <>
@@ -553,8 +553,8 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
                           {cost.description}
                         </span>
                         <span className={cn("font-mono", cost.direction === "in" ? "text-[var(--sa-success)] font-semibold" : "text-[var(--sa-text-primary)]", isDeleted && "line-through")}>
-                          {cost.direction === "in" ? "+" : ""}£{cost.amount_gbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
-                          <span className="text-[10px] text-[var(--sa-text-tertiary)] ml-1">{cost.currency !== "GBP" ? `(${cost.currency} ${cost.amount})` : ""}</span>
+                          {cost.direction === "in" ? "+" : ""}${cost.amount_gbp.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                          <span className="text-[10px] text-[var(--sa-text-tertiary)] ml-1">{cost.currency !== "USD" ? `(${cost.currency} ${cost.amount})` : ""}</span>
                         </span>
                         <span>{cost.billable_to_client ? <span className="text-[11px] text-[var(--sa-success)] font-medium">Yes</span> : <span className="text-[11px] text-[var(--sa-text-tertiary)]">No</span>}</span>
                         <span className="truncate text-[var(--sa-text-secondary)]">{cost.paid_by}</span>
@@ -597,7 +597,7 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
                     <div className="flex items-center justify-end gap-2 px-4 py-2 bg-[var(--sa-bg)] border-b border-[var(--sa-border)]">
                       <span className="text-[11px] text-[var(--sa-text-tertiary)]">Subtotal</span>
                       <span className="font-mono text-[12px] font-semibold text-[var(--sa-text-primary)]">
-                        £{groupTotal.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
+                        ${groupTotal.toLocaleString("en-US", { maximumFractionDigits: 0 })}
                       </span>
                     </div>
                   )}
@@ -609,7 +609,7 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
             <div className="flex items-center justify-end gap-2 px-4 py-3 bg-[var(--sa-bg)]">
               <span className="text-[12px] font-semibold text-[var(--sa-text-secondary)]">Total</span>
               <span className="font-mono text-[15px] font-bold text-[var(--sa-text-primary)]">
-                £{(moneyOut - moneyIn).toLocaleString("en-GB", { maximumFractionDigits: 0 })}
+                ${(moneyOut - moneyIn).toLocaleString("en-US", { maximumFractionDigits: 0 })}
               </span>
             </div>
           </div>
@@ -664,7 +664,7 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
               <div className="rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[12px]">
                 <p className="font-medium text-[var(--sa-text-primary)]">{deletingCost.description || "(no description)"}</p>
                 <p className="text-[11px] text-[var(--sa-text-tertiary)] mt-0.5">
-                  {formatDate(deletingCost.date_paid)} · {deletingCost.direction === "in" ? "+" : ""}£{deletingCost.amount_gbp.toLocaleString("en-GB", { maximumFractionDigits: 0 })}
+                  {formatDate(deletingCost.date_paid)} · {deletingCost.direction === "in" ? "+" : ""}${deletingCost.amount_gbp.toLocaleString("en-US", { maximumFractionDigits: 0 })}
                 </p>
               </div>
               <p className="text-[12px] text-[var(--sa-text-secondary)]">
@@ -753,7 +753,7 @@ function AddCostForm({ projects, products, clients, onClose }: {
   const [clientId, setClientId] = useState("");
   const [productId, setProductId] = useState("");
   const [category, setCategory] = useState("sampling");
-  const [currency, setCurrency] = useState("GBP");
+  const [currency, setCurrency] = useState("USD");
   const [amount, setAmount] = useState("");
   const [fxRate, setFxRate] = useState("");
   const [description, setDescription] = useState("");
@@ -766,7 +766,7 @@ function AddCostForm({ projects, products, clients, onClose }: {
 
   const filteredProducts = products.filter((p) => !projectId || p.project_id === projectId);
 
-  const defaultFx: Record<string, number> = { GBP: 1, USD: 0.79, CNY: 0.11, EUR: 0.86 };
+  const defaultFx: Record<string, number> = { USD: 1, GBP: 1.27, CNY: 0.14, EUR: 1.09 };
 
   async function handleSave() {
     const amt = parseFloat(amount);
@@ -881,7 +881,7 @@ function AddCostForm({ projects, products, clients, onClose }: {
       <div className="grid grid-cols-2 gap-3">
         <Field label="Currency">
           <SelectField value={currency} onChange={(e) => { setCurrency(e.target.value); setFxRate(""); }}>
-            {["GBP", "USD", "CNY", "EUR"].map((c) => <option key={c}>{c}</option>)}
+            {["USD", "GBP", "CNY", "EUR"].map((c) => <option key={c}>{c}</option>)}
           </SelectField>
         </Field>
         <Field label="Amount *">
@@ -889,8 +889,8 @@ function AddCostForm({ projects, products, clients, onClose }: {
         </Field>
       </div>
 
-      {currency !== "GBP" && (
-        <Field label={`FX rate (${currency} → GBP) · default ${defaultFx[currency] ?? 1}`}>
+      {currency !== "USD" && (
+        <Field label={`FX rate (${currency} → USD) · default ${defaultFx[currency] ?? 1}`}>
           <Input type="number" min="0" step="0.0001" value={fxRate} onChange={(e) => setFxRate(e.target.value)} placeholder={String(defaultFx[currency] ?? "")} />
         </Field>
       )}
@@ -1009,7 +1009,7 @@ function EditCostForm({ cost, projects, products, clients, onClose }: {
       <div className="grid grid-cols-2 gap-3">
         <Field label="Currency">
           <SelectField value={currency} onChange={(e) => setCurrency(e.target.value)}>
-            {["GBP", "USD", "CNY", "EUR"].map((c) => <option key={c}>{c}</option>)}
+            {["USD", "GBP", "CNY", "EUR"].map((c) => <option key={c}>{c}</option>)}
           </SelectField>
         </Field>
         <Field label="Amount">
@@ -1017,8 +1017,8 @@ function EditCostForm({ cost, projects, products, clients, onClose }: {
         </Field>
       </div>
 
-      {currency !== "GBP" && (
-        <Field label={`FX rate (${currency} → GBP)`}>
+      {currency !== "USD" && (
+        <Field label={`FX rate (${currency} → USD)`}>
           <Input type="number" min="0" step="0.0001" value={fxRate} onChange={(e) => setFxRate(e.target.value)} />
         </Field>
       )}
