@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, Circle, Clock, AlertCircle, Loader2, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabase";
+import { createTask } from "./actions";
 import type { Task, Project, Client, Product } from "@/lib/data";
 
 interface Props {
@@ -145,8 +145,7 @@ function AddTaskModal({ projects, products, onClose, defaultProjectId, defaultPr
     setError("");
     const assigned = assignedRef.current?.value.trim() || "Unassigned";
     const initials = assigned.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-    const { error: err } = await supabase.from("tasks").insert({
-      id: "task-" + Date.now(),
+    const res = await createTask({
       project_id: projectId,
       product_id: productId || null,
       title,
@@ -157,7 +156,7 @@ function AddTaskModal({ projects, products, onClose, defaultProjectId, defaultPr
       notes: notesRef.current?.value.trim() || "",
     });
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (!res.success) { setError(res.error); return; }
     router.refresh();
     onClose();
   }

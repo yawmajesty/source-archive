@@ -10,6 +10,51 @@ async function ctxOrThrow() {
   return ctx;
 }
 
+export async function createCost(input: {
+  id: string;
+  project_id: string | null;
+  client_id: string | null;
+  product_id: string | null;
+  category: string;
+  description: string;
+  amount: number;
+  currency: string;
+  fx_rate: number;
+  amount_gbp: number;
+  direction: string;
+  cost_type: string;
+  billable_to_client: boolean;
+  paid_by: string;
+  date_paid: string;
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const ctx = await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase.from("costs").insert({ agency_id: ctx.agency.id, ...input });
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/costs");
+  return { success: true };
+}
+
+export async function updateCost(id: string, patch: {
+  category: string;
+  description: string;
+  amount: number;
+  currency: string;
+  fx_rate: number;
+  amount_gbp: number;
+  cost_type: string;
+  billable_to_client: boolean;
+  paid_by: string;
+  date_paid: string;
+}): Promise<{ success: true } | { success: false; error: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase.from("costs").update(patch).eq("id", id);
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/costs");
+  return { success: true };
+}
+
 export async function softDeleteCost(id: string, reason: string | null): Promise<{ success: boolean; error?: string }> {
   await ctxOrThrow();
   const supabase = await getAgencySupabase();

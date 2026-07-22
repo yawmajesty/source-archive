@@ -11,6 +11,45 @@ async function ctxOrThrow() {
   return ctx;
 }
 
+export async function createFactory(input: {
+  name: string;
+  city: string;
+  country: string;
+  categories: string[];
+  specialities: string[];
+  rating: number;
+  contact_name: string;
+  contact_email: string;
+  contact_phone: string;
+  min_order_value: number;
+  moq_units: number;
+  sample_lead_time_days: number;
+  lead_time_days: number;
+  capacity_per_month: number;
+  established_year: number | null;
+  notes: string;
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const ctx = await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase.from("factories").insert({
+    agency_id: ctx.agency.id,
+    id: "factory-" + Date.now(),
+    ...input,
+  });
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/factories");
+  return { success: true };
+}
+
+export async function deleteFactory(factoryId: string): Promise<{ success: true } | { success: false; error: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase.from("factories").delete().eq("id", factoryId);
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/factories");
+  return { success: true };
+}
+
 export async function createRfq(data: {
   title: string;
   description: string | null;

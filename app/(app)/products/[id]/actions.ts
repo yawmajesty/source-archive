@@ -162,6 +162,66 @@ export async function autoTagProduct(productId: string): Promise<
   return { success: true, tags };
 }
 
+export async function updateProductFields(
+  productId: string,
+  patch: Record<string, unknown>,
+): Promise<{ success: true } | { success: false; error: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase.from("products").update(patch).eq("id", productId);
+  if (error) return { success: false, error: error.message };
+  revalidatePath(`/products/${productId}`);
+  return { success: true };
+}
+
+export async function deleteProductRow(productId: string): Promise<{ success: true } | { success: false; error: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase.from("products").delete().eq("id", productId);
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/products");
+  return { success: true };
+}
+
+export async function createSampleForProduct(input: {
+  id: string;
+  product_id: string;
+  round: number;
+  factory_notes?: string | null;
+  courier: string;
+  tracking_number: string;
+  sent_date: string | null;
+  received_date: string | null;
+  feedback: string;
+  approved_at: string | null;
+  images: string[];
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const ctx = await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase.from("samples").insert({ agency_id: ctx.agency.id, ...input });
+  if (error) return { success: false, error: error.message };
+  revalidatePath(`/products/${input.product_id}`);
+  return { success: true };
+}
+
+export async function updateProductImages(productId: string, images: string[]): Promise<{ success: true } | { success: false; error: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase.rpc("update_product_images", { p_id: productId, p_images: images });
+  if (error) return { success: false, error: error.message };
+  revalidatePath(`/products/${productId}`);
+  return { success: true };
+}
+
+export async function updateProductDocuments(productId: string, documents: unknown[]): Promise<{ success: true } | { success: false; error: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase.rpc("update_product_documents", { p_id: productId, p_documents: documents });
+  if (error) return { success: false, error: error.message };
+  revalidatePath(`/products/${productId}`);
+  return { success: true };
+}
+
 export async function updateAutoTags(productId: string, tags: AutoTags): Promise<{ success: boolean; error?: string }> {
   await ctxOrThrow();
   const supabase = await getAgencySupabase();

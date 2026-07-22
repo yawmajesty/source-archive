@@ -14,10 +14,10 @@ import { MilestoneItem } from "@/components/shared/MilestoneItem";
 import { UpdateItem } from "@/components/shared/UpdateItem";
 import { TrafficDot } from "@/components/shared/TrafficLight";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabase";
+import { createTask } from "../../tasks/actions";
 import { uploadFile } from "@/lib/storage";
 import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem, PriceTier, ProductionVariant, ProductionSize, ProductPriceHistoryEntry } from "@/lib/mock-data";
-import { autoTagProduct, updateAutoTags } from "./actions";
+import { autoTagProduct, updateAutoTags, updateProductFields, deleteProductRow, createSampleForProduct, updateProductImages, updateProductDocuments } from "./actions";
 
 const STAGES: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
 const CURRENCIES = ["USD", "GBP", "EUR", "CNY"];
@@ -90,9 +90,9 @@ function EditProductDrawer({
       colorways: form.colorways.split(",").map((s) => s.trim()).filter(Boolean),
       notes: form.notes?.trim() ?? "",
     };
-    const { error: err } = await supabase.from("products").update(updates).eq("id", product.id);
+    const res = await updateProductFields(product.id, updates as Record<string, unknown>);
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (!res.success) { setError(res.error); return; }
     onSaved(updates);
     onClose();
   }
@@ -284,8 +284,8 @@ function MediaSection({ productId, initialImages }: { productId: string; initial
     }
     if (newUrls.length) {
       const updated = [...images, ...newUrls];
-      const { error: dbErr } = await supabase.rpc("update_product_images", { p_id: productId, p_images: updated });
-      if (dbErr) { setUploadError(`Saved to storage but DB update failed: ${dbErr.message}`); }
+      const res = await updateProductImages(productId, updated);
+      if (!res.success) { setUploadError(`Saved to storage but DB update failed: ${res.error}`); }
       else { setImages(updated); }
     }
     setUploading(false);
@@ -294,7 +294,7 @@ function MediaSection({ productId, initialImages }: { productId: string; initial
 
   async function removeImage(url: string) {
     const updated = images.filter((u) => u !== url);
-    await supabase.rpc("update_product_images", { p_id: productId, p_images: updated });
+    await updateProductImages(productId, updated);
     setImages(updated);
   }
 
@@ -505,12 +505,9 @@ function ProductionBreakdownSection({ product, onSaved }: { product: Product; on
       }))
       .filter((v) => v.color && v.sizes.length > 0);
     const note = statusNote.trim() || null;
-    const { error: err } = await supabase
-      .from("products")
-      .update({ production_breakdown: cleaned, production_status_note: note })
-      .eq("id", product.id);
+    const res = await updateProductFields(product.id, { production_breakdown: cleaned, production_status_note: note });
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (!res.success) { setError(res.error); return; }
     onSaved({ production_breakdown: cleaned, production_status_note: note });
     setDirty(false);
   }
@@ -664,8 +661,7 @@ function QuickAddTask({ projectId, productId, onClose }: { projectId: string; pr
     setSaving(true);
     const assigned = assignedRef.current?.value.trim() || "Unassigned";
     const initials = assigned.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
-    const { error: err } = await supabase.from("tasks").insert({
-      id: "task-" + Date.now(),
+    const res = await createTask({
       project_id: projectId,
       product_id: productId,
       title,
@@ -676,7 +672,7 @@ function QuickAddTask({ projectId, productId, onClose }: { projectId: string; pr
       notes: "",
     });
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (!res.success) { setError(res.error); return; }
     router.refresh();
     onClose();
   }
@@ -778,10 +774,10 @@ function VolumePricingCard({ product, onSaved, kind }: { product: Product; onSav
       .filter((r) => Number.isFinite(r.moq) && r.moq > 0 && Number.isFinite(r.unit_price_usd) && r.unit_price_usd > 0)
       .sort((a, b) => a.moq - b.moq);
     const updates: Partial<Product> = { [field]: parsed };
-    const { error } = await supabase.from("products").update(updates).eq("id", product.id);
+    const res = await updateProductFields(product.id, updates as Record<string, unknown>);
     setSaving(false);
-    if (error) {
-      setSaveError(error.message);
+    if (!res.success) {
+      setSaveError(res.error);
       return;
     }
     onSaved(updates);
@@ -1067,9 +1063,9 @@ function PricingCard({ product, onSaved }: { product: Product; onSaved: (p: Part
       sample_cost_usd: parseNum(sampleCost),
       expected_sample_date: sampleDate || null,
     };
-    const { error } = await supabase.from("products").update(updates).eq("id", product.id);
+    const res = await updateProductFields(product.id, updates as Record<string, unknown>);
     setSaving(false);
-    if (error) { setSaveError(error.message); return; }
+    if (!res.success) { setSaveError(res.error); return; }
     onSaved(updates);
     setEditing(false);
   }
@@ -1255,9 +1251,9 @@ function AddMaterialModal({
       notes: form.notes.trim(),
     };
     const updated = [...existingBom, newItem];
-    const { error: err } = await supabase.from("products").update({ bom_data: updated }).eq("id", productId);
+    const res = await updateProductFields(productId, { bom_data: updated });
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (!res.success) { setError(res.error); return; }
     onSaved(updated);
     onClose();
   }
@@ -1350,9 +1346,20 @@ function AddSampleModal({
       approved_at: null,
       images,
     };
-    const { error: err } = await supabase.from("samples").insert(newSample);
+    const res = await createSampleForProduct({
+      id: newSample.id,
+      product_id: productId,
+      round: nextRound,
+      courier: newSample.courier,
+      tracking_number: newSample.tracking_number,
+      sent_date: newSample.sent_date,
+      received_date: null,
+      feedback: newSample.feedback,
+      approved_at: null,
+      images,
+    });
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (!res.success) { setError(res.error); return; }
     onSaved(newSample as Sample);
     onClose();
   }
@@ -1445,7 +1452,7 @@ function DocumentsSection({ productId, initialDocs }: { productId: string; initi
     }
     if (newDocs.length) {
       const updated = [...docs, ...newDocs];
-      await supabase.rpc("update_product_documents", { p_id: productId, p_documents: updated });
+      await updateProductDocuments(productId, updated);
       setDocs(updated);
     }
     setUploading(false);
@@ -1454,7 +1461,7 @@ function DocumentsSection({ productId, initialDocs }: { productId: string; initi
 
   async function removeDoc(id: string) {
     const updated = docs.filter((d) => d.id !== id);
-    await supabase.rpc("update_product_documents", { p_id: productId, p_documents: updated });
+    await updateProductDocuments(productId, updated);
     setDocs(updated);
   }
 
@@ -1526,10 +1533,10 @@ export function ProductDetailClient({
     const updates = reason
       ? { production_excluded_at: new Date().toISOString(), production_excluded_reason: reason }
       : { production_excluded_at: null, production_excluded_reason: null };
-    const { error } = await supabase.from("products").update(updates).eq("id", product.id);
+    const res = await updateProductFields(product.id, updates as Record<string, unknown>);
     setExcludeSaving(false);
-    if (error) {
-      alert("Could not update exclusion: " + error.message);
+    if (!res.success) {
+      alert("Could not update exclusion: " + res.error);
       return;
     }
     setProduct((p) => ({ ...p, ...updates }));
@@ -1546,7 +1553,7 @@ export function ProductDetailClient({
 
   async function handleDelete() {
     setDeleting(true);
-    await supabase.from("products").delete().eq("id", product.id);
+    await deleteProductRow(product.id);
     setDeleting(false);
     router.back();
   }

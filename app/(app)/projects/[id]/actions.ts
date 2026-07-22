@@ -144,6 +144,60 @@ export async function createBalanceInvoice(parentInvoiceId: string, projectId: s
   return { success: true, newInvoiceId: inserted.id };
 }
 
+export async function createProductInProject(input: {
+  project_id: string;
+  name: string;
+  category: string | null;
+  stage: string;
+  factory_id: string | null;
+  moq: number;
+  target_cost_usd: number;
+  quoted_cost_usd: number | null;
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const ctx = await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase.from("products").insert({
+    agency_id: ctx.agency.id,
+    id: "prod-" + Date.now(),
+    name: input.name,
+    category: input.category,
+    stage: input.stage,
+    project_id: input.project_id,
+    factory_id: input.factory_id,
+    moq: input.moq,
+    order_qty: 0,
+    target_cost_usd: input.target_cost_usd,
+    quoted_cost_usd: input.quoted_cost_usd,
+    quoted_cost_currency: "USD",
+    lead_time_days: 0,
+    colorways: [],
+    notes: "",
+    sample_round: 1,
+  });
+  if (error) return { success: false, error: error.message };
+  revalidatePath(`/projects/${input.project_id}`);
+  return { success: true };
+}
+
+export async function renameProject(projectId: string, name: string): Promise<{ success: true } | { success: false; error: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase.from("projects").update({ name }).eq("id", projectId);
+  if (error) return { success: false, error: error.message };
+  revalidatePath(`/projects/${projectId}`);
+  return { success: true };
+}
+
+export async function deleteProject(projectId: string): Promise<{ success: true } | { success: false; error: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase.from("projects").delete().eq("id", projectId);
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/clients");
+  revalidatePath("/");
+  return { success: true };
+}
+
 export async function forkProductsToRound(
   productIds: string[],
   projectId: string,

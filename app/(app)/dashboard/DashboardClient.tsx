@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, AlertTriangle, Clock,
   Package, CheckSquare, ArrowRight, Check, X,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { completeTask, completeMilestone } from "../tasks/actions";
 import type { CollectionActionItem, CollectionProduct, DashboardTask } from "@/lib/data";
 import type { Stage } from "@/lib/mock-data";
 
@@ -261,8 +261,8 @@ function TaskRow({ task, onDone }: { task: DashboardTask; onDone: (id: string) =
   async function handle() {
     setDone(true);
     // Persist first so we know the DB update succeeded before we drop it from the local list.
-    const { error } = await supabase.from("tasks").update({ status: "done" }).eq("id", task.id);
-    if (error) {
+    const res = await completeTask(task.id);
+    if (!res.success) {
       // Roll back the visual checkmark if the persist failed.
       setDone(false);
       return;
@@ -439,7 +439,7 @@ export function DashboardClient({ collections: initialCollections, tasks: initia
         overdue_count: c.products.reduce((s, p) => s + p.overdue_milestones.filter((m) => m.id !== milestoneId).length, 0),
       }))
     );
-    await supabase.from("milestones").update({ completed_at: new Date().toISOString() }).eq("id", milestoneId);
+    await completeMilestone(milestoneId);
     router.refresh();
   }
 

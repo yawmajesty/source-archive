@@ -9,10 +9,9 @@ import {
   BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabase";
 import { getPublicOrigin } from "@/lib/url";
 import type { Factory, Product, Project, Rfq } from "@/lib/mock-data";
-import { createRfq, closeRfq, getRfqDetail, assignQuotedProduct } from "./actions";
+import { createRfq, closeRfq, getRfqDetail, assignQuotedProduct, createFactory, deleteFactory } from "./actions";
 
 interface Props {
   factories: Factory[];
@@ -534,8 +533,7 @@ function AddFactoryDrawer({ onClose }: { onClose: () => void }) {
     if (!name) { setError("Factory name is required"); return; }
     setSaving(true);
     setError("");
-    const { error: err } = await supabase.from("factories").insert({
-      id: "factory-" + Date.now(),
+    const res = await createFactory({
       name,
       city: cityRef.current?.value.trim() || "",
       country: countryRef.current?.value.trim() || "",
@@ -554,7 +552,7 @@ function AddFactoryDrawer({ onClose }: { onClose: () => void }) {
       notes: notesRef.current?.value.trim() || "",
     });
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (!res.success) { setError(res.error); return; }
     router.refresh();
     onClose();
   }
@@ -640,9 +638,9 @@ function DeleteFactoryModal({ factory, onClose }: { factory: Factory; onClose: (
 
   async function handleDelete() {
     setDeleting(true);
-    const { error: err } = await supabase.from("factories").delete().eq("id", factory.id);
+    const res = await deleteFactory(factory.id);
     setDeleting(false);
-    if (err) { setError(err.message); return; }
+    if (!res.success) { setError(res.error); return; }
     router.refresh();
     onClose();
   }

@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, ExternalLink, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabase";
+import { createClient as createClientAction, createProjectForClient, deleteClientCascade } from "./actions";
 import type { Client, Project, Product } from "@/lib/data";
 
 interface Props { clients: Client[]; projects: Project[]; products: Product[] }
@@ -37,7 +37,7 @@ function AddClientModal({ onClose }: { onClose: () => void }) {
     setSaving(true);
     setError("");
     const id = "client-" + Date.now();
-    const { error: err } = await supabase.from("clients").insert({
+    const res = await createClientAction({
       id,
       name,
       slug: name.toLowerCase().replace(/\s+/g, "-"),
@@ -47,10 +47,9 @@ function AddClientModal({ onClose }: { onClose: () => void }) {
       country: countryRef.current?.value.trim() || null,
       status: statusRef.current?.value || "onboarding",
       logo_initial: name[0].toUpperCase(),
-      has_new_activity: false,
     });
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (!res.success) { setError(res.error); return; }
     router.refresh();
     onClose();
   }
@@ -114,19 +113,16 @@ function AddProjectModal({ clientId, onClose }: { clientId: string; onClose: () 
     if (!name) { setError("Collection name is required"); return; }
     setSaving(true);
     setError("");
-    const { error: err } = await supabase.from("projects").insert({
-      id: "proj-" + Date.now(),
+    const res = await createProjectForClient({
       client_id: clientId,
       name,
       season: seasonRef.current?.value.trim() || null,
-      status: "active",
       start_date: startRef.current?.value || new Date().toISOString().slice(0, 10),
       target_completion: targetRef.current?.value || null,
-      portal_unlocked_at: null,
       notes: notesRef.current?.value.trim() || "",
     });
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (!res.success) { setError(res.error); return; }
     router.refresh();
     onClose();
   }
@@ -168,16 +164,9 @@ function DeleteClientModal({ client, onClose }: { client: Client; onClose: () =>
   async function handleDelete() {
     setDeleting(true);
     setError("");
-    // Delete in order: products → projects → client
-    const { data: clientProjects } = await supabase.from("projects").select("id").eq("client_id", client.id);
-    const projectIds = (clientProjects ?? []).map((p: any) => p.id);
-    if (projectIds.length > 0) {
-      await supabase.from("products").delete().in("project_id", projectIds);
-      await supabase.from("projects").delete().in("id", projectIds);
-    }
-    const { error: err } = await supabase.from("clients").delete().eq("id", client.id);
+    const res = await deleteClientCascade(client.id);
     setDeleting(false);
-    if (err) { setError(err.message); return; }
+    if (!res.success) { setError(res.error); return; }
     router.refresh();
     onClose();
   }

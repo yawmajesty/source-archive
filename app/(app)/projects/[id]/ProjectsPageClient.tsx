@@ -14,8 +14,7 @@ import { ProductRow } from "@/components/shared/ProductRow";
 import { StageTrack } from "@/components/shared/StageTrack";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabase";
-import { forkProductsToRound } from "./actions";
+import { forkProductsToRound, createProductInProject, renameProject, deleteProject } from "./actions";
 import type { Client, Project, Product, Factory, Stage, PriceTier } from "@/lib/mock-data";
 import type { SavedInvoice, AgencySettings } from "@/lib/data";
 
@@ -100,26 +99,19 @@ function AddProductModal({ projectId, factories, onClose }: {
     setSaving(true);
     setError(null);
 
-    const { error: err } = await supabase.from("products").insert({
-      id: "prod-" + Date.now(),
+    const res = await createProductInProject({
+      project_id: projectId,
       name,
       category: categoryRef.current?.value.trim() || null,
       stage: stageRef.current?.value || "brief",
-      project_id: projectId,
       factory_id: factoryRef.current?.value || null,
       moq: parseInt(moqRef.current?.value || "0") || 0,
-      order_qty: 0,
       target_cost_usd: parseFloat(targetCostRef.current?.value || "0") || 0,
       quoted_cost_usd: parseFloat(clientPriceRef.current?.value || "0") || null,
-      quoted_cost_currency: "USD",
-      lead_time_days: 0,
-      colorways: [],
-      notes: "",
-      sample_round: 1,
     });
 
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (!res.success) { setError(res.error); return; }
     router.refresh();
     onClose();
   }
@@ -715,7 +707,7 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
   async function commitRename() {
     const trimmed = nameValue.trim();
     if (!trimmed || trimmed === projectName) { setEditingName(false); return; }
-    await supabase.from("projects").update({ name: trimmed }).eq("id", project.id);
+    await renameProject(project.id, trimmed);
     setProjectName(trimmed);
     setEditingName(false);
     router.refresh();
@@ -728,7 +720,7 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
 
   async function handleDelete() {
     if (!window.confirm(`Delete "${projectName}"? All products in this collection will also be deleted.`)) return;
-    await supabase.from("projects").delete().eq("id", project.id);
+    await deleteProject(project.id);
     router.push(client ? `/clients/${client.id}` : "/");
   }
 

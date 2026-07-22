@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { Plus, ChevronDown, ChevronRight, ArrowDownLeft, ArrowUpRight, Pencil, Trash2, RotateCcw, Eye, EyeOff } from "lucide-react";
-import { softDeleteCost, restoreCost } from "./actions";
+import { softDeleteCost, restoreCost, createCost, updateCost } from "./actions";
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import type { Cost, Client, Project, Product } from "@/lib/mock-data";
 
@@ -779,7 +778,7 @@ function AddCostForm({ projects, products, clients, onClose }: {
     const fx = parseFloat(fxRate) || defaultFx[currency] || 1;
     const amtGbp = Math.round(amt * fx * 100) / 100;
 
-    const { error: err } = await supabase.from("costs").insert({
+    const res = await createCost({
       id: "cost-" + Date.now(),
       project_id: projectId || null,
       client_id: clientId || null,
@@ -798,7 +797,7 @@ function AddCostForm({ projects, products, clients, onClose }: {
     });
 
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (!res.success) { setError(res.error); return; }
     router.refresh();
     onClose();
   }
@@ -963,7 +962,7 @@ function EditCostForm({ cost, projects, products, clients, onClose }: {
     const fx = parseFloat(fxRate) || 1;
     const amtGbp = Math.round(amt * fx * 100) / 100;
 
-    const { error: err } = await supabase.from("costs").update({
+    const res = await updateCost(cost.id, {
       category,
       description: description.trim(),
       amount: amt,
@@ -974,10 +973,10 @@ function EditCostForm({ cost, projects, products, clients, onClose }: {
       billable_to_client: billable,
       paid_by: paidBy.trim(),
       date_paid: date,
-    }).eq("id", cost.id);
+    });
 
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (!res.success) { setError(res.error); return; }
     router.refresh();
     onClose();
   }

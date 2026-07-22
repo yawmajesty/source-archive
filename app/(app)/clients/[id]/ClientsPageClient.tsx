@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Lock, Globe, Package, ChevronRight, Calendar, Plus, Activity, Clock, Copy, Check } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { createProjectForClient, toggleClientPortal } from "../actions";
 import { buildPublicUrl } from "@/lib/url";
 import { ResizablePanel } from "@/components/layout/ResizablePanel";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -425,19 +425,16 @@ function AddProjectModal({ clientId, onClose }: { clientId: string; onClose: () 
     if (!name) { setError("Collection name is required"); return; }
     setSaving(true);
     setError("");
-    const { error: err } = await supabase.from("projects").insert({
-      id: "proj-" + Date.now(),
+    const res = await createProjectForClient({
       client_id: clientId,
       name,
       season: seasonRef.current?.value.trim() || null,
-      status: "active",
       start_date: startRef.current?.value || new Date().toISOString().slice(0, 10),
       target_completion: targetRef.current?.value || null,
-      portal_unlocked_at: null,
       notes: notesRef.current?.value.trim() || "",
     });
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (!res.success) { setError(res.error); return; }
     router.refresh();
     onClose();
   }
@@ -491,7 +488,7 @@ export function ClientsPageClient({ client, projectData, portalActivity }: Props
   async function togglePortal() {
     setTogglingPortal(true);
     const next = !portalEnabled;
-    await supabase.from("clients").update({ portal_enabled: next }).eq("id", client.id);
+    await toggleClientPortal(client.id, next);
     setPortalEnabled(next);
     setTogglingPortal(false);
   }
