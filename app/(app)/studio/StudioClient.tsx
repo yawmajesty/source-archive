@@ -7,7 +7,7 @@ import {
   Receipt, Calculator, Upload, X, Plus, Trash2, ChevronDown, ChevronUp,
   AlertTriangle, Check, Loader2, Pencil, ScanLine, DollarSign,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { uploadFile } from "@/lib/storage";
 import {
   analyzeReceipt, createExpense, updateExpense, deleteExpense,
   createCostingProduct, updateCostingProduct, deleteCostingProduct,
@@ -168,11 +168,8 @@ function ExpensesTab({ expenses: initial, rates }: { expenses: Expense[]; rates:
     let imageUrl: string | null = null;
     if (imageFile) {
       const path = `receipts/${Date.now()}-${imageFile.name}`;
-      const { data } = await supabase.storage.from("brand-receipts").upload(path, imageFile, { upsert: true });
-      if (data) {
-        const { data: urlData } = supabase.storage.from("brand-receipts").getPublicUrl(path);
-        imageUrl = urlData.publicUrl;
-      }
+      const { url } = await uploadFile("brand-receipts", path, imageFile);
+      if (url) imageUrl = url;
     }
 
     const newExpense = await createExpense({

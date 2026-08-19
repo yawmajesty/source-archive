@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Plus, Trash2, CheckCircle, AlertCircle, ImagePlus, X, Loader2 } from "lucide-react";
 import { submitQuote } from "./actions";
-import { supabase } from "@/lib/supabase";
+import { uploadFile } from "@/lib/storage";
 import type { Rfq, RfqInvite, RfqSubmission, RfqQuotedProduct } from "@/lib/data";
 
 const inputCls = "w-full rounded-lg border border-[#D1D1D6] bg-white px-3 py-2 text-[14px] text-[#1D1D1F] placeholder:text-[#AEAEB2] outline-none focus:border-[#1A1A2E] transition-colors";
@@ -39,10 +39,9 @@ function ProductImageUpload({ imageUrl, onUpload }: {
     setUploadError("");
     const ext = file.name.split(".").pop() ?? "jpg";
     const path = `rfq-products/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error } = await supabase.storage.from("rfq-assets").upload(path, file, { upsert: true, cacheControl: "3600" });
-    if (error) { setUploadError("Upload failed / 上传失败"); setUploading(false); return; }
-    const { data } = supabase.storage.from("rfq-assets").getPublicUrl(path);
-    onUpload(data.publicUrl);
+    const { url, error } = await uploadFile("rfq-assets", path, file);
+    if (error || !url) { setUploadError("Upload failed / 上传失败"); setUploading(false); return; }
+    onUpload(url);
     setUploading(false);
   }
 
