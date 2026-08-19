@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon, Plus, Trash2, X, CreditCard, Play } from "lucide-react";
+import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon, Plus, Trash2, X, CreditCard, Play, ChevronLeft } from "lucide-react";
 import { uploadFile } from "@/lib/storage";
 import { mediaKindFor, type ProductMediaItem } from "@/lib/product-media";
 import type { Client, Contract, PortalFile, AgencySettings, SavedInvoice } from "@/lib/data";
@@ -22,7 +22,8 @@ import {
   submitReferenceSampleFromPortal,
 } from "./actions";
 import { downloadInvoicePDF } from "@/lib/invoice-pdf";
-import { PortalShell, RightRailToggle, useRightRail, Segmented } from "./shell/PortalShell";
+import { PortalShell, RightRailToggle, useRightRail, RailSection } from "./shell/PortalShell";
+import { CostingInspector, SampleTimeline } from "./shell/CostingInspector";
 import {
   LeftRail, RightRailOverview, attentionItems, upcomingItems,
   type PortalRoute,
@@ -396,7 +397,7 @@ function Lightbox({ items, startIndex, onClose }: { items: ProductMediaItem[]; s
 }
 
 // ── Product detail drawer ────────────────────────────────────
-function ProductDetailDrawer({ product, files, client, agencyLabel, onClose }: {
+function ProductDetailView({ product, files, client, agencyLabel, onClose }: {
   agencyLabel: string;
   product: PortalProduct;
   files: PortalFile[];
@@ -517,28 +518,17 @@ function ProductDetailDrawer({ product, files, client, agencyLabel, onClose }: {
 
   return (
     <>
-    <div className="fixed inset-0 z-50 flex" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" }}>
-      {/* Backdrop */}
-      <div className="flex-1 bg-black/20" onClick={onClose} />
-      {/* Drawer */}
-      <motion.div
-        initial={{ x: "100%" }}
-        animate={{ x: 0 }}
-        exit={{ x: "100%" }}
-        transition={{ type: "spring", damping: 30, stiffness: 300 }}
-        className="w-full max-w-lg flex flex-col h-full overflow-hidden shadow-2xl"
-        style={{ background: "var(--portal-surface)" }}
-      >
-        {/* Drawer header */}
-        <div className="flex items-start justify-between px-6 pt-6 pb-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
+    <div className="mac-card overflow-hidden">
+        {/* Header */}
+        <div className="flex items-start justify-between px-5 pt-5 pb-4" style={{ boxShadow: "inset 0 -0.5px 0 var(--sep)" }}>
           <div>
-            <h2 className="text-[18px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>{product.name}</h2>
-            <p className="text-[13px] mt-0.5" style={{ color: "var(--portal-text-secondary)" }}>{product.category}</p>
+            <h2 className="text-[17px] font-semibold tight" style={{ color: "var(--label)" }}>{product.name}</h2>
+            <p className="mt-0.5 text-[13px]" style={{ color: "var(--label-2)" }}>{product.category}</p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg transition-colors text-[18px] leading-none" style={{ color: "var(--portal-text-secondary)" }}>✕</button>
+          <button onClick={onClose} className="mac-button" style={{ color: "var(--label-2)" }}>Close</button>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div>
           {/* Stage */}
           <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
             <StagePill stage={product.stage} />
@@ -828,7 +818,6 @@ function ProductDetailDrawer({ product, files, client, agencyLabel, onClose }: {
             <CheckCircle2 size={13} /> Sample approved · the agency has been notified
           </div>
         )}
-      </motion.div>
     </div>
 
     {lightboxIdx !== null && (
@@ -2038,7 +2027,31 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
     </>
   );
 
-  const left = (
+  const siblings = selectedProduct
+    ? (projects.find((p) => p.products.some((x) => x.id === selectedProduct.id))?.products ?? [])
+    : [];
+
+  const left = selectedProduct ? (
+    <div className="flex h-full flex-col">
+      <button className="mac-nav-item w-full" onClick={() => setSelectedProduct(null)}>
+        <ChevronLeft size={15} strokeWidth={1.6} />
+        <span className="rail-label flex-1 text-left">Back to collection</span>
+      </button>
+      <div className="mac-nav-group">In this collection</div>
+      {siblings.map((sib) => (
+        <button
+          key={sib.id}
+          className="mac-nav-item w-full"
+          data-active={sib.id === selectedProduct.id}
+          onClick={() => setSelectedProduct(sib)}
+          title={sib.name}
+        >
+          <span className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: "var(--accent)" }} />
+          <span className="rail-label flex-1 truncate text-left">{sib.name}</span>
+        </button>
+      ))}
+    </div>
+  ) : (
     <LeftRail
       route={route}
       setRoute={(r) => { setRoute(r); if (r !== "projects") setSelectedProjectId(null); }}
@@ -2050,7 +2063,30 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
     />
   );
 
-  const right = (
+  const productActivity = selectedProduct
+    ? selectedProduct.updates.slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    : [];
+
+  const right = selectedProduct ? (
+    <>
+      <CostingInspector product={selectedProduct} />
+      <SampleTimeline product={selectedProduct} />
+      <RailSection title="Activity">
+        {productActivity.length === 0 ? (
+          <p className="text-[12px]" style={{ color: "var(--label-3)" }}>No activity yet.</p>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {productActivity.slice(0, 8).map((u) => (
+              <div key={u.id}>
+                <p className="text-[12px] leading-snug" style={{ color: "var(--label)" }}>{u.text}</p>
+                <p className="mt-0.5 text-[11px]" style={{ color: "var(--label-3)" }}>{u.author} · {relativeTime(u.created_at)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </RailSection>
+    </>
+  ) : (
     <RightRailOverview
       attention={attention}
       upcoming={upcoming}
@@ -2062,14 +2098,24 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
   return (
     <>
       <PortalShell topbar={topbar} left={left} right={right} rightOpen={rightOpen}>
-        {route === "overview" && (
+        {selectedProduct && (
+          <ProductDetailView
+            product={selectedProduct}
+            files={files}
+            client={client}
+            agencyLabel={agencySettings.site_title || "Us"}
+            onClose={() => setSelectedProduct(null)}
+          />
+        )}
+
+        {!selectedProduct && route === "overview" && (
           <div className="flex flex-col gap-5">
             <StatsRow projects={projects} files={files} />
             <ProductGrid projects={projects} files={files} onSelect={setSelectedProduct} />
           </div>
         )}
 
-        {route === "approvals" && (
+        {!selectedProduct && route === "approvals" && (
           <div className="flex flex-col gap-3">
             <h2 className="text-[17px] font-semibold tight" style={{ color: "var(--label)" }}>Approvals</h2>
             {attention.length === 0 ? (
@@ -2089,35 +2135,24 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
           </div>
         )}
 
-        {route === "sampling" && (
+        {!selectedProduct && route === "sampling" && (
           <SamplingInvoice projects={projects} client={client} agencySettings={agencySettings} isAgency={isAgency} savedInvoices={savedInvoices} />
         )}
 
-        {route === "projects" && <ProjectsTable projects={visibleProjects} client={client} />}
+        {!selectedProduct && route === "projects" && <ProjectsTable projects={visibleProjects} client={client} />}
 
-        {route === "files" && <FilesSection files={files} />}
+        {!selectedProduct && route === "files" && <FilesSection files={files} />}
 
-        {route === "contracts" && (
+        {!selectedProduct && route === "contracts" && (
           <>
             <p className="mb-4 text-[13px] font-medium" style={{ color: "var(--label)" }}>Contracts ({contracts.length})</p>
             <ContractsList contracts={contracts} />
           </>
         )}
 
-        {route === "references" && <ReferencesTab client={client} projects={projects} />}
+        {!selectedProduct && route === "references" && <ReferencesTab client={client} projects={projects} />}
       </PortalShell>
 
-      <AnimatePresence>
-        {selectedProduct && (
-          <ProductDetailDrawer
-            product={selectedProduct}
-            files={files}
-            client={client}
-            agencyLabel={agencySettings.site_title || "Us"}
-            onClose={() => setSelectedProduct(null)}
-          />
-        )}
-      </AnimatePresence>
     </>
   );
 }
