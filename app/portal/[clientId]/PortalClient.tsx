@@ -22,6 +22,12 @@ import {
   submitReferenceSampleFromPortal,
 } from "./actions";
 import { downloadInvoicePDF } from "@/lib/invoice-pdf";
+import { PortalShell, RightRailToggle, useRightRail, Segmented } from "./shell/PortalShell";
+import {
+  LeftRail, RightRailOverview, attentionItems, upcomingItems,
+  type PortalRoute,
+} from "./shell/Rails";
+import { Sun as SunIcon, Moon as MoonIcon, Search } from "lucide-react";
 import type { Stage } from "@/lib/mock-data";
 import type { PortalProject, PortalProduct } from "./page";
 
@@ -1951,71 +1957,155 @@ function usePortalVisitTracker(clientId: string, tab: Tab, enabled: boolean) {
 
 // ── Main portal ──────────────────────────────────────────────
 export function PortalClient({ client, locked, projects, contracts, files, agencySettings, isAgency, savedInvoices }: Props) {
-  const [tab, setTab] = useState<Tab>("overview");
+  const [route, setRoute] = useState<PortalRoute>("overview");
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<PortalProduct | null>(null);
   const { dark, toggle } = usePortalTheme();
+  const [rightOpen, toggleRight] = useRightRail();
 
-  usePortalVisitTracker(client.id, tab, !locked && !isAgency);
+  usePortalVisitTracker(client.id, route as Tab, !locked && !isAgency);
+
+  const attention = useMemo(() => attentionItems(projects, savedInvoices), [projects, savedInvoices]);
+  const upcoming = useMemo(() => upcomingItems(projects), [projects]);
+  const activity = useMemo(
+    () =>
+      projects
+        .flatMap((proj) => proj.products.flatMap((prod) => prod.updates.map((u) => ({ ...u, productName: prod.name }))))
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+    [projects],
+  );
+
+  const openProduct = useCallback(
+    (productId: string) => {
+      for (const proj of projects) {
+        const found = proj.products.find((prod) => prod.id === productId);
+        if (found) { setSelectedProduct(found); return; }
+      }
+    },
+    [projects],
+  );
 
   if (locked) return <PortalGate client={client} agencySettings={agencySettings} />;
 
-  return (
-    <div
-      className="min-h-full"
-      style={{ background: "var(--portal-bg)", fontFamily: "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif" }}
-    >
-      <PortalNavBar client={client} tab={tab} setTab={setTab} dark={dark} onToggleTheme={toggle} />
+  const visibleProjects =
+    route === "projects" && selectedProjectId
+      ? projects.filter((p) => p.id === selectedProjectId)
+      : projects;
 
-      <main className="mx-auto max-w-4xl px-4 sm:px-6 py-5 sm:py-8">
-        {tab === "overview" && (
-          <motion.div
-            key="overview"
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25 }}
-            className="flex flex-col gap-6"
-          >
+  const ROUTE_TITLE: Record<PortalRoute, string> = {
+    overview: "Overview",
+    approvals: "Approvals",
+    sampling: "Invoices",
+    projects: "Collections",
+    files: "Files",
+    contracts: "Contracts",
+    references: "References",
+  };
+
+  const topbar = (
+    <>
+      <div className="flex items-center gap-2.5">
+        <div
+          className="flex h-[22px] w-[22px] items-center justify-center rounded-[6px] text-[11px] font-bold text-white select-none"
+          style={{ background: "var(--accent)" }}
+        >
+          {client.logo_initial}
+        </div>
+        <span className="text-[13px] font-semibold tight" style={{ color: "var(--label)" }}>{client.name}</span>
+      </div>
+
+      {/* breadcrumb */}
+      <span className="text-[13px]" style={{ color: "var(--label-3)" }}>/</span>
+      <span className="text-[13px]" style={{ color: "var(--label-2)" }}>{ROUTE_TITLE[route]}</span>
+
+      <div className="flex-1" />
+
+      <button className="mac-button hidden items-center gap-1.5 sm:flex" style={{ color: "var(--label-2)" }}>
+        <Search size={13} strokeWidth={1.6} />
+        <span className="text-[11.5px]">Search</span>
+        <span className="tnum text-[10.5px]" style={{ color: "var(--label-3)" }}>⌘K</span>
+      </button>
+
+      <button
+        onClick={toggle}
+        aria-label="Toggle theme"
+        className="flex h-[26px] w-[26px] items-center justify-center rounded-[6.5px]"
+        style={{ color: "var(--label-2)" }}
+      >
+        {dark ? <SunIcon size={15} strokeWidth={1.6} /> : <MoonIcon size={15} strokeWidth={1.6} />}
+      </button>
+      <RightRailToggle open={rightOpen} onToggle={toggleRight} />
+    </>
+  );
+
+  const left = (
+    <LeftRail
+      route={route}
+      setRoute={(r) => { setRoute(r); if (r !== "projects") setSelectedProjectId(null); }}
+      projects={projects}
+      attentionCount={attention.length}
+      agencySettings={agencySettings}
+      onSelectProject={setSelectedProjectId}
+      selectedProjectId={selectedProjectId}
+    />
+  );
+
+  const right = (
+    <RightRailOverview
+      attention={attention}
+      upcoming={upcoming}
+      updates={activity}
+      onOpenProduct={openProduct}
+    />
+  );
+
+  return (
+    <>
+      <PortalShell topbar={topbar} left={left} right={right} rightOpen={rightOpen}>
+        {route === "overview" && (
+          <div className="flex flex-col gap-5">
             <StatsRow projects={projects} files={files} />
             <ProductGrid projects={projects} files={files} onSelect={setSelectedProduct} />
-            <UpdatesFeed projects={projects} />
-          </motion.div>
+          </div>
         )}
 
-        {tab === "sampling" && (
-          <motion.div key="sampling" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-            <SamplingInvoice projects={projects} client={client} agencySettings={agencySettings} isAgency={isAgency} savedInvoices={savedInvoices} />
-          </motion.div>
+        {route === "approvals" && (
+          <div className="flex flex-col gap-3">
+            <h2 className="text-[17px] font-semibold tight" style={{ color: "var(--label)" }}>Approvals</h2>
+            {attention.length === 0 ? (
+              <p className="text-[13px]" style={{ color: "var(--label-2)" }}>Nothing is waiting on you right now.</p>
+            ) : (
+              attention.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => item.productId && openProduct(item.productId)}
+                  className="mac-card mac-card-hover p-3.5 text-left"
+                >
+                  <p className="text-[13.5px] font-medium tight" style={{ color: "var(--label)" }}>{item.title}</p>
+                  <p className="mt-0.5 text-[12.5px]" style={{ color: "var(--label-2)" }}>{item.detail}</p>
+                </button>
+              ))
+            )}
+          </div>
         )}
 
-        {tab === "projects" && (
-          <motion.div key="projects" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-            <ProjectsTable projects={projects} client={client} />
-          </motion.div>
+        {route === "sampling" && (
+          <SamplingInvoice projects={projects} client={client} agencySettings={agencySettings} isAgency={isAgency} savedInvoices={savedInvoices} />
         )}
 
-        {tab === "files" && (
-          <motion.div key="files" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-            <FilesSection files={files} />
-          </motion.div>
-        )}
+        {route === "projects" && <ProjectsTable projects={visibleProjects} client={client} />}
 
-        {tab === "contracts" && (
-          <motion.div key="contracts" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-            <p className="text-[13px] font-medium mb-4" style={{ color: "var(--portal-text-primary)" }}>Contracts ({contracts.length})</p>
+        {route === "files" && <FilesSection files={files} />}
+
+        {route === "contracts" && (
+          <>
+            <p className="mb-4 text-[13px] font-medium" style={{ color: "var(--label)" }}>Contracts ({contracts.length})</p>
             <ContractsList contracts={contracts} />
-          </motion.div>
+          </>
         )}
 
-        {tab === "references" && (
-          <motion.div key="references" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-            <ReferencesTab client={client} projects={projects} />
-          </motion.div>
-        )}
-      </main>
-
-      <footer className="py-8 text-center text-[11px]" style={{ color: "var(--portal-text-muted)" }}>
-        Powered by {agencySettings.site_title || "Source[Archive]"}
-      </footer>
+        {route === "references" && <ReferencesTab client={client} projects={projects} />}
+      </PortalShell>
 
       <AnimatePresence>
         {selectedProduct && (
@@ -2028,6 +2118,6 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
           />
         )}
       </AnimatePresence>
-    </div>
+    </>
   );
 }
