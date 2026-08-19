@@ -27,6 +27,31 @@ const PUBLIC_BUCKETS = new Set(["product-media", "brief-attachments", "rfq-asset
 // Buckets only signed-in agency staff may write to.
 const AUTHED_BUCKETS = new Set(["brand-assets", "brand-receipts"]);
 
+// Storage object keys reject characters that browsers and S3-style backends
+// disagree about. The common real-world offender is macOS screenshots, which
+// put U+202F (narrow no-break space) before AM/PM — Supabase rejects those
+// keys outright with "Invalid key". NFKD folds U+202F and friends down to
+// plain ASCII, then anything still outside the safe set becomes a hyphen.
+//
+// The caller's raw path is never trusted as the final key: the sanitized key
+// is what gets signed and what the client is told to upload to, so the two
+// can never disagree.
+function sanitizeKey(path: string): string {
+  return path
+    .split("/")
+    .map((segment) =>
+      segment
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^A-Za-z0-9._-]+/g, "-")
+        .replace(/-{2,}/g, "-")
+        .replace(/^[-.]+/, "")
+        .replace(/-+$/, "")
+    )
+    .filter(Boolean)
+    .join("/");
+}
+
 export interface UploadTicket {
   bucket: string | null;
   path: string | null;
@@ -52,10 +77,13 @@ export async function createUploadTicket(bucket: string, path: string): Promise<
     if (!userId) return reject("You must be signed in to upload this file.");
   }
 
+  const key = sanitizeKey(path);
+  if (!key) return reject("Invalid upload path.");
+
   const supabase = getAgencyServiceSupabase();
   const { data, error } = await supabase.storage
     .from(bucket)
-    .createSignedUploadUrl(path, { upsert: true });
+    .createSignedUploadUrl(key, { upsert: true });
 
   if (error || !data) return reject(error?.message ?? "Could not authorize the upload.");
   return { bucket, path: data.path, token: data.token, error: null };

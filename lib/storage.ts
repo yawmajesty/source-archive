@@ -32,9 +32,13 @@ export async function uploadFile(
 
   // The file goes browser → Supabase directly, so it never hits the 1MB
   // Server Action body limit.
+  // Use the server's canonical key, not the caller's raw path — the server
+  // may have sanitized it, and the token is bound to the sanitized key.
+  const key = ticket.path ?? path;
+
   const { error } = await uploadClient.storage
     .from(bucket)
-    .uploadToSignedUrl(path, ticket.token, file, {
+    .uploadToSignedUrl(key, ticket.token, file, {
       contentType: file.type || undefined,
       cacheControl: "3600",
     });
@@ -44,6 +48,6 @@ export async function uploadFile(
     return { url: null, error: error.message };
   }
 
-  const { data } = uploadClient.storage.from(bucket).getPublicUrl(path);
+  const { data } = uploadClient.storage.from(bucket).getPublicUrl(key);
   return { url: data.publicUrl, error: null };
 }
