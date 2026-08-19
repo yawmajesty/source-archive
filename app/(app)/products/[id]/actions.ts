@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { revalidatePath } from "next/cache";
 import { getAgencySupabase } from "@/lib/supabase-agency";
 import { getAgencyContext } from "@/lib/agency-data";
+import type { NewMediaItem, ProductMediaItem } from "@/lib/product-media";
 
 async function ctxOrThrow() {
   const ctx = await getAgencyContext();
@@ -227,6 +228,71 @@ export async function updateAutoTags(productId: string, tags: AutoTags): Promise
   const supabase = await getAgencySupabase();
   const { error } = await supabase.from("products").update(tags).eq("id", productId);
   if (error) return { success: false, error: error.message };
+  revalidatePath(`/products/${productId}`);
+  return { success: true };
+}
+
+// ── Product media (agency side) ──────────────────────────────────
+// Mirrors addPortalProductMedia, but tagged as ours and going through the
+// Clerk-authed client so RLS applies.
+
+export async function listProductMedia(productId: string): Promise<ProductMediaItem[]> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { data } = await supabase
+    .from("product_media")
+    .select("*")
+    .eq("product_id", productId)
+    .order("created_at", { ascending: true });
+  return (data ?? []) as ProductMediaItem[];
+}
+
+async function syncProductImages(productId: string): Promise<void> {
+  const supabase = await getAgencySupabase();
+  const { data } = await supabase
+    .from("product_media")
+    .select("url, kind, created_at")
+    .eq("product_id", productId)
+    .order("created_at", { ascending: true });
+  const urls = (data ?? []).filter((m: any) => m.kind === "image").map((m: any) => m.url);
+  await supabase.rpc("update_product_images", { p_id: productId, p_images: urls });
+}
+
+export async function recordAgencyProductMedia(
+  productId: string,
+  items: NewMediaItem[],
+): Promise<{ success: true; media: ProductMediaItem[] } | { success: false; error: string }> {
+  if (!items.length) return { success: false, error: "Nothing to record" };
+  const ctx = await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const rows = items.map((item) => ({
+    agency_id: ctx.agency.id,
+    product_id: productId,
+    url: item.url,
+    kind: item.kind,
+    uploaded_by_role: "agency" as const,
+    uploaded_by_name: ctx.agency.name ?? null,
+    caption: item.caption ?? null,
+  }));
+  const { data, error } = await supabase
+    .from("product_media")
+    .upsert(rows, { onConflict: "product_id,url" })
+    .select();
+  if (error) return { success: false, error: error.message };
+  await syncProductImages(productId);
+  revalidatePath(`/products/${productId}`);
+  return { success: true, media: (data ?? []) as ProductMediaItem[] };
+}
+
+export async function deleteProductMedia(
+  id: string,
+  productId: string,
+): Promise<{ success: boolean; error?: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase.from("product_media").delete().eq("id", id).eq("product_id", productId);
+  if (error) return { success: false, error: error.message };
+  await syncProductImages(productId);
   revalidatePath(`/products/${productId}`);
   return { success: true };
 }

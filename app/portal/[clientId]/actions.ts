@@ -6,6 +6,7 @@ import { getStripe } from "@/lib/stripe";
 import { getPublicOrigin } from "@/lib/url";
 import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import type { InvoiceLineItem } from "@/lib/data";
+import type { NewMediaItem, ProductMediaItem } from "@/lib/product-media";
 
 // The client portal is a public URL — visitors are not Clerk-authed.
 // We use the service-role client (bypasses RLS) and resolve the owning
@@ -177,6 +178,7 @@ export async function submitPortalFeedback(input: {
     author: input.client_name,
     author_initials: input.client_initial,
     text: trimmed,
+    author_role: "client",
     visible_to_client: true,
     created_at: createdAt,
   });
@@ -322,4 +324,101 @@ export async function createInvoiceCheckout(invoiceId: string): Promise<
     .eq("id", invoice.id);
 
   return { url: session.url ?? "" };
+}
+
+// ── Product media (client side) ──────────────────────────────────
+
+// The portal is public, so never take the caller's word that a product
+// belongs to them: walk product -> project -> client and check.
+async function assertProductBelongsToClient(
+  supabase: ReturnType<typeof getAgencyServiceSupabase>,
+  productId: string,
+  clientId: string,
+): Promise<string> {
+  const { data: product } = await supabase
+    .from("products")
+    .select("id, project_id, agency_id")
+    .eq("id", productId)
+    .maybeSingle();
+  if (!product) throw new Error("Product not found");
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, client_id")
+    .eq("id", (product as any).project_id)
+    .maybeSingle();
+  if (!project || (project as any).client_id !== clientId) {
+    throw new Error("Product does not belong to this client");
+  }
+  return (product as any).agency_id as string;
+}
+
+/** Keep products.images in step with the image rows in product_media. */
+async function syncProductImages(
+  supabase: ReturnType<typeof getAgencyServiceSupabase>,
+  productId: string,
+): Promise<void> {
+  const { data } = await supabase
+    .from("product_media")
+    .select("url, kind, created_at")
+    .eq("product_id", productId)
+    .order("created_at", { ascending: true });
+  const urls = (data ?? []).filter((m: any) => m.kind === "image").map((m: any) => m.url);
+  await supabase.from("products").update({ images: urls }).eq("id", productId);
+}
+
+export async function addPortalProductMedia(input: {
+  product_id: string;
+  client_id: string;
+  uploaded_by_name: string;
+  items: NewMediaItem[];
+}): Promise<{ success: true; media: ProductMediaItem[] } | { success: false; error: string }> {
+  if (!input.items.length) return { success: false, error: "Nothing to upload" };
+  const supabase = getAgencyServiceSupabase();
+  try {
+    const agencyId = await assertProductBelongsToClient(supabase, input.product_id, input.client_id);
+    const rows = input.items.map((item) => ({
+      agency_id: agencyId,
+      product_id: input.product_id,
+      url: item.url,
+      kind: item.kind,
+      uploaded_by_role: "client" as const,
+      uploaded_by_name: input.uploaded_by_name || null,
+      caption: item.caption ?? null,
+    }));
+    const { data, error } = await supabase
+      .from("product_media")
+      .upsert(rows, { onConflict: "product_id,url" })
+      .select();
+    if (error) return { success: false, error: error.message };
+    await syncProductImages(supabase, input.product_id);
+    revalidatePath(`/portal/${input.client_id}`);
+    return { success: true, media: (data ?? []) as ProductMediaItem[] };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Upload failed" };
+  }
+}
+
+// Clients may remove their own contributions, never ours.
+export async function deletePortalProductMedia(input: {
+  id: string;
+  product_id: string;
+  client_id: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const supabase = getAgencyServiceSupabase();
+  try {
+    await assertProductBelongsToClient(supabase, input.product_id, input.client_id);
+    const { error } = await supabase
+      .from("product_media")
+      .delete()
+      .eq("id", input.id)
+      .eq("product_id", input.product_id)
+      .eq("uploaded_by_role", "client");
+    if (error) return { success: false, error: error.message };
+    await syncProductImages(supabase, input.product_id);
+    revalidatePath(`/portal/${input.client_id}`);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Delete failed" };
+  }
 }

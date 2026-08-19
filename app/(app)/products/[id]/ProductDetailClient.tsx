@@ -1,5 +1,7 @@
 "use client";
 
+import { mediaKindFor } from "@/lib/product-media";
+
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -17,7 +19,7 @@ import { cn } from "@/lib/utils";
 import { createTask } from "../../tasks/actions";
 import { uploadFile } from "@/lib/storage";
 import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem, PriceTier, ProductionVariant, ProductionSize, ProductPriceHistoryEntry } from "@/lib/mock-data";
-import { autoTagProduct, updateAutoTags, updateProductFields, deleteProductRow, createSampleForProduct, updateProductImages, updateProductDocuments } from "./actions";
+import { autoTagProduct, updateAutoTags, updateProductFields, deleteProductRow, createSampleForProduct, updateProductImages, updateProductDocuments, recordAgencyProductMedia } from "./actions";
 
 const STAGES: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
 const CURRENCIES = ["USD", "GBP", "EUR", "CNY"];
@@ -283,10 +285,21 @@ function MediaSection({ productId, initialImages }: { productId: string; initial
       else if (url) { newUrls.push(url); }
     }
     if (newUrls.length) {
-      const updated = [...images, ...newUrls];
-      const res = await updateProductImages(productId, updated);
-      if (!res.success) { setUploadError(`Saved to storage but DB update failed: ${res.error}`); }
-      else { setImages(updated); }
+      // Record attribution first — recordAgencyProductMedia re-derives
+      // products.images from product_media, so it keeps both in step.
+      const media = await recordAgencyProductMedia(
+        productId,
+        newUrls.map((u) => ({ url: u, kind: mediaKindFor(u) })),
+      );
+      if (!media.success) {
+        // Fall back to the plain images write so an upload is never lost.
+        const updated = [...images, ...newUrls];
+        const res = await updateProductImages(productId, updated);
+        if (!res.success) { setUploadError(`Saved to storage but DB update failed: ${res.error}`); }
+        else { setImages(updated); }
+      } else {
+        setImages([...images, ...newUrls]);
+      }
     }
     setUploading(false);
     if (fileRef.current) fileRef.current.value = "";

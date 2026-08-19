@@ -1,9 +1,11 @@
+import type { ProductMediaItem } from "@/lib/product-media";
 import {
   getPortalClient,
   getPortalProjects,
   getPortalProducts,
   getPortalMilestones,
   getPortalUpdates,
+  getPortalProductMedia,
   getPortalContracts,
   getPortalFilesForClient,
   getPortalAgencySettings,
@@ -30,12 +32,13 @@ export interface PortalProduct {
   quoted_cost_usd: number | null;
   colorways: string[];
   images: string[];
+  media: ProductMediaItem[];
   sample_fee_usd: number | null;
   expected_sample_date: string | null;
   sample_round: number;
   price_tiers: { moq: number; unit_price_usd: number }[];
   milestones: { id: string; title: string; due_date: string; completed_at: string | null }[];
-  updates: { id: string; author: string; author_initials: string; text: string; created_at: string }[];
+  updates: { id: string; author: string; author_initials: string; text: string; created_at: string; author_role: "agency" | "client" }[];
 }
 
 export interface PortalProject {
@@ -73,9 +76,10 @@ export default async function PortalPage({ params }: Props) {
       const products = allProducts.filter((p) => !p.production_excluded_at);
       const enriched: PortalProduct[] = await Promise.all(
         products.map(async (product) => {
-          const [milestones, updates] = await Promise.all([
+          const [milestones, updates, media] = await Promise.all([
             getPortalMilestones(product.id),
             getPortalUpdates(product.id),
+            getPortalProductMedia(product.id),
           ]);
           // Strip all internal fields — only expose client-safe shape
           return {
@@ -88,6 +92,7 @@ export default async function PortalPage({ params }: Props) {
             quoted_cost_usd: product.quoted_cost_usd,
             colorways: product.colorways,
             images: (product as any).images ?? [],
+            media,
             sample_fee_usd: (product as any).sample_fee_usd ?? null,
             expected_sample_date: (product as any).expected_sample_date ?? null,
             sample_round: (product as any).sample_round ?? 1,
@@ -104,6 +109,7 @@ export default async function PortalPage({ params }: Props) {
                 id: u.id,
                 author: u.author,
                 author_initials: u.author_initials,
+                author_role: ((u as any).author_role === "client" ? "client" : "agency") as "agency" | "client",
                 text: u.text,
                 created_at: u.created_at,
               })),

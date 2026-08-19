@@ -3,8 +3,9 @@
 import { useState, useMemo, useRef, useEffect, useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon, Plus, Trash2, X, CreditCard } from "lucide-react";
+import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon, Plus, Trash2, X, CreditCard, Play } from "lucide-react";
 import { uploadFile } from "@/lib/storage";
+import { mediaKindFor, type ProductMediaItem } from "@/lib/product-media";
 import type { Client, Contract, PortalFile, AgencySettings, SavedInvoice } from "@/lib/data";
 import {
   updateInvoiceStatus,
@@ -15,6 +16,8 @@ import {
   approveSampleFromPortal,
   submitPortalFeedback,
   setProductImages,
+  addPortalProductMedia,
+  deletePortalProductMedia,
   listReferenceSamplesForPortal,
   submitReferenceSampleFromPortal,
 } from "./actions";
@@ -265,7 +268,7 @@ function StatsRow({ projects, files }: { projects: PortalProject[]; files: Porta
 }
 
 // ── Lightbox ─────────────────────────────────────────────────
-function Lightbox({ images, startIndex, onClose }: { images: string[]; startIndex: number; onClose: () => void }) {
+function Lightbox({ items, startIndex, onClose }: { items: ProductMediaItem[]; startIndex: number; onClose: () => void }) {
   const [index, setIndex] = useState(startIndex);
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -273,6 +276,8 @@ function Lightbox({ images, startIndex, onClose }: { images: string[]; startInde
   const dragStart = useRef({ x: 0, y: 0 });
   const offsetStart = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const current = items[index];
 
   useEffect(() => { setScale(1); setOffset({ x: 0, y: 0 }); }, [index]);
 
@@ -282,11 +287,11 @@ function Lightbox({ images, startIndex, onClose }: { images: string[]; startInde
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") close();
       if (e.key === "ArrowLeft") setIndex((i) => Math.max(0, i - 1));
-      if (e.key === "ArrowRight") setIndex((i) => Math.min(images.length - 1, i + 1));
+      if (e.key === "ArrowRight") setIndex((i) => Math.min(items.length - 1, i + 1));
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [images.length, close]);
+  }, [items.length, close]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -319,14 +324,14 @@ function Lightbox({ images, startIndex, onClose }: { images: string[]; startInde
 
   const nav = (dir: 1 | -1) => (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIndex((i) => Math.max(0, Math.min(images.length - 1, i + dir)));
+    setIndex((i) => Math.max(0, Math.min(items.length - 1, i + dir)));
   };
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center select-none" style={{ background: "rgba(0,0,0,0.93)" }}>
       {/* Header */}
       <div className="absolute top-0 inset-x-0 flex items-center justify-between px-4 py-3 z-10">
-        <span className="text-white/50 text-[13px]">{index + 1} / {images.length}</span>
+        <span className="text-white/50 text-[13px]">{index + 1} / {items.length}</span>
         <button onClick={close} className="flex h-9 w-9 items-center justify-center rounded-full text-white text-[18px]" style={{ background: "rgba(255,255,255,0.12)" }}>✕</button>
       </div>
 
@@ -341,20 +346,31 @@ function Lightbox({ images, startIndex, onClose }: { images: string[]; startInde
         onMouseLeave={onMouseUp}
         onClick={onImgClick}
       >
-        <img
-          src={images[index]}
-          alt=""
-          draggable={false}
-          style={{
-            maxWidth: "92vw",
-            maxHeight: "88vh",
-            objectFit: "contain",
-            transform: `scale(${scale}) translate(${offset.x / scale}px, ${offset.y / scale}px)`,
-            transition: dragging.current ? "none" : "transform 0.2s ease",
-            userSelect: "none",
-            pointerEvents: "none",
-          }}
-        />
+        {current?.kind === "video" ? (
+          <video
+            src={current.url}
+            controls
+            autoPlay
+            playsInline
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "92vw", maxHeight: "88vh", objectFit: "contain", pointerEvents: "auto" }}
+          />
+        ) : (
+          <img
+            src={current?.url}
+            alt={current?.caption ?? ""}
+            draggable={false}
+            style={{
+              maxWidth: "92vw",
+              maxHeight: "88vh",
+              objectFit: "contain",
+              transform: `scale(${scale}) translate(${offset.x / scale}px, ${offset.y / scale}px)`,
+              transition: dragging.current ? "none" : "transform 0.2s ease",
+              userSelect: "none",
+              pointerEvents: "none",
+            }}
+          />
+        )}
       </div>
 
       {/* Prev */}
@@ -362,11 +378,11 @@ function Lightbox({ images, startIndex, onClose }: { images: string[]; startInde
         <button onClick={nav(-1)} className="absolute left-3 top-1/2 -translate-y-1/2 z-10 flex h-11 w-11 items-center justify-center rounded-full text-white text-[22px]" style={{ background: "rgba(255,255,255,0.12)" }}>‹</button>
       )}
       {/* Next */}
-      {index < images.length - 1 && (
+      {index < items.length - 1 && (
         <button onClick={nav(1)} className="absolute right-3 top-1/2 -translate-y-1/2 z-10 flex h-11 w-11 items-center justify-center rounded-full text-white text-[22px]" style={{ background: "rgba(255,255,255,0.12)" }}>›</button>
       )}
 
-      {scale === 1 && (
+      {scale === 1 && current?.kind !== "video" && (
         <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[11px] text-white/30 pointer-events-none">Click or scroll to zoom · arrow keys to navigate</p>
       )}
     </div>
@@ -374,7 +390,8 @@ function Lightbox({ images, startIndex, onClose }: { images: string[]; startInde
 }
 
 // ── Product detail drawer ────────────────────────────────────
-function ProductDetailDrawer({ product, files, client, onClose }: {
+function ProductDetailDrawer({ product, files, client, agencyLabel, onClose }: {
+  agencyLabel: string;
   product: PortalProduct;
   files: PortalFile[];
   client: Client;
@@ -383,7 +400,7 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
   const productFiles = files.filter((f) => f.project_id !== null);
   const sorted = [...product.milestones].sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
   const [updates, setUpdates] = useState(product.updates.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
-  const [images, setImages] = useState<string[]>(product.images ?? []);
+  const [media, setMedia] = useState<ProductMediaItem[]>(product.media ?? []);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [feedback, setFeedback] = useState("");
   const [sendingFeedback, setSendingFeedback] = useState(false);
@@ -415,6 +432,7 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
       author: client.name,
       author_initials: client.logo_initial ?? client.name[0].toUpperCase(),
       text: `Sample approved by ${client.name}.`,
+      author_role: "client" as const,
       visible_to_client: true,
       created_at: res.created_at,
     };
@@ -440,6 +458,7 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
         author: client.name,
         author_initials: client.logo_initial ?? client.name[0].toUpperCase(),
         text: feedback.trim(),
+        author_role: "client" as const,
         visible_to_client: true,
         created_at: res.created_at,
       };
@@ -454,26 +473,40 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
     if (!files.length) return;
     setUploadingPhoto(true);
     setPhotoError(null);
-    const newUrls: string[] = [];
+
+    const uploaded: { url: string; kind: "image" | "video" }[] = [];
     for (const file of files) {
       const path = `${product.id}/client-${Date.now()}-${file.name}`;
       const { url, error } = await uploadFile("product-media", path, file);
       if (error) { setPhotoError(error); }
-      else if (url) { newUrls.push(url); }
+      else if (url) { uploaded.push({ url, kind: mediaKindFor(file.name, file.type) }); }
     }
-    if (newUrls.length) {
-      const updated = [...images, ...newUrls];
-      await setProductImages(product.id, updated, client.id);
-      setImages(updated);
+
+    if (uploaded.length) {
+      const res = await addPortalProductMedia({
+        product_id: product.id,
+        client_id: client.id,
+        uploaded_by_name: client.name,
+        items: uploaded,
+      });
+      if (res.success) setMedia((prev) => [...prev, ...res.media]);
+      else setPhotoError(res.error);
     }
+
     setUploadingPhoto(false);
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  async function handleDeletePhoto(url: string) {
-    const updated = images.filter((u) => u !== url);
-    await setProductImages(product.id, updated, client.id);
-    setImages(updated);
+  async function handleDeletePhoto(item: ProductMediaItem) {
+    // Clients may only remove what they added; ours is not theirs to delete.
+    if (item.uploaded_by_role !== "client") return;
+    const res = await deletePortalProductMedia({
+      id: item.id,
+      product_id: product.id,
+      client_id: client.id,
+    });
+    if (res.success) setMedia((prev) => prev.filter((m) => m.id !== item.id));
+    else setPhotoError(res.error ?? "Could not remove that file");
   }
 
   return (
@@ -524,30 +557,55 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
                 className="flex items-center gap-1 text-[11px] rounded-lg px-2.5 py-1 transition-colors disabled:opacity-50"
                 style={{ color: "var(--portal-text-primary)", border: "1px solid var(--portal-border)" }}
               >
-                <Upload size={11} /> {uploadingPhoto ? "Uploading…" : "Add photo"}
+                <Upload size={11} /> {uploadingPhoto ? "Uploading…" : "Add photo or video"}
               </button>
-              <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoUpload} />
+              <input ref={fileRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={handlePhotoUpload} />
             </div>
             {photoError && <p className="mt-2 text-[11px] text-red-500">Upload failed: {photoError}</p>}
-            {images.length > 0 ? (
+            {media.length > 0 ? (
               <div className="grid grid-cols-3 gap-2">
-                {images.map((url, i) => (
-                  <div key={url} className="group relative aspect-square rounded-xl overflow-hidden" style={{ background: "var(--portal-surface-raised)", border: "1px solid var(--portal-border)" }}>
-                    <button className="h-full w-full" onClick={() => setLightboxIdx(i)}>
-                      <img src={url} alt="" className="h-full w-full object-cover" />
-                    </button>
-                    {i === 0 && (
-                      <span className="absolute bottom-1 left-1 rounded-md px-1.5 py-0.5 text-[9px] font-semibold text-white pointer-events-none" style={{ background: "rgba(0,0,0,0.55)" }}>Preview</span>
-                    )}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDeletePhoto(url); }}
-                      className="absolute top-1 right-1 hidden group-hover:flex h-6 w-6 items-center justify-center rounded-full text-white transition-colors"
-                      style={{ background: "rgba(0,0,0,0.55)" }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+                {media.map((item, i) => {
+                  const mine = item.uploaded_by_role === "client";
+                  return (
+                    <div key={item.id} className="group relative aspect-square rounded-xl overflow-hidden" style={{ background: "var(--portal-surface-raised)", border: "1px solid var(--portal-border)" }}>
+                      <button className="h-full w-full" onClick={() => setLightboxIdx(i)}>
+                        {item.kind === "video" ? (
+                          <>
+                            <video src={item.url} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                            <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <span className="flex h-8 w-8 items-center justify-center rounded-full text-white" style={{ background: "rgba(0,0,0,0.55)" }}>
+                                <Play size={13} fill="currentColor" />
+                              </span>
+                            </span>
+                          </>
+                        ) : (
+                          <img src={item.url} alt={item.caption ?? ""} className="h-full w-full object-cover" />
+                        )}
+                      </button>
+
+                      {/* Who added this */}
+                      <span
+                        className="absolute bottom-1 left-1 rounded-md px-1.5 py-0.5 text-[9px] font-semibold pointer-events-none"
+                        style={{
+                          background: mine ? "rgba(37,99,235,0.85)" : "rgba(0,0,0,0.55)",
+                          color: "#fff",
+                        }}
+                      >
+                        {mine ? "You" : agencyLabel}
+                      </span>
+
+                      {mine && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeletePhoto(item); }}
+                          className="absolute top-1 right-1 hidden group-hover:flex h-6 w-6 items-center justify-center rounded-full text-white transition-colors"
+                          style={{ background: "rgba(0,0,0,0.55)" }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <button
@@ -556,7 +614,7 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
                 style={{ border: "1px dashed var(--portal-border)", background: "var(--portal-surface-raised)" }}
               >
                 <Upload size={18} strokeWidth={1.5} style={{ color: "var(--portal-text-muted)" }} />
-                <p className="text-[11px]" style={{ color: "var(--portal-text-muted)" }}>Upload photos for this product</p>
+                <p className="text-[11px]" style={{ color: "var(--portal-text-muted)" }}>Upload photos or video for this product</p>
               </button>
             )}
           </div>
@@ -706,7 +764,9 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
             {updates.length > 0 ? (
               <div className="flex flex-col gap-3">
                 {updates.map((u) => {
-                  const isClientMessage = u.author === client.name;
+                  // author_role is authoritative; the name check is a fallback
+                  // for notes written before migration 011 added the column.
+                  const isClientMessage = u.author_role === "client" || u.author === client.name;
                   return (
                     <div key={u.id} className="flex items-start gap-2.5">
                       <div className={`mt-1 h-5 w-5 shrink-0 rounded-full flex items-center justify-center text-[8px] font-bold text-white`}
@@ -715,7 +775,19 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
                       </div>
                       <div>
                         <p className="text-[12px] leading-relaxed" style={{ color: "var(--portal-text-primary)" }}>{u.text}</p>
-                        <p className="mt-0.5 text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>{u.author} · {relativeTime(u.created_at)}</p>
+                        <p className="mt-0.5 text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>
+                          {u.author}
+                          <span
+                            className="ml-1.5 rounded px-1 py-0.5 text-[9px] font-semibold align-middle"
+                            style={{
+                              background: isClientMessage ? "rgba(200,150,60,0.16)" : "rgba(120,120,128,0.16)",
+                              color: isClientMessage ? "#C8963C" : "var(--portal-text-secondary)",
+                            }}
+                          >
+                            {isClientMessage ? "You" : agencyLabel}
+                          </span>
+                          {" · "}{relativeTime(u.created_at)}
+                        </p>
                       </div>
                     </div>
                   );
@@ -754,7 +826,7 @@ function ProductDetailDrawer({ product, files, client, onClose }: {
     </div>
 
     {lightboxIdx !== null && (
-      <Lightbox images={images} startIndex={lightboxIdx} onClose={() => setLightboxIdx(null)} />
+      <Lightbox items={media} startIndex={lightboxIdx} onClose={() => setLightboxIdx(null)} />
     )}
     </>
   );
@@ -1733,7 +1805,7 @@ function ReferencesTab({ client, projects }: { client: Client; projects: PortalP
               {/* Photos */}
               <div>
                 <label className={labelCls} style={{ color: "var(--portal-text-secondary)" }}>Photos of the garment</label>
-                <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoUpload} />
+                <input ref={fileRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={handlePhotoUpload} />
                 {clientImages.length > 0 ? (
                   <div className="grid grid-cols-4 gap-2 mb-2">
                     {clientImages.map((url) => (
@@ -1951,6 +2023,7 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
             product={selectedProduct}
             files={files}
             client={client}
+            agencyLabel={agencySettings.site_title || "Us"}
             onClose={() => setSelectedProduct(null)}
           />
         )}

@@ -10,6 +10,7 @@
 // filter by client_id (or by ids that transitively belong to the client).
 
 import { getAgencyServiceSupabase } from "./supabase-agency";
+import type { ProductMediaItem } from "./product-media";
 import type {
   Client, Project, Product, Milestone, Update,
   Contract, PortalFile,
@@ -119,4 +120,40 @@ export async function getPortalSamplingInvoices(clientId: string, drafts = false
     paid_at: r.paid_at ?? null,
     parent_invoice_id: r.parent_invoice_id ?? null,
   }));
+}
+
+// ── Product media ────────────────────────────────────────────────
+// One row per photo/video with attribution. Scoped by product_id, which
+// belongs to a project, which belongs to the client in the URL.
+export async function getPortalProductMedia(productId: string): Promise<ProductMediaItem[]> {
+  const supabase = getAgencyServiceSupabase();
+  const { data, error } = await supabase
+    .from("product_media")
+    .select("*")
+    .eq("product_id", productId)
+    .order("created_at", { ascending: true });
+
+  if (!error) return (data ?? []) as ProductMediaItem[];
+
+  // product_media may not exist yet (migration 011 not applied). Fall back to
+  // the legacy products.images array so the portal keeps showing photos
+  // instead of going blank — attribution simply defaults to ours until the
+  // migration runs.
+  const { data: product } = await supabase
+    .from("products")
+    .select("id, images, created_at")
+    .eq("id", productId)
+    .maybeSingle();
+
+  const urls: string[] = Array.isArray((product as any)?.images) ? (product as any).images : [];
+  return urls.filter(Boolean).map((url, i) => ({
+    id: `legacy-${productId}-${i}`,
+    product_id: productId,
+    url,
+    kind: /\.(mp4|mov|webm|m4v|avi)(\?|$)/i.test(url) ? "video" : "image",
+    uploaded_by_role: url.includes("/client-") ? "client" : "agency",
+    uploaded_by_name: null,
+    caption: null,
+    created_at: (product as any)?.created_at ?? new Date(0).toISOString(),
+  })) as ProductMediaItem[];
 }
