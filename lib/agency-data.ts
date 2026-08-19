@@ -13,7 +13,9 @@ export interface Agency {
   updated_at: string;
 }
 
-export type AgencyRole = "admin" | "team";
+// `maker` is our in-house designer/machinist: writes the production log,
+// uploads its photos, and has no reason to see costing or client records.
+export type AgencyRole = "admin" | "team" | "maker";
 
 export interface AgencyMember {
   agency_id: string;

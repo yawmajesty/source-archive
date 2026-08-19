@@ -11,6 +11,7 @@
 
 import { getAgencyServiceSupabase } from "./supabase-agency";
 import type { ProductMediaItem } from "./product-media";
+import type { ProductionLogEntry } from "./production-log";
 import type {
   Client, Project, Product, Milestone, Update,
   Contract, PortalFile,
@@ -133,7 +134,13 @@ export async function getPortalProductMedia(productId: string): Promise<ProductM
     .eq("product_id", productId)
     .order("created_at", { ascending: true });
 
-  if (!error) return (data ?? []) as ProductMediaItem[];
+  if (!error) {
+    // visible_to_client arrives with migration 012; filtering in JS rather
+    // than in the query means this works before and after it is applied.
+    return ((data ?? []) as ProductMediaItem[]).filter(
+      (m) => (m as unknown as { visible_to_client?: boolean }).visible_to_client !== false,
+    );
+  }
 
   // product_media may not exist yet (migration 011 not applied). Fall back to
   // the legacy products.images array so the portal keeps showing photos
@@ -156,4 +163,22 @@ export async function getPortalProductMedia(productId: string): Promise<ProductM
     caption: null,
     created_at: (product as any)?.created_at ?? new Date(0).toISOString(),
   })) as ProductMediaItem[];
+}
+
+// ── Production log (released entries only) ───────────────────────
+// The workshop diary. Clients only ever see entries the agency has
+// explicitly released; unreleased work never leaves the backend.
+export async function getPortalProductionLog(productId: string): Promise<ProductionLogEntry[]> {
+  const supabase = getAgencyServiceSupabase();
+  const { data, error } = await supabase
+    .from("production_log_entries")
+    .select("*")
+    .eq("product_id", productId)
+    .eq("visible_to_client", true)
+    .order("work_date", { ascending: false });
+
+  // Table absent until migration 012 is applied — the portal simply has no
+  // diary to show yet.
+  if (error) return [];
+  return (data ?? []) as ProductionLogEntry[];
 }

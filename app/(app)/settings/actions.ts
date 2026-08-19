@@ -15,7 +15,7 @@ async function requireAgencyAdmin() {
   return ctx;
 }
 
-export async function updateUserRole(userId: string, role: "admin" | "team" | "client") {
+export async function updateUserRole(userId: string, role: "admin" | "team" | "maker" | "client") {
   // "client" is a legacy Clerk publicMetadata role from before agency
   // membership existed; there's no equivalent in the multi-tenant model.
   // Refuse it explicitly so callers get a clear error instead of a
