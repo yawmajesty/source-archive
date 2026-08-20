@@ -4,8 +4,9 @@ import { useMemo, useRef, useState } from "react";
 import { Plus, Eye, EyeOff, Search, Upload } from "lucide-react";
 import { uploadFile } from "@/lib/storage";
 import {
-  FABRIC_CATEGORIES, SUSTAINABILITY_TAGS, STOCK_LABEL, priceBandFor,
-  type Fabric, type PriceUnit, type StockStatus,
+  FABRIC_CATEGORIES, FABRIC_TIERS, SUSTAINABILITY_TAGS, STOCK_LABEL, priceBandFor,
+  categoryByCode, REQUIRED_SHOTS, templateGaps,
+  type Fabric, type FabricTier, type PriceUnit, type StockStatus,
 } from "@/lib/fabrics";
 import { saveFabric, setFabricPublished, addFabricPhotos, listFabricPhotos, deleteFabricPhoto, type FabricPhoto } from "./actions";
 
@@ -17,8 +18,14 @@ import { saveFabric, setFabricPublished, addFabricPhotos, listFabricPhotos, dele
 // ─────────────────────────────────────────────────────────────
 
 const empty = (): Partial<Fabric> & { name: string; category: string } => ({
-  name: "", category: FABRIC_CATEGORIES[0], price_unit: "metre",
-  stock_status: "made_to_order", sustainability: [], moq_unit: "metre",
+  name: "",
+  tier: "standard",
+  category: FABRIC_CATEGORIES[0].en,
+  category_code: FABRIC_CATEGORIES[0].code,
+  price_unit: "metre",
+  stock_status: "made_to_order",
+  sustainability: [],
+  moq_unit: "metre",
 });
 
 export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canPublish: boolean }) {
@@ -28,13 +35,15 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const swatchRef = useRef<HTMLInputElement>(null);
+  const shotRef = useRef<"texture" | "color" | "other">("other");
   const [photos, setPhotos] = useState<FabricPhoto[]>([]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return rows;
     return rows.filter((f) =>
-      [f.name, f.category, f.composition, f.mill].filter(Boolean).join(" ").toLowerCase().includes(needle),
+      [f.code, f.name, f.category, f.category_code, f.composition, f.mill, f.tier]
+        .filter(Boolean).join(" ").toLowerCase().includes(needle),
     );
   }, [rows, q]);
 
@@ -67,7 +76,7 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
     setRows((prev) => prev.map((r) => (r.id === f.id ? { ...r, is_published: !f.is_published } : r)));
   }
 
-  async function uploadPhotos(files: File[]) {
+  async function uploadPhotos(files: File[], shot: "texture" | "color" | "other" = "other") {
     if (!draft?.id || !files.length) return;
     setBusy(true); setError(null);
     const uploaded: { url: string; kind: "image" | "video" }[] = [];
@@ -78,7 +87,7 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
       else if (upErr) setError(upErr);
     }
     if (uploaded.length) {
-      const res = await addFabricPhotos(draft.id, uploaded);
+      const res = await addFabricPhotos(draft.id, uploaded.map((u) => ({ ...u, shot })));
       if (res.success) {
         setPhotos((prev) => [...prev, ...res.photos]);
         // First photo doubles as the list thumbnail.
@@ -151,19 +160,58 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
 
       {draft && (
         <div className="rounded-xl border border-[var(--sa-border)] p-4">
-          <p className="mb-3 text-[13px] font-medium text-[var(--sa-text-primary)]">
-            {draft.id ? "Edit fabric" : "New fabric"}
-            <span className="ml-2 text-[11.5px] font-normal text-[var(--sa-text-tertiary)]">
-              only name and category are required
-            </span>
-          </p>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <p className="text-[13px] font-medium text-[var(--sa-text-primary)]">
+              {draft.id ? "Edit fabric" : "New fabric"}
+            </p>
+            {draft.code ? (
+              <span className="rounded-md bg-[var(--sa-hover)] px-2 py-0.5 font-mono text-[12px] tabular-nums text-[var(--sa-text-primary)]">
+                {draft.code}
+              </span>
+            ) : (
+              <span className="text-[11.5px] text-[var(--sa-text-tertiary)]">
+                Code is allocated from tier + fabric type when you save
+              </span>
+            )}
+            {draft.id && (() => {
+              const gaps = templateGaps(draft, photos.map((p) => p.shot));
+              return gaps.length ? (
+                <span className="text-[11.5px]" style={{ color: "var(--sa-warning)" }}>
+                  Still needed: {gaps.join(", ")}
+                </span>
+              ) : (
+                <span className="text-[11.5px]" style={{ color: "var(--sa-success)" }}>Template complete</span>
+              );
+            })()}
+          </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {field("name", "Name *", "text", "Heavy organic French terry")}
             <div>
-              <span className={lbl}>Category *</span>
-              <select className={inp} value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>
-                {FABRIC_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              <span className={lbl}>Fabric type *</span>
+              <select
+                className={inp}
+                value={draft.category_code ?? FABRIC_CATEGORIES[0].code}
+                onChange={(e) => {
+                  const cat = categoryByCode(e.target.value);
+                  setDraft({ ...draft, category_code: e.target.value, category: cat?.en ?? e.target.value });
+                }}
+              >
+                {FABRIC_CATEGORIES.map((c) => (
+                  <option key={c.code} value={c.code}>{c.code} · {c.en} · {c.zh}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <span className={lbl}>Tier *</span>
+              <select
+                className={inp}
+                value={draft.tier ?? "standard"}
+                onChange={(e) => setDraft({ ...draft, tier: e.target.value as FabricTier })}
+                disabled={!!draft.id}
+                title={draft.id ? "Tier is part of the code and fixed once allocated" : ""}
+              >
+                {FABRIC_TIERS.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
             </div>
             {field("composition", "Composition", "text", "100% organic cotton")}
@@ -216,7 +264,7 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
                 accept="image/*"
                 multiple
                 className="hidden"
-                onChange={(e) => uploadPhotos(Array.from(e.target.files ?? []))}
+                onChange={(e) => uploadPhotos(Array.from(e.target.files ?? []), shotRef.current)}
               />
             </div>
           </div>
@@ -256,25 +304,64 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
           </div>
 
           {draft.id && (
-            <div className="mt-3">
-              <span className={lbl}>Photos ({photos.length})</span>
-              {photos.length === 0 ? (
-                <p className="text-[11.5px] text-[var(--sa-text-tertiary)]">
-                  Add the flat swatch, the drape, a close-up of the surface, and a garment made from it.
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {photos.map((ph) => (
-                    <div key={ph.id} className="group relative h-20 w-20 overflow-hidden rounded-lg border border-[var(--sa-border)]">
-                      <img src={ph.url} alt={ph.caption ?? ""} className="h-full w-full object-cover" />
-                      <button
-                        onClick={() => removePhoto(ph.id)}
-                        className="absolute right-1 top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[11px] text-white group-hover:flex"
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {REQUIRED_SHOTS.map((slot) => {
+                const shots = photos.filter((p) => p.shot === slot.id);
+                return (
+                  <div key={slot.id} className="rounded-lg border border-[var(--sa-border)] p-3">
+                    <div className="mb-1 flex items-center gap-1.5">
+                      <span className="text-[12.5px] font-medium text-[var(--sa-text-primary)]">{slot.label}</span>
+                      <span
+                        className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                        style={{
+                          background: shots.length ? "rgba(31,122,76,.12)" : "var(--sa-hover)",
+                          color: shots.length ? "var(--sa-success)" : "var(--sa-text-tertiary)",
+                        }}
                       >
-                        ✕
+                        {shots.length ? "Added" : "Required"}
+                      </span>
+                    </div>
+                    <p className="mb-2 text-[11px] text-[var(--sa-text-tertiary)]">{slot.hint}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {shots.map((ph) => (
+                        <div key={ph.id} className="group relative h-20 w-20 overflow-hidden rounded-lg border border-[var(--sa-border)]">
+                          <img src={ph.url} alt={slot.label} className="h-full w-full object-cover" />
+                          <button
+                            onClick={() => removePhoto(ph.id)}
+                            className="absolute right-1 top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[11px] text-white group-hover:flex"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => { shotRef.current = slot.id; swatchRef.current?.click(); }}
+                        className="flex h-20 w-20 items-center justify-center rounded-lg border border-dashed border-[var(--sa-border)] text-[var(--sa-text-tertiary)]"
+                        title={`Add ${slot.label}`}
+                      >
+                        <Upload size={15} />
                       </button>
                     </div>
-                  ))}
+                  </div>
+                );
+              })}
+
+              {photos.some((p) => p.shot !== "texture" && p.shot !== "color") && (
+                <div className="sm:col-span-2">
+                  <span className={lbl}>Other photos</span>
+                  <div className="flex flex-wrap gap-2">
+                    {photos.filter((p) => p.shot !== "texture" && p.shot !== "color").map((ph) => (
+                      <div key={ph.id} className="group relative h-16 w-16 overflow-hidden rounded-lg border border-[var(--sa-border)]">
+                        <img src={ph.url} alt="" className="h-full w-full object-cover" />
+                        <button
+                          onClick={() => removePhoto(ph.id)}
+                          className="absolute right-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[11px] text-white group-hover:flex"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -300,9 +387,17 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
               {f.swatch_url && <img src={f.swatch_url} alt="" className="h-full w-full object-cover" />}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium text-[var(--sa-text-primary)]">{f.name}</p>
+              <p className="flex items-center gap-2 truncate text-[13px] font-medium text-[var(--sa-text-primary)]">
+                {f.code && (
+                  <span className="rounded bg-[var(--sa-hover)] px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-[var(--sa-text-secondary)]">
+                    {f.code}
+                  </span>
+                )}
+                {f.name}
+              </p>
               <p className="truncate text-[11.5px] text-[var(--sa-text-tertiary)]">
-                {[f.category, f.composition, f.gsm ? `${f.gsm} gsm` : null, STOCK_LABEL[f.stock_status]]
+                {[f.tier === "premium" ? "Premium" : "Standard", f.category, f.composition,
+                  f.gsm ? `${f.gsm} gsm` : null, STOCK_LABEL[f.stock_status]]
                   .filter(Boolean).join(" · ")}
               </p>
             </div>

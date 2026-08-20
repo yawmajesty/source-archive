@@ -25,10 +25,28 @@ export async function saveFabric(
   if (!input.name.trim()) return { success: false, error: "Give the fabric a name" };
 
   const supabase = await getAgencySupabase();
+
+  // Allocate the code once, on creation. It is the durable identifier a tech
+  // pack or PO will quote, so it never changes afterwards — not even if the
+  // fabric is later re-tiered or re-categorised.
+  let code = input.code ?? null;
+  if (!input.id && !code) {
+    const { data: generated, error: codeError } = await supabase.rpc("next_fabric_code", {
+      ag_id: ctx.agency.id,
+      p_tier: input.tier ?? "standard",
+      p_cat: input.category_code ?? "OTH",
+    });
+    if (codeError) return { success: false, error: `Could not allocate a code: ${codeError.message}` };
+    code = generated as string;
+  }
+
   const row = {
     agency_id: ctx.agency.id,
     name: input.name.trim(),
+    code,
+    tier: input.tier ?? "standard",
     category: input.category,
+    category_code: input.category_code ?? null,
     composition: input.composition ?? null,
     gsm: input.gsm ?? null,
     mill: input.mill ?? null,
@@ -101,7 +119,7 @@ export interface FabricPhoto {
   fabric_id: string;
   url: string;
   kind: "image" | "video";
-  shot: "swatch" | "drape" | "detail" | "garment" | "other";
+  shot: "texture" | "color" | "swatch" | "drape" | "detail" | "garment" | "other";
   caption: string | null;
   position: number;
   created_at: string;
@@ -133,7 +151,7 @@ export async function addFabricPhotos(
         fabric_id: fabricId,
         url: it.url,
         kind: it.kind,
-        shot: it.shot ?? "swatch",
+        shot: it.shot ?? "texture",
         caption: it.caption ?? null,
         position: i,
       })),
