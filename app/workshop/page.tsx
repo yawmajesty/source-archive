@@ -4,6 +4,7 @@ import { listProductionLog } from "@/app/(app)/products/[id]/production-log-acti
 import { WorkshopClient } from "./WorkshopClient";
 import type { ProductionLogEntry } from "@/lib/production-log";
 import { can } from "@/lib/permissions";
+import { listWorkshopTasks, type WorkshopTask } from "./tasks-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,9 @@ export default async function WorkshopPage() {
 
   // Recent entries across the whole workshop, so the maker can see what was
   // logged yesterday without opening each product.
+  let tasks: WorkshopTask[] = [];
+  try { tasks = await listWorkshopTasks(); } catch { tasks = []; }
+
   let recent: ProductionLogEntry[] = [];
   try {
     const lists = await Promise.all(active.slice(0, 20).map((p) => listProductionLog(p.id)));
@@ -32,6 +36,7 @@ export default async function WorkshopPage() {
       recent={recent}
       authorName={ctx?.agency.name ?? null}
       canChangeStage={ctx ? can(ctx.role, ctx.permissions, "stage.change") : false}
+      tasks={tasks}
     />
   );
 }

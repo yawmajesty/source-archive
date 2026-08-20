@@ -17,6 +17,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const agencyCtx = await getAgencyContext();
   if (!agencyCtx) redirect("/onboarding-agency");
 
+  // The workshop is its own surface. Makers have no reason to see client
+  // records, costing or factories, so they never reach the agency backend at
+  // all — this is the route half of the gate; RLS is the other half.
+  if (agencyCtx.role === "maker") redirect("/workshop");
+
   const [clients, user] = await Promise.all([getClients(), currentUser()]);
 
   const now = new Date();

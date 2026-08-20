@@ -1,22 +1,24 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Camera, Check, Clock, AlertTriangle } from "lucide-react";
+import { Camera, Check, Clock, AlertTriangle, ListChecks } from "lucide-react";
 import { uploadFile } from "@/lib/storage";
 import { mediaKindFor } from "@/lib/product-media";
 import { PRODUCTION_STAGES, STAGE_LABEL, groupByDate, type ProductionLogEntry, type ProductionStage } from "@/lib/production-log";
 import { createLogEntry, attachLogPhotos } from "@/app/(app)/products/[id]/production-log-actions";
 import { changeProductStage, PRODUCT_STAGES } from "@/app/(app)/products/[id]/stage-actions";
+import { completeTask, type WorkshopTask } from "./tasks-actions";
 
 interface ProductLite { id: string; name: string; category: string; stage: string }
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-export function WorkshopClient({ products, recent, authorName, canChangeStage }: {
+export function WorkshopClient({ products, recent, authorName, canChangeStage, tasks }: {
   products: ProductLite[];
   recent: ProductionLogEntry[];
   authorName: string | null;
   canChangeStage: boolean;
+  tasks: WorkshopTask[];
 }) {
   const [productId, setProductId] = useState<string>(products[0]?.id ?? "");
   const [stage, setStage] = useState<ProductionStage>("pattern");
@@ -33,6 +35,7 @@ export function WorkshopClient({ products, recent, authorName, canChangeStage }:
     Object.fromEntries(products.map((p) => [p.id, p.stage])),
   );
   const [stageBusy, setStageBusy] = useState(false);
+  const [openTasks, setOpenTasks] = useState(tasks);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const grouped = useMemo(() => groupByDate(entries), [entries]);
@@ -83,12 +86,67 @@ export function WorkshopClient({ products, recent, authorName, canChangeStage }:
     setTimeout(() => setSaved(false), 2500);
   }
 
+  async function tickTask(id: string) {
+    setOpenTasks((prev) => prev.filter((t) => t.id !== id));
+    const res = await completeTask(id);
+    if (!res.success) setError(res.error ?? "Could not update the task");
+  }
+
+  const loggedToday = entries.filter((e) => e.work_date === today()).length;
+  const minutesToday = entries
+    .filter((e) => e.work_date === today())
+    .reduce((sum, e) => sum + (e.minutes_spent ?? 0), 0);
+
   const label = "mb-1 block text-[11px] font-semibold uppercase tracking-[.04em]";
   const field = "w-full rounded-[6px] px-2.5 py-1.5 text-[13px] outline-none";
   const fieldStyle = { background: "var(--fill)", color: "var(--label)", boxShadow: "inset 0 0 0 .5px var(--sep)" };
 
   return (
     <div className="flex flex-col gap-5">
+      {/* At-a-glance: only what a maker needs to see */}
+      <section className="grid grid-cols-3 gap-2">
+        {[
+          { label: "Products", value: String(products.length) },
+          { label: "Logged today", value: String(loggedToday) },
+          { label: "Minutes today", value: minutesToday ? String(minutesToday) : "—" },
+        ].map((t) => (
+          <div key={t.label} className="mac-card p-3">
+            <p className="text-[11px] uppercase tracking-[.04em]" style={{ color: "var(--label-3)" }}>{t.label}</p>
+            <p className="tnum mt-0.5 text-[19px] font-semibold tighter" style={{ color: "var(--label)" }}>{t.value}</p>
+          </div>
+        ))}
+      </section>
+
+      {openTasks.length > 0 && (
+        <section className="mac-card p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <ListChecks size={14} strokeWidth={1.6} style={{ color: "var(--accent)" }} />
+            <h2 className="text-[13.5px] font-semibold tight" style={{ color: "var(--label)" }}>
+              Your tasks
+            </h2>
+            <span className="tnum text-[11.5px]" style={{ color: "var(--label-3)" }}>{openTasks.length}</span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {openTasks.slice(0, 8).map((t) => (
+              <label key={t.id} className="flex cursor-pointer items-start gap-2.5">
+                <input type="checkbox" className="mt-0.5" onChange={() => tickTask(t.id)} />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[12.5px]" style={{ color: "var(--label)" }}>{t.title}</span>
+                  <span className="block text-[11px]" style={{ color: "var(--label-3)" }}>
+                    {[
+                      products.find((p) => p.id === t.product_id)?.name,
+                      t.due_date
+                        ? `due ${new Date(t.due_date).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`
+                        : null,
+                    ].filter(Boolean).join(" · ")}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="mac-card p-4">
         <h1 className="text-[16px] font-semibold tight" style={{ color: "var(--label)" }}>Today&apos;s work</h1>
         <p className="mt-0.5 text-[12.5px]" style={{ color: "var(--label-2)" }}>
