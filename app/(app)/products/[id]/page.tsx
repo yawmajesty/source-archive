@@ -6,6 +6,10 @@ import {
   getProject, getClient, getFactories, getProductPriceHistory,
 } from "@/lib/data";
 import { ProductDetailClient } from "./ProductDetailClient";
+import { ProductionLogPanel } from "./ProductionLogPanel";
+import { listProductionLog } from "./production-log-actions";
+import { getAgencyContext } from "@/lib/agency-data";
+import type { ProductionLogEntry } from "@/lib/production-log";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -32,7 +36,14 @@ export default async function ProductDetailPage({ params }: Props) {
     ? (await getClient(project.client_id))
     : null;
 
+  const ctx = await getAgencyContext();
+  // production_log_entries arrives with migration 012; until then the panel
+  // simply has nothing to show.
+  let logEntries: ProductionLogEntry[] = [];
+  try { logEntries = await listProductionLog(id); } catch { logEntries = []; }
+
   return (
+    <>
     <ProductDetailClient
       product={product}
       factory={factory ?? null}
@@ -45,5 +56,13 @@ export default async function ProductDetailPage({ params }: Props) {
       factories={factories}
       priceHistory={priceHistory}
     />
+    <div className="px-4 pb-8 md:px-6">
+      <ProductionLogPanel
+        productId={id}
+        entries={logEntries}
+        canRelease={ctx?.role === "admin" || ctx?.role === "team"}
+      />
+    </div>
+    </>
   );
 }

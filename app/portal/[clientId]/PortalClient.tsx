@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon, Plus, Trash2, X, CreditCard, Play, ChevronLeft } from "lucide-react";
 import { uploadFile } from "@/lib/storage";
 import { mediaKindFor, type ProductMediaItem } from "@/lib/product-media";
+import { STAGE_LABEL, groupByDate } from "@/lib/production-log";
 import type { Client, Contract, PortalFile, AgencySettings, SavedInvoice } from "@/lib/data";
 import {
   updateInvoiceStatus,
@@ -757,6 +758,37 @@ function ProductDetailView({ product, files, client, agencyLabel, onClose }: {
                 </button>
               </div>
             </div>
+            {product.productionLog.length > 0 && (
+              <div className="px-5 py-4" style={{ boxShadow: "inset 0 -0.5px 0 var(--sep)" }}>
+                <p className="mb-3 text-[11px] font-semibold uppercase tracking-[.04em]" style={{ color: "var(--label-3)" }}>
+                  How it&apos;s being made
+                </p>
+                <div className="flex flex-col gap-3">
+                  {groupByDate(product.productionLog).map((day) => (
+                    <div key={day.date} className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <span className="mt-1 h-[7px] w-[7px] rounded-full" style={{ background: "var(--accent)" }} />
+                        <span className="mt-1 w-px flex-1" style={{ background: "var(--sep)" }} />
+                      </div>
+                      <div className="min-w-0 flex-1 pb-1">
+                        <p className="tnum text-[11.5px]" style={{ color: "var(--label-3)" }}>
+                          {new Date(day.date).toLocaleDateString(undefined, { day: "numeric", month: "long" })}
+                        </p>
+                        {day.entries.map((e) => (
+                          <div key={e.id} className="mt-1">
+                            <span className="mr-1.5 rounded-[5px] px-1.5 py-0.5 text-[10.5px] font-semibold" style={{ background: "var(--fill)", color: "var(--label-2)" }}>
+                              {STAGE_LABEL[e.stage]}
+                            </span>
+                            <span className="text-[12.5px]" style={{ color: "var(--label)" }}>{e.summary}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {updates.length > 0 ? (
               <div className="flex flex-col gap-3">
                 {updates.map((u) => {
