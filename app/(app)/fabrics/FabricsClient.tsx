@@ -5,7 +5,7 @@ import { Plus, Eye, EyeOff, Search, Upload } from "lucide-react";
 import { uploadFile } from "@/lib/storage";
 import {
   FABRIC_CATEGORIES, FABRIC_TIERS, SUSTAINABILITY_TAGS, STOCK_LABEL, priceBandFor,
-  categoryByCode, REQUIRED_SHOTS, templateGaps,
+  categoryByCode, REQUIRED_SHOTS, templateGaps, STOCK_HINT,
   type Fabric, type FabricTier, type PriceUnit, type StockStatus,
 } from "@/lib/fabrics";
 import { saveFabric, setFabricPublished, addFabricPhotos, listFabricPhotos, deleteFabricPhoto, type FabricPhoto } from "./actions";
@@ -32,6 +32,7 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
   const [rows, setRows] = useState(fabrics);
   const [draft, setDraft] = useState<(Partial<Fabric> & { name: string; category: string }) | null>(null);
   const [q, setQ] = useState("");
+  const [stockFilter, setStockFilter] = useState<StockStatus | "all">("all");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const swatchRef = useRef<HTMLInputElement>(null);
@@ -40,12 +41,15 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return rows;
-    return rows.filter((f) =>
+    const byStock = stockFilter === "all" ? rows : rows.filter((f) => f.stock_status === stockFilter);
+    if (!needle) return byStock;
+    return byStock.filter((f) =>
       [f.code, f.name, f.category, f.category_code, f.composition, f.mill, f.tier]
         .filter(Boolean).join(" ").toLowerCase().includes(needle),
     );
-  }, [rows, q]);
+  }, [rows, q, stockFilter]);
+
+  const deadstockCount = rows.filter((f) => f.stock_status === "deadstock").length;
 
   const published = rows.filter((r) => r.is_published).length;
 
@@ -146,6 +150,35 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
         </button>
       </div>
 
+      {rows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(["all", "in_stock", "made_to_order", "deadstock", "discontinued"] as const).map((k) => {
+            const on = stockFilter === k;
+            const count = k === "all" ? rows.length : rows.filter((f) => f.stock_status === k).length;
+            return (
+              <button
+                key={k}
+                onClick={() => setStockFilter(k)}
+                title={k === "all" ? "" : STOCK_HINT[k]}
+                className="rounded-md px-2.5 py-1 text-[12px] transition-colors"
+                style={{
+                  background: on ? "var(--sa-accent)" : "var(--sa-hover)",
+                  color: on ? "#fff" : "var(--sa-text-secondary)",
+                }}
+              >
+                {k === "all" ? "All" : STOCK_LABEL[k]}
+                <span className="ml-1.5 tabular-nums opacity-70">{count}</span>
+              </button>
+            );
+          })}
+          {deadstockCount > 0 && stockFilter !== "deadstock" && (
+            <span className="ml-1 text-[11.5px] text-[var(--sa-text-tertiary)]">
+              {deadstockCount} deadstock — limited quantity, usually no repeat
+            </span>
+          )}
+        </div>
+      )}
+
       {rows.length === 0 && !draft && (
         <div className="rounded-xl border border-dashed border-[var(--sa-border)] p-8 text-center">
           <p className="text-[13px] text-[var(--sa-text-primary)]">The library is empty.</p>
@@ -220,7 +253,7 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
             {field("hand_feel", "Hand feel", "text", "Dense, brushed back, soft")}
             {field("stretch", "Stretch", "text", "None / 2-way / 4-way")}
             {field("drape", "Drape", "text", "Structured, holds shape")}
-            {field("mill", "Mill", "text")}
+            {field("mill", "Mill / supplier", "text", "Who this comes from")}
 
             {field("price_per_unit_usd", "Price", "number", "8.50")}
             <div>
@@ -246,6 +279,9 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
               >
                 {Object.entries(STOCK_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
+              <p className="mt-1 text-[11px] text-[var(--sa-text-tertiary)]">
+                {STOCK_HINT[(draft.stock_status ?? "made_to_order") as StockStatus]}
+              </p>
             </div>
             {field("our_cost_usd", "Our cost (internal)", "number")}
             <div>
@@ -401,6 +437,15 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
                   .filter(Boolean).join(" · ")}
               </p>
             </div>
+            {f.stock_status === "deadstock" && (
+              <span
+                className="rounded px-1.5 py-0.5 text-[10.5px] font-semibold"
+                style={{ background: "rgba(168,91,20,.14)", color: "var(--sa-warning)" }}
+                title={STOCK_HINT.deadstock}
+              >
+                Deadstock
+              </span>
+            )}
             <span className="text-[12px] tabular-nums text-[var(--sa-text-secondary)]">
               {f.price_per_unit_usd != null ? `$${f.price_per_unit_usd}/${f.price_unit}` : "—"}
               {f.price_per_unit_usd != null && (

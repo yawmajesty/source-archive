@@ -57,8 +57,12 @@ export const REQUIRED_SHOTS = [
 
 export type FabricShot = "texture" | "color" | "swatch" | "drape" | "detail" | "garment" | "other";
 
+// Deadstock deliberately lives on stock_status rather than here: recording it
+// in two places would split the data, and half the deadstock would then miss
+// the filter. It is both a sustainability credential and an availability
+// fact — availability is the one that has to be reliable.
 export const SUSTAINABILITY_TAGS = [
-  "GOTS", "GRS", "OEKO-TEX", "Recycled", "Organic", "Deadstock", "BCI", "Bluesign",
+  "GOTS", "GRS", "OEKO-TEX", "Recycled", "Organic", "BCI", "Bluesign",
 ] as const;
 
 export const STOCK_LABEL: Record<StockStatus, string> = {
@@ -66,6 +70,13 @@ export const STOCK_LABEL: Record<StockStatus, string> = {
   made_to_order: "Made to order",
   deadstock: "Deadstock",
   discontinued: "Discontinued",
+};
+
+export const STOCK_HINT: Record<StockStatus, string> = {
+  in_stock: "Held by the mill, ready to ship.",
+  made_to_order: "Woven or knitted to order against the MOQ.",
+  deadstock: "Surplus from a previous run — limited quantity, usually no repeat.",
+  discontinued: "No longer available; kept for reference.",
 };
 
 export interface Fabric {

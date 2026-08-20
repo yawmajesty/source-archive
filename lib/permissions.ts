@@ -13,6 +13,7 @@
 import type { AgencyRole } from "./agency-data";
 
 export type Capability =
+  | "client.edit"
   | "stage.change"
   | "log.write"
   | "log.release"
@@ -21,6 +22,7 @@ export type Capability =
   | "cost.view";
 
 export const CAPABILITIES: { id: Capability; label: string; hint: string }[] = [
+  { id: "client.edit",  label: "Work on client pages",          hint: "Add and edit client information, contacts and details. Everyone on the team can already see the client list; this is who may change it." },
   { id: "stage.change", label: "Move products between stages", hint: "Brief → Sourcing → Sampling, and so on. Every move is recorded and shown to the client." },
   { id: "log.write",    label: "Write production log entries", hint: "Record daily work with photos. Stays internal until released." },
   { id: "log.release",  label: "Release log entries to clients", hint: "Decide which workshop updates the client sees." },
@@ -32,7 +34,7 @@ export const CAPABILITIES: { id: Capability; label: string; hint: string }[] = [
 /** Sensible starting points when someone is added; an admin can adjust after. */
 export const ROLE_DEFAULTS: Record<AgencyRole, Capability[]> = {
   admin: [],                                  // admins bypass the check entirely
-  team: ["stage.change", "log.write", "log.release", "fabric.edit", "product.edit", "cost.view"],
+  team: ["client.edit", "stage.change", "log.write", "log.release", "fabric.edit", "product.edit", "cost.view"],
   maker: ["log.write"],                       // deliberately minimal; stage.change is granted per person
 };
 
@@ -45,7 +47,7 @@ export const ROLE_LABEL: Record<AgencyRole, string> = {
 export const ROLE_HINT: Record<AgencyRole, string> = {
   admin: "Full access, including billing and team management.",
   team: "Everything except team management and billing.",
-  maker: "Workshop only — the production log, plus whatever you grant below.",
+  maker: "Workshop only — the production log, plus whatever you grant below. Can see clients but not change them unless granted.",
 };
 
 export function can(role: AgencyRole, permissions: string[] | null | undefined, capability: Capability): boolean {
