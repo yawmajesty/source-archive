@@ -1,0 +1,278 @@
+"use client";
+
+import { useMemo, useRef, useState } from "react";
+import { Plus, Eye, EyeOff, Search, Upload } from "lucide-react";
+import { uploadFile } from "@/lib/storage";
+import {
+  FABRIC_CATEGORIES, SUSTAINABILITY_TAGS, STOCK_LABEL, priceBandFor,
+  type Fabric, type PriceUnit, type StockStatus,
+} from "@/lib/fabrics";
+import { saveFabric, setFabricPublished } from "./actions";
+
+// ─────────────────────────────────────────────────────────────
+// The population tool. 40 well-documented entries beat 200 stubs, so this is
+// built for fast repeated entry: name and category are the only required
+// fields, everything else can be filled in on a second pass, and nothing is
+// visible to clients until it is deliberately published.
+// ─────────────────────────────────────────────────────────────
+
+const empty = (): Partial<Fabric> & { name: string; category: string } => ({
+  name: "", category: FABRIC_CATEGORIES[0], price_unit: "metre",
+  stock_status: "made_to_order", sustainability: [], moq_unit: "metre",
+});
+
+export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canPublish: boolean }) {
+  const [rows, setRows] = useState(fabrics);
+  const [draft, setDraft] = useState<(Partial<Fabric> & { name: string; category: string }) | null>(null);
+  const [q, setQ] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const swatchRef = useRef<HTMLInputElement>(null);
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return rows;
+    return rows.filter((f) =>
+      [f.name, f.category, f.composition, f.mill].filter(Boolean).join(" ").toLowerCase().includes(needle),
+    );
+  }, [rows, q]);
+
+  const published = rows.filter((r) => r.is_published).length;
+
+  async function save() {
+    if (!draft) return;
+    setBusy(true); setError(null);
+    const res = await saveFabric(draft);
+    if (!res.success) { setError(res.error); setBusy(false); return; }
+    setRows((prev) => {
+      const without = prev.filter((r) => r.id !== res.fabric.id);
+      return [...without, res.fabric].sort((a, b) => a.name.localeCompare(b.name));
+    });
+    // Keep the category so a run of similar fabrics is quick to enter.
+    setDraft({ ...empty(), category: draft.category });
+    setBusy(false);
+  }
+
+  async function togglePublish(f: Fabric) {
+    const res = await setFabricPublished([f.id], !f.is_published);
+    if (!res.success) { setError(res.error ?? "Could not publish"); return; }
+    setRows((prev) => prev.map((r) => (r.id === f.id ? { ...r, is_published: !f.is_published } : r)));
+  }
+
+  async function uploadSwatch(file: File) {
+    if (!draft) return;
+    setBusy(true);
+    const path = `fabrics/${Date.now()}-${file.name.replace(/[^A-Za-z0-9._-]+/g, "-")}`;
+    const { url, error: upErr } = await uploadFile("brand-assets", path, file);
+    if (url) setDraft({ ...draft, swatch_url: url });
+    else if (upErr) setError(upErr);
+    setBusy(false);
+  }
+
+  const inp = "w-full rounded-md border border-[var(--sa-border)] bg-[var(--sa-window)] px-2 py-1.5 text-[13px] text-[var(--sa-text-primary)] outline-none";
+  const lbl = "mb-1 block text-[11px] font-medium text-[var(--sa-text-tertiary)]";
+
+  function field(key: keyof Fabric, label: string, type: "text" | "number" = "text", placeholder = "") {
+    return (
+      <div>
+        <span className={lbl}>{label}</span>
+        <input
+          type={type}
+          className={inp}
+          placeholder={placeholder}
+          value={(draft?.[key] as string | number | null) ?? ""}
+          onChange={(e) =>
+            setDraft((d) => d && ({
+              ...d,
+              [key]: type === "number" ? (e.target.value === "" ? null : parseFloat(e.target.value)) : e.target.value,
+            }))
+          }
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4 p-4 md:p-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="text-[17px] font-semibold text-[var(--sa-text-primary)]">Fabric library</h1>
+        <span className="text-[12px] text-[var(--sa-text-tertiary)]">
+          {rows.length} fabrics · {published} published to clients
+        </span>
+        <div className="flex-1" />
+        <div className="relative">
+          <Search size={13} className="absolute left-2 top-2 text-[var(--sa-text-tertiary)]" />
+          <input className={`${inp} pl-7 w-56`} placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <button
+          onClick={() => setDraft(draft ? null : empty())}
+          className="flex items-center gap-1.5 rounded-md bg-[var(--sa-accent)] px-3 py-1.5 text-[12.5px] font-medium text-white"
+        >
+          <Plus size={14} /> {draft ? "Close" : "Add fabric"}
+        </button>
+      </div>
+
+      {rows.length === 0 && !draft && (
+        <div className="rounded-xl border border-dashed border-[var(--sa-border)] p-8 text-center">
+          <p className="text-[13px] text-[var(--sa-text-primary)]">The library is empty.</p>
+          <p className="mx-auto mt-1 max-w-md text-[12px] text-[var(--sa-text-tertiary)]">
+            Nothing here is visible to clients until you publish it, so you can build it up over time.
+            Aim for depth over breadth — a well-documented handful reads better than a long list of stubs.
+          </p>
+        </div>
+      )}
+
+      {error && <p className="text-[12px] text-red-500">{error}</p>}
+
+      {draft && (
+        <div className="rounded-xl border border-[var(--sa-border)] p-4">
+          <p className="mb-3 text-[13px] font-medium text-[var(--sa-text-primary)]">
+            {draft.id ? "Edit fabric" : "New fabric"}
+            <span className="ml-2 text-[11.5px] font-normal text-[var(--sa-text-tertiary)]">
+              only name and category are required
+            </span>
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {field("name", "Name *", "text", "Heavy organic French terry")}
+            <div>
+              <span className={lbl}>Category *</span>
+              <select className={inp} value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>
+                {FABRIC_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            {field("composition", "Composition", "text", "100% organic cotton")}
+            {field("gsm", "GSM", "number", "380")}
+
+            {field("hand_feel", "Hand feel", "text", "Dense, brushed back, soft")}
+            {field("stretch", "Stretch", "text", "None / 2-way / 4-way")}
+            {field("drape", "Drape", "text", "Structured, holds shape")}
+            {field("mill", "Mill", "text")}
+
+            {field("price_per_unit_usd", "Price", "number", "8.50")}
+            <div>
+              <span className={lbl}>Price unit</span>
+              <select
+                className={inp}
+                value={draft.price_unit ?? "metre"}
+                onChange={(e) => setDraft({ ...draft, price_unit: e.target.value as PriceUnit })}
+              >
+                {["metre", "yard", "sqft", "kg"].map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
+            {field("moq", "MOQ", "number", "300")}
+            {field("lead_time_days", "Lead time (days)", "number", "21")}
+
+            {field("consumption_per_unit", "Consumption per garment", "number", "1.8")}
+            <div>
+              <span className={lbl}>Stock</span>
+              <select
+                className={inp}
+                value={draft.stock_status ?? "made_to_order"}
+                onChange={(e) => setDraft({ ...draft, stock_status: e.target.value as StockStatus })}
+              >
+                {Object.entries(STOCK_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            {field("our_cost_usd", "Our cost (internal)", "number")}
+            <div>
+              <span className={lbl}>Swatch</span>
+              <button onClick={() => swatchRef.current?.click()} className={`${inp} flex items-center gap-1.5 text-left`}>
+                <Upload size={13} /> {draft.swatch_url ? "Replace image" : "Upload image"}
+              </button>
+              <input
+                ref={swatchRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadSwatch(f); }}
+              />
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <span className={lbl}>Sustainability</span>
+            <div className="flex flex-wrap gap-1.5">
+              {SUSTAINABILITY_TAGS.map((t) => {
+                const on = (draft.sustainability ?? []).includes(t);
+                return (
+                  <button
+                    key={t}
+                    onClick={() =>
+                      setDraft({
+                        ...draft,
+                        sustainability: on
+                          ? (draft.sustainability ?? []).filter((x) => x !== t)
+                          : [...(draft.sustainability ?? []), t],
+                      })
+                    }
+                    className="rounded-md px-2 py-1 text-[11.5px]"
+                    style={{
+                      background: on ? "var(--sa-accent)" : "var(--sa-hover)",
+                      color: on ? "#fff" : "var(--sa-text-secondary)",
+                    }}
+                  >
+                    {t}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {field("notes", "Notes (client-visible)")}
+            {field("mill_notes", "Mill notes (internal)")}
+          </div>
+
+          <div className="mt-4 flex items-center gap-2">
+            <button
+              onClick={save}
+              disabled={busy || !draft.name.trim()}
+              className="rounded-md bg-[var(--sa-accent)] px-3 py-1.5 text-[12.5px] font-medium text-white disabled:opacity-40"
+            >
+              {busy ? "Saving…" : draft.id ? "Save changes" : "Save and add another"}
+            </button>
+            <button onClick={() => setDraft(null)} className="text-[12.5px] text-[var(--sa-text-secondary)]">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        {filtered.map((f) => (
+          <div key={f.id} className="flex items-center gap-3 rounded-lg border border-[var(--sa-border)] p-2.5">
+            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md" style={{ background: "var(--sa-hover)" }}>
+              {f.swatch_url && <img src={f.swatch_url} alt="" className="h-full w-full object-cover" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-medium text-[var(--sa-text-primary)]">{f.name}</p>
+              <p className="truncate text-[11.5px] text-[var(--sa-text-tertiary)]">
+                {[f.category, f.composition, f.gsm ? `${f.gsm} gsm` : null, STOCK_LABEL[f.stock_status]]
+                  .filter(Boolean).join(" · ")}
+              </p>
+            </div>
+            <span className="text-[12px] tabular-nums text-[var(--sa-text-secondary)]">
+              {f.price_per_unit_usd != null ? `$${f.price_per_unit_usd}/${f.price_unit}` : "—"}
+              {f.price_per_unit_usd != null && (
+                <span className="ml-1.5 text-[var(--sa-text-tertiary)]">
+                  {f.price_band ?? priceBandFor(f.price_per_unit_usd, f.price_unit)}
+                </span>
+              )}
+            </span>
+            <button onClick={() => setDraft(f)} className="text-[12px] text-[var(--sa-text-secondary)]">Edit</button>
+            {canPublish && (
+              <button
+                onClick={() => togglePublish(f)}
+                className="flex items-center gap-1 text-[11.5px]"
+                style={{ color: f.is_published ? "var(--sa-success)" : "var(--sa-text-tertiary)" }}
+                title={f.is_published ? "Visible to clients" : "Hidden from clients"}
+              >
+                {f.is_published ? <Eye size={13} /> : <EyeOff size={13} />}
+                {f.is_published ? "Published" : "Draft"}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

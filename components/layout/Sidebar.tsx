@@ -27,6 +27,7 @@ const WORKSPACE_NAV = [
   { href: "/tasks",      label: "Tasks",        icon: CheckSquare },
   { href: "/costs",      label: "Cost Tracker", icon: DollarSign },
   { href: "/factories",  label: "Factories",    icon: Factory },
+  { href: "/fabrics",    label: "Fabrics",      icon: Layers },
   { href: "/leads",       label: "Leads",        icon: Inbox },
   { href: "/references",  label: "References",   icon: Layers },
   { href: "/techpacks",   label: "Tech Packs",   icon: FileText },
