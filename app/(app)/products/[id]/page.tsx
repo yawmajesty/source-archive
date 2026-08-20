@@ -43,7 +43,6 @@ export default async function ProductDetailPage({ params }: Props) {
   try { logEntries = await listProductionLog(id); } catch { logEntries = []; }
 
   return (
-    <>
     <ProductDetailClient
       product={product}
       factory={factory ?? null}
@@ -55,14 +54,13 @@ export default async function ProductDetailPage({ params }: Props) {
       client={client}
       factories={factories}
       priceHistory={priceHistory}
+      productionLog={
+        <ProductionLogPanel
+          productId={id}
+          entries={logEntries}
+          canRelease={ctx?.role === "admin" || ctx?.role === "team"}
+        />
+      }
     />
-    <div className="px-4 pb-8 md:px-6">
-      <ProductionLogPanel
-        productId={id}
-        entries={logEntries}
-        canRelease={ctx?.role === "admin" || ctx?.role === "team"}
-      />
-    </div>
-    </>
   );
 }

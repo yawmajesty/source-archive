@@ -35,6 +35,8 @@ interface Props {
   project: Project | null;
   client: Client | null;
   priceHistory: ProductPriceHistoryEntry[];
+  /** Rendered at the end of the main column — the production log release desk. */
+  productionLog?: React.ReactNode;
 }
 
 function EditProductDrawer({
@@ -1531,6 +1533,7 @@ export function ProductDetailClient({
   project,
   client,
   priceHistory,
+  productionLog,
 }: Props) {
   const router = useRouter();
   const [product, setProduct] = useState(initialProduct);
@@ -1984,6 +1987,8 @@ export function ProductDetailClient({
               })()}
             </CollapsibleSection>
           )}
+
+          {productionLog}
         </div>
 
         {/* Right column — below on mobile, sidebar on desktop */}

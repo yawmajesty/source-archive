@@ -131,8 +131,8 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 md:p-6">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="shrink-0 flex flex-wrap items-center gap-3 px-4 pt-4 md:px-6 md:pt-6">
         <h1 className="text-[17px] font-semibold text-[var(--sa-text-primary)]">Fabric library</h1>
         <span className="text-[12px] text-[var(--sa-text-tertiary)]">
           {rows.length} fabrics · {published} published to clients
@@ -150,6 +150,7 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
         </button>
       </div>
 
+      <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 pb-10 pt-4 md:px-6">
       {rows.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           {(["all", "in_stock", "made_to_order", "deadstock", "discontinued"] as const).map((k) => {
@@ -468,6 +469,7 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
             )}
           </div>
         ))}
+      </div>
       </div>
     </div>
   );

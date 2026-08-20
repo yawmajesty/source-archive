@@ -73,14 +73,15 @@ export function TeamClient({ agencyName, currentUserId, isAdmin, members, unatta
   }
 
   return (
-    <div className="flex flex-col gap-5 p-4 md:p-6">
-      <div>
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="shrink-0 px-4 pt-4 md:px-6 md:pt-6">
         <h1 className="text-[17px] font-semibold text-[var(--sa-text-primary)]">Team &amp; permissions</h1>
         <p className="mt-0.5 text-[12.5px] text-[var(--sa-text-tertiary)]">
           Who can do what inside {agencyName}. Admins have everything; everyone else has exactly what you grant.
         </p>
       </div>
 
+      <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-4 pb-10 pt-4 md:px-6">
       {error && <p className="text-[12.5px] text-red-500">{error}</p>}
 
       {isAdmin && pending.length > 0 && (
@@ -225,6 +226,7 @@ export function TeamClient({ agencyName, currentUserId, isAdmin, members, unatta
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );
