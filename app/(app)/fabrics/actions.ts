@@ -91,3 +91,65 @@ export async function deleteFabric(id: string): Promise<{ success: boolean; erro
   revalidatePath("/fabrics");
   return { success: true };
 }
+
+// ── Fabric photos ────────────────────────────────────────────────
+// One swatch image isn't enough to judge a fabric: a brand needs the flat
+// swatch, the drape, the surface up close, and a garment made from it.
+
+export interface FabricPhoto {
+  id: string;
+  fabric_id: string;
+  url: string;
+  kind: "image" | "video";
+  shot: "swatch" | "drape" | "detail" | "garment" | "other";
+  caption: string | null;
+  position: number;
+  created_at: string;
+}
+
+export async function listFabricPhotos(fabricId: string): Promise<FabricPhoto[]> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { data } = await supabase
+    .from("fabric_media")
+    .select("*")
+    .eq("fabric_id", fabricId)
+    .order("position")
+    .order("created_at");
+  return (data ?? []) as FabricPhoto[];
+}
+
+export async function addFabricPhotos(
+  fabricId: string,
+  items: { url: string; kind: "image" | "video"; shot?: FabricPhoto["shot"]; caption?: string | null }[],
+): Promise<{ success: true; photos: FabricPhoto[] } | { success: false; error: string }> {
+  await ctxOrThrow();
+  if (!items.length) return { success: false, error: "Nothing to add" };
+  const supabase = await getAgencySupabase();
+  const { data, error } = await supabase
+    .from("fabric_media")
+    .upsert(
+      items.map((it, i) => ({
+        fabric_id: fabricId,
+        url: it.url,
+        kind: it.kind,
+        shot: it.shot ?? "swatch",
+        caption: it.caption ?? null,
+        position: i,
+      })),
+      { onConflict: "fabric_id,url" },
+    )
+    .select();
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/fabrics");
+  return { success: true, photos: (data ?? []) as FabricPhoto[] };
+}
+
+export async function deleteFabricPhoto(id: string): Promise<{ success: boolean; error?: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase.from("fabric_media").delete().eq("id", id);
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/fabrics");
+  return { success: true };
+}

@@ -7,7 +7,7 @@ import {
   FABRIC_CATEGORIES, SUSTAINABILITY_TAGS, STOCK_LABEL, priceBandFor,
   type Fabric, type PriceUnit, type StockStatus,
 } from "@/lib/fabrics";
-import { saveFabric, setFabricPublished } from "./actions";
+import { saveFabric, setFabricPublished, addFabricPhotos, listFabricPhotos, deleteFabricPhoto, type FabricPhoto } from "./actions";
 
 // ─────────────────────────────────────────────────────────────
 // The population tool. 40 well-documented entries beat 200 stubs, so this is
@@ -28,6 +28,7 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const swatchRef = useRef<HTMLInputElement>(null);
+  const [photos, setPhotos] = useState<FabricPhoto[]>([]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -53,20 +54,44 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
     setBusy(false);
   }
 
+  async function openFabric(f: Fabric) {
+    setDraft(f);
+    setPhotos([]);
+    const list = await listFabricPhotos(f.id);
+    setPhotos(list);
+  }
+
   async function togglePublish(f: Fabric) {
     const res = await setFabricPublished([f.id], !f.is_published);
     if (!res.success) { setError(res.error ?? "Could not publish"); return; }
     setRows((prev) => prev.map((r) => (r.id === f.id ? { ...r, is_published: !f.is_published } : r)));
   }
 
-  async function uploadSwatch(file: File) {
-    if (!draft) return;
-    setBusy(true);
-    const path = `fabrics/${Date.now()}-${file.name.replace(/[^A-Za-z0-9._-]+/g, "-")}`;
-    const { url, error: upErr } = await uploadFile("brand-assets", path, file);
-    if (url) setDraft({ ...draft, swatch_url: url });
-    else if (upErr) setError(upErr);
+  async function uploadPhotos(files: File[]) {
+    if (!draft?.id || !files.length) return;
+    setBusy(true); setError(null);
+    const uploaded: { url: string; kind: "image" | "video" }[] = [];
+    for (const file of files) {
+      const path = `fabrics/${draft.id}/${Date.now()}-${file.name.replace(/[^A-Za-z0-9._-]+/g, "-")}`;
+      const { url, error: upErr } = await uploadFile("brand-assets", path, file);
+      if (url) uploaded.push({ url, kind: "image" });
+      else if (upErr) setError(upErr);
+    }
+    if (uploaded.length) {
+      const res = await addFabricPhotos(draft.id, uploaded);
+      if (res.success) {
+        setPhotos((prev) => [...prev, ...res.photos]);
+        // First photo doubles as the list thumbnail.
+        if (!draft.swatch_url) setDraft({ ...draft, swatch_url: uploaded[0].url });
+      } else setError(res.error);
+    }
     setBusy(false);
+  }
+
+  async function removePhoto(id: string) {
+    const res = await deleteFabricPhoto(id);
+    if (res.success) setPhotos((prev) => prev.filter((p) => p.id !== id));
+    else setError(res.error ?? "Could not remove photo");
   }
 
   const inp = "w-full rounded-md border border-[var(--sa-border)] bg-[var(--sa-window)] px-2 py-1.5 text-[13px] text-[var(--sa-text-primary)] outline-none";
@@ -176,16 +201,22 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
             </div>
             {field("our_cost_usd", "Our cost (internal)", "number")}
             <div>
-              <span className={lbl}>Swatch</span>
-              <button onClick={() => swatchRef.current?.click()} className={`${inp} flex items-center gap-1.5 text-left`}>
-                <Upload size={13} /> {draft.swatch_url ? "Replace image" : "Upload image"}
+              <span className={lbl}>Photos</span>
+              <button
+                onClick={() => swatchRef.current?.click()}
+                disabled={!draft.id}
+                title={draft.id ? "" : "Save the fabric first, then add photos"}
+                className={`${inp} flex items-center gap-1.5 text-left disabled:opacity-50`}
+              >
+                <Upload size={13} /> {draft.id ? "Add photos" : "Save first"}
               </button>
               <input
                 ref={swatchRef}
                 type="file"
                 accept="image/*"
+                multiple
                 className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadSwatch(f); }}
+                onChange={(e) => uploadPhotos(Array.from(e.target.files ?? []))}
               />
             </div>
           </div>
@@ -224,6 +255,31 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
             {field("mill_notes", "Mill notes (internal)")}
           </div>
 
+          {draft.id && (
+            <div className="mt-3">
+              <span className={lbl}>Photos ({photos.length})</span>
+              {photos.length === 0 ? (
+                <p className="text-[11.5px] text-[var(--sa-text-tertiary)]">
+                  Add the flat swatch, the drape, a close-up of the surface, and a garment made from it.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {photos.map((ph) => (
+                    <div key={ph.id} className="group relative h-20 w-20 overflow-hidden rounded-lg border border-[var(--sa-border)]">
+                      <img src={ph.url} alt={ph.caption ?? ""} className="h-full w-full object-cover" />
+                      <button
+                        onClick={() => removePhoto(ph.id)}
+                        className="absolute right-1 top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[11px] text-white group-hover:flex"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="mt-4 flex items-center gap-2">
             <button
               onClick={save}
@@ -258,7 +314,7 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
                 </span>
               )}
             </span>
-            <button onClick={() => setDraft(f)} className="text-[12px] text-[var(--sa-text-secondary)]">Edit</button>
+            <button onClick={() => openFabric(f)} className="text-[12px] text-[var(--sa-text-secondary)]">Edit</button>
             {canPublish && (
               <button
                 onClick={() => togglePublish(f)}

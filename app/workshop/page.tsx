@@ -3,6 +3,7 @@ import { getAgencyContext } from "@/lib/agency-data";
 import { listProductionLog } from "@/app/(app)/products/[id]/production-log-actions";
 import { WorkshopClient } from "./WorkshopClient";
 import type { ProductionLogEntry } from "@/lib/production-log";
+import { can } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ export default async function WorkshopPage() {
       products={active.map((p) => ({ id: p.id, name: p.name, category: p.category, stage: p.stage }))}
       recent={recent}
       authorName={ctx?.agency.name ?? null}
+      canChangeStage={ctx ? can(ctx.role, ctx.permissions, "stage.change") : false}
     />
   );
 }

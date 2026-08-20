@@ -28,6 +28,8 @@ export interface AgencyContext {
   agency: Agency;
   role: AgencyRole;
   currentUserId: string;
+  /** Capability keys granted on top of the role. Admins bypass these. */
+  permissions: string[];
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -59,7 +61,7 @@ export const getAgencyContext = cache(async (): Promise<AgencyContext | null> =>
   const supabase = await getAgencySupabase();
   const { data } = await supabase
     .from("agency_members")
-    .select("role, agency:agencies(*)")
+    .select("role, permissions, agency:agencies(*)")
     .eq("user_id", userId)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -72,6 +74,7 @@ export const getAgencyContext = cache(async (): Promise<AgencyContext | null> =>
     agency: row.agency,
     role: row.role,
     currentUserId: userId,
+    permissions: (row as unknown as { permissions?: string[] }).permissions ?? [],
   };
 });
 

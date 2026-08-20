@@ -6,15 +6,17 @@ import { uploadFile } from "@/lib/storage";
 import { mediaKindFor } from "@/lib/product-media";
 import { PRODUCTION_STAGES, STAGE_LABEL, groupByDate, type ProductionLogEntry, type ProductionStage } from "@/lib/production-log";
 import { createLogEntry, attachLogPhotos } from "@/app/(app)/products/[id]/production-log-actions";
+import { changeProductStage, PRODUCT_STAGES } from "@/app/(app)/products/[id]/stage-actions";
 
 interface ProductLite { id: string; name: string; category: string; stage: string }
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-export function WorkshopClient({ products, recent, authorName }: {
+export function WorkshopClient({ products, recent, authorName, canChangeStage }: {
   products: ProductLite[];
   recent: ProductionLogEntry[];
   authorName: string | null;
+  canChangeStage: boolean;
 }) {
   const [productId, setProductId] = useState<string>(products[0]?.id ?? "");
   const [stage, setStage] = useState<ProductionStage>("pattern");
@@ -27,9 +29,23 @@ export function WorkshopClient({ products, recent, authorName }: {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [entries, setEntries] = useState(recent);
+  const [stages, setStages] = useState<Record<string, string>>(
+    Object.fromEntries(products.map((p) => [p.id, p.stage])),
+  );
+  const [stageBusy, setStageBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const grouped = useMemo(() => groupByDate(entries), [entries]);
+  const currentStage = stages[productId];
+
+  async function moveStage(to: string) {
+    if (!productId || stageBusy) return;
+    setStageBusy(true); setError(null);
+    const res = await changeProductStage(productId, to, summary.trim() || undefined);
+    if (!res.success) setError(res.error);
+    else setStages((prev) => ({ ...prev, [productId]: to }));
+    setStageBusy(false);
+  }
   const productName = (id: string) => products.find((p) => p.id === id)?.name ?? "Unknown product";
 
   async function handleSave() {
@@ -90,8 +106,35 @@ export function WorkshopClient({ products, recent, authorName }: {
             </select>
           </div>
 
+          {canChangeStage && productId && (
+            <div>
+              <span className={label} style={{ color: "var(--label-3)" }}>
+                Where this product is now
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {PRODUCT_STAGES.map((s) => (
+                  <button
+                    key={s.id}
+                    disabled={stageBusy}
+                    onClick={() => moveStage(s.id)}
+                    className="rounded-[6px] px-2.5 py-1 text-[12.5px] transition-colors disabled:opacity-50"
+                    style={{
+                      background: currentStage === s.id ? "var(--green)" : "var(--fill)",
+                      color: currentStage === s.id ? "#fff" : "var(--label-2)",
+                    }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[11px]" style={{ color: "var(--label-3)" }}>
+                Moving a product is recorded and shown to the client.
+              </p>
+            </div>
+          )}
+
           <div>
-            <span className={label} style={{ color: "var(--label-3)" }}>Stage</span>
+            <span className={label} style={{ color: "var(--label-3)" }}>What kind of work</span>
             <div className="flex flex-wrap gap-1.5">
               {PRODUCTION_STAGES.map((s) => (
                 <button
