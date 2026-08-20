@@ -7,21 +7,6 @@ import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 // a future enhancement.
 const OWNER_AGENCY_ID = "ag-source-archive";
 
-export async function uploadTechpackFile(formData: FormData): Promise<string | null> {
-  const file = formData.get("file") as File | null;
-  if (!file) return null;
-  const supabase = getAgencyServiceSupabase();
-  const ext = file.name.split(".").pop() ?? "bin";
-  const path = `techpacks/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  const bytes = await file.arrayBuffer();
-  const { data, error } = await supabase.storage
-    .from("product-media")
-    .upload(path, bytes, { contentType: file.type, upsert: false });
-  if (error || !data) return null;
-  const { data: { publicUrl } } = supabase.storage.from("product-media").getPublicUrl(data.path);
-  return publicUrl;
-}
-
 export interface TechpackPayload {
   contact_name: string;
   company_name: string;

@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, Plus, X, ChevronRight, ChevronLeft, Upload, Link } from "lucide-react";
-import { submitTechpack, uploadTechpackFile } from "./actions";
+import { submitTechpack } from "./actions";
+import { uploadFile } from "@/lib/storage";
 
 // ── Constants ────────────────────────────────────────
 
@@ -75,6 +76,7 @@ function FileUploadList({
   label: string; hint?: string; values: string[]; onChange: (v: string[]) => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [showUrl, setShowUrl] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -90,12 +92,16 @@ function FileUploadList({
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
     setUploading(true);
+    setUploadError(null);
     const newUrls: string[] = [];
     for (const file of files) {
-      const fd = new FormData();
-      fd.append("file", file);
-      const url = await uploadTechpackFile(fd);
+      // Direct browser -> storage. Routing the file through a Server Action
+      // capped it at 1MB, so any real tech pack PDF failed silently.
+      const safe = file.name.replace(/[^A-Za-z0-9._-]+/g, "-");
+      const path = `techpacks/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`;
+      const { url, error } = await uploadFile("product-media", path, file);
       if (url) newUrls.push(url);
+      else if (error) setUploadError(error);
     }
     onChange([...values, ...newUrls]);
     setUploading(false);
@@ -163,6 +169,9 @@ function FileUploadList({
         </button>
         <input ref={fileRef} type="file" accept="image/*,.pdf" multiple className="hidden" onChange={handleFiles} />
       </div>
+      {uploadError && (
+        <p className="mt-2 text-[12px] text-red-500">Upload failed: {uploadError}</p>
+      )}
 
       {/* URL input */}
       {showUrl && (
