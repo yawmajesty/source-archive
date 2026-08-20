@@ -23,7 +23,11 @@ import {
   submitReferenceSampleFromPortal,
 } from "./actions";
 import { downloadInvoicePDF } from "@/lib/invoice-pdf";
-import { PortalShell, RightRailToggle, useRightRail, RailSection } from "./shell/PortalShell";
+import { PortalShell, RightRailToggle, useRightRail, RailSection, Segmented } from "./shell/PortalShell";
+import {
+  GalleryView, TableView, KanbanView, TimelineView,
+  COLLECTION_VIEWS, type CollectionView,
+} from "./shell/CollectionViews";
 import { CostingInspector, SampleTimeline } from "./shell/CostingInspector";
 import {
   LeftRail, RightRailOverview, attentionItems, upcomingItems,
@@ -1976,10 +1980,22 @@ function usePortalVisitTracker(clientId: string, tab: Tab, enabled: boolean) {
   }, [clientId, tab, enabled]);
 }
 
+function CollectionBody({ view, projects, onSelect }: {
+  view: CollectionView;
+  projects: PortalProject[];
+  onSelect: (p: PortalProduct) => void;
+}) {
+  if (view === "table") return <TableView projects={projects} onSelect={onSelect} />;
+  if (view === "kanban") return <KanbanView projects={projects} onSelect={onSelect} />;
+  if (view === "timeline") return <TimelineView projects={projects} onSelect={onSelect} />;
+  return <GalleryView projects={projects} onSelect={onSelect} />;
+}
+
 // ── Main portal ──────────────────────────────────────────────
 export function PortalClient({ client, locked, projects, contracts, files, agencySettings, isAgency, savedInvoices }: Props) {
   const [route, setRoute] = useState<PortalRoute>("overview");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [view, setView] = useState<CollectionView>("gallery");
   const [selectedProduct, setSelectedProduct] = useState<PortalProduct | null>(null);
   const { dark, toggle } = usePortalTheme();
   const [rightOpen, toggleRight] = useRightRail();
@@ -2038,6 +2054,12 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
       {/* breadcrumb */}
       <span className="text-[13px]" style={{ color: "var(--label-3)" }}>/</span>
       <span className="text-[13px]" style={{ color: "var(--label-2)" }}>{ROUTE_TITLE[route]}</span>
+
+      {!selectedProduct && (route === "overview" || route === "projects") && (
+        <div className="ml-2 hidden md:block">
+          <Segmented options={COLLECTION_VIEWS} value={view} onChange={setView} />
+        </div>
+      )}
 
       <div className="flex-1" />
 
@@ -2143,7 +2165,7 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
         {!selectedProduct && route === "overview" && (
           <div className="flex flex-col gap-5">
             <StatsRow projects={projects} files={files} />
-            <ProductGrid projects={projects} files={files} onSelect={setSelectedProduct} />
+            <CollectionBody view={view} projects={projects} onSelect={setSelectedProduct} />
           </div>
         )}
 
@@ -2171,7 +2193,14 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
           <SamplingInvoice projects={projects} client={client} agencySettings={agencySettings} isAgency={isAgency} savedInvoices={savedInvoices} />
         )}
 
-        {!selectedProduct && route === "projects" && <ProjectsTable projects={visibleProjects} client={client} />}
+        {!selectedProduct && route === "projects" && (
+          <div className="flex flex-col gap-4">
+            <h2 className="text-[17px] font-semibold tight" style={{ color: "var(--label)" }}>
+              {projects.find((p) => p.id === selectedProjectId)?.name ?? "All collections"}
+            </h2>
+            <CollectionBody view={view} projects={visibleProjects} onSelect={setSelectedProduct} />
+          </div>
+        )}
 
         {!selectedProduct && route === "files" && <FilesSection files={files} />}
 
