@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 import { getAgencyContext } from "@/lib/agency-data";
 import { listTeam, listUnattachedUsers, type TeamMember } from "../settings/team-actions";
+import { getClients } from "@/lib/data";
 import { TeamClient } from "./TeamClient";
 
 export const metadata = { title: "Team & permissions — Source[Archive]" };
@@ -12,6 +13,7 @@ export default async function TeamPage() {
   if (!ctx) redirect("/onboarding-agency");
 
   const members = await listTeam();
+  const clients = await getClients();
   let unattached: TeamMember[] = [];
   if (ctx.role === "admin") {
     try { unattached = await listUnattachedUsers(); } catch { unattached = []; }
@@ -24,6 +26,7 @@ export default async function TeamPage() {
       isAdmin={ctx.role === "admin"}
       members={members}
       unattached={unattached}
+      clients={clients.map((c) => ({ id: c.id, name: c.name }))}
     />
   );
 }

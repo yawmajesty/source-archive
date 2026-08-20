@@ -11,6 +11,8 @@ export interface TeamMember {
   user_id: string;
   role: AgencyRole;
   permissions: string[];
+  /** Client ids this member is limited to. Empty = every client. */
+  client_scope: string[];
   created_at: string;
   email: string | null;
   name: string | null;
@@ -32,7 +34,7 @@ export async function listTeam(): Promise<TeamMember[]> {
   const supabase = await getAgencySupabase();
   const { data } = await supabase
     .from("agency_members")
-    .select("user_id, role, permissions, created_at")
+    .select("user_id, role, permissions, client_scope, created_at")
     .eq("agency_id", ctx.agency.id)
     .order("created_at");
 
@@ -51,7 +53,7 @@ export async function listTeam(): Promise<TeamMember[]> {
         // Deleted Clerk user, or a permissions issue — show the id rather
         // than failing the whole page.
       }
-      return { ...r, email, name, other_agency: null };
+      return { ...r, client_scope: r.client_scope ?? [], email, name, other_agency: null };
     }),
   );
 }
@@ -100,6 +102,7 @@ export async function listUnattachedUsers(): Promise<TeamMember[]> {
         user_id: r.user_id,
         role: r.role as AgencyRole,
         permissions: r.permissions ?? [],
+        client_scope: r.client_scope ?? [],
         created_at: r.created_at,
         email,
         name,
@@ -176,5 +179,30 @@ export async function removeMember(userId: string): Promise<{ success: boolean; 
     .eq("user_id", userId);
   if (error) return { success: false, error: error.message };
   revalidatePath("/settings");
+  return { success: true };
+}
+
+/**
+ * Limit a member to specific clients. An empty list means every client —
+ * that is the default and what every existing member has, so scoping is
+ * opt-in per person rather than something that can silently lock people out.
+ */
+export async function setMemberClientScope(
+  userId: string,
+  clientIds: string[],
+): Promise<{ success: boolean; error?: string }> {
+  const ctx = await adminOrThrow();
+  if (userId === ctx.currentUserId) {
+    return { success: false, error: "You can't limit your own access" };
+  }
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase
+    .from("agency_members")
+    .update({ client_scope: clientIds })
+    .eq("agency_id", ctx.agency.id)
+    .eq("user_id", userId);
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/settings");
+  revalidatePath("/team");
   return { success: true };
 }

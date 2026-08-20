@@ -5,16 +5,17 @@ import { UserPlus, Trash2, AlertCircle } from "lucide-react";
 import type { AgencyRole } from "@/lib/agency-data";
 import { CAPABILITIES, ROLE_LABEL, ROLE_HINT, type Capability } from "@/lib/permissions";
 import type { TeamMember } from "../settings/team-actions";
-import { addMember, setMemberRole, setMemberPermissions, removeMember } from "../settings/team-actions";
+import { addMember, setMemberRole, setMemberPermissions, removeMember, setMemberClientScope } from "../settings/team-actions";
 
 const ROLES: AgencyRole[] = ["admin", "team", "maker"];
 
-export function TeamClient({ agencyName, currentUserId, isAdmin, members, unattached }: {
+export function TeamClient({ agencyName, currentUserId, isAdmin, members, unattached, clients }: {
   agencyName: string;
   currentUserId: string;
   isAdmin: boolean;
   members: TeamMember[];
   unattached: TeamMember[];
+  clients: { id: string; name: string }[];
 }) {
   const [rows, setRows] = useState(members);
   const [pending, setPending] = useState(unattached);
@@ -45,6 +46,21 @@ export function TeamClient({ agencyName, currentUserId, isAdmin, members, unatta
     setRows((r) => r.map((x) => (x.user_id === m.user_id ? { ...x, permissions: next } : x)));
     const res = await setMemberPermissions(m.user_id, next as Capability[]);
     if (!res.success) setError(res.error ?? "Could not save permissions");
+  }
+
+  async function toggleClient(m: TeamMember, clientId: string) {
+    const next = m.client_scope.includes(clientId)
+      ? m.client_scope.filter((c) => c !== clientId)
+      : [...m.client_scope, clientId];
+    setRows((r) => r.map((x) => (x.user_id === m.user_id ? { ...x, client_scope: next } : x)));
+    const res = await setMemberClientScope(m.user_id, next);
+    if (!res.success) setError(res.error ?? "Could not save client access");
+  }
+
+  async function clearScope(m: TeamMember) {
+    setRows((r) => r.map((x) => (x.user_id === m.user_id ? { ...x, client_scope: [] } : x)));
+    const res = await setMemberClientScope(m.user_id, []);
+    if (!res.success) setError(res.error ?? "Could not save client access");
   }
 
   async function remove(m: TeamMember) {
@@ -163,6 +179,47 @@ export function TeamClient({ agencyName, currentUserId, isAdmin, members, unatta
                       </label>
                     );
                   })}
+                </div>
+              )}
+
+              {m.role !== "admin" && (
+                <div className="mt-3 rounded-lg border border-[var(--sa-border)] p-3">
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <span className="text-[12.5px] font-medium text-[var(--sa-text-primary)]">Client access</span>
+                    <span className="text-[11.5px] text-[var(--sa-text-tertiary)]">
+                      {m.client_scope.length === 0
+                        ? "All clients"
+                        : `${m.client_scope.length} of ${clients.length} clients`}
+                    </span>
+                    {m.client_scope.length > 0 && isAdmin && (
+                      <button onClick={() => clearScope(m)} className="text-[11.5px] text-[var(--sa-accent)]">
+                        Give access to all
+                      </button>
+                    )}
+                  </div>
+                  <p className="mb-2 text-[11.5px] text-[var(--sa-text-tertiary)]">
+                    Pick specific brands to limit them to one project&apos;s work. Leave everything unticked and
+                    they see every client.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {clients.map((c) => {
+                      const on = m.client_scope.includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          disabled={!isAdmin}
+                          onClick={() => toggleClient(m, c.id)}
+                          className="rounded-md px-2 py-1 text-[11.5px] transition-colors disabled:opacity-60"
+                          style={{
+                            background: on ? "var(--sa-accent)" : "var(--sa-hover)",
+                            color: on ? "#fff" : "var(--sa-text-secondary)",
+                          }}
+                        >
+                          {c.name}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
