@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { notFound } from "next/navigation";
 import { getClient, getProjects, getProducts, getCosts, getPortalActivity } from "@/lib/data";
 import { ClientsPageClient } from "./ClientsPageClient";
+import { listClientMembers, type ClientMember } from "../member-actions";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -16,6 +17,9 @@ export default async function ClientPage({ params }: Props) {
   ]);
 
   if (!client) notFound();
+
+  let members: ClientMember[] = [];
+  try { members = await listClientMembers(id); } catch { members = []; }
 
   // Preload products + costs for each project, plus portal activity
   const [projectData, portalActivity] = await Promise.all([
@@ -34,6 +38,7 @@ export default async function ClientPage({ params }: Props) {
 
   return (
     <ClientsPageClient
+      clientMembers={members}
       client={client}
       projectData={projectData}
       portalActivity={portalActivity}

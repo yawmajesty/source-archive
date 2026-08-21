@@ -3,6 +3,7 @@ import type { ProductionLogEntry } from "@/lib/production-log";
 import type { PortalStageEvent } from "@/lib/portal-data";
 import { getAgencyContext } from "@/lib/agency-data";
 import { can } from "@/lib/permissions";
+import { resolvePortalAccess } from "@/app/(app)/clients/member-actions";
 import {
   getPortalClient,
   getPortalProjects,
@@ -72,6 +73,13 @@ export default async function PortalPage({ params }: Props) {
 
   const client = await getPortalClient(clientId);
   if (!client) notFound();
+
+  // Open to anyone with the link until this client has members; sign-in only
+  // from the moment the first person is added.
+  const access = await resolvePortalAccess(clientId);
+  if (!access.allowed) {
+    return <PortalSignInRequired clientName={client.name} signedIn={access.signedIn} />;
+  }
 
   const [projects, contracts, files, agencySettings, savedInvoices] = await Promise.all([
     getPortalProjects(clientId),
@@ -158,5 +166,33 @@ export default async function PortalPage({ params }: Props) {
       canChangeStage={canChangeStage}
       savedInvoices={savedInvoices}
     />
+  );
+}
+
+function PortalSignInRequired({ clientName, signedIn }: { clientName: string; signedIn: boolean }) {
+  return (
+    <div
+      className="flex min-h-screen items-center justify-center px-6"
+      style={{ background: "var(--canvas)", fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" }}
+    >
+      <div className="mac-card max-w-sm p-6 text-center">
+        <h1 className="text-[16px] font-semibold tight" style={{ color: "var(--label)" }}>
+          {clientName}
+        </h1>
+        <p className="mt-2 text-[13px]" style={{ color: "var(--label-2)" }}>
+          {signedIn
+            ? "This portal is limited to people on the account. Ask them to add your email address, then reload."
+            : "This portal is private. Sign in with the email address you were invited on."}
+        </p>
+        {!signedIn && (
+          <a
+            href="/sign-in"
+            className="mac-button mac-button-primary mt-4 inline-flex items-center px-4"
+          >
+            Sign in
+          </a>
+        )}
+      </div>
+    </div>
   );
 }

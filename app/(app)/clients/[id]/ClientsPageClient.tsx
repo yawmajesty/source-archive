@@ -2,11 +2,12 @@
 
 import { setClientStatus } from "../status-actions";
 import { CLIENT_STATUSES } from "@/lib/client-status";
+import { addClientMember, removeClientMember, type ClientMember } from "../member-actions";
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Lock, Globe, Package, ChevronRight, Calendar, Plus, Activity, Clock, Copy, Check } from "lucide-react";
+import { ArrowRight, Lock, Globe, Package, ChevronRight, Calendar, Plus, Activity, Clock, Copy, Check, Trash2 } from "lucide-react";
 import { createProjectForClient, toggleClientPortal } from "../actions";
 import { buildPublicUrl } from "@/lib/url";
 import { ResizablePanel } from "@/components/layout/ResizablePanel";
@@ -28,6 +29,7 @@ interface Props {
   client: Client;
   projectData: ProjectData[];
   portalActivity: PortalActivity;
+  clientMembers?: ClientMember[];
 }
 
 const PATH_LABELS: Record<string, string> = {
@@ -473,7 +475,7 @@ function AddProjectModal({ clientId, onClose }: { clientId: string; onClose: () 
   );
 }
 
-export function ClientsPageClient({ client, projectData, portalActivity }: Props) {
+export function ClientsPageClient({ client, projectData, portalActivity, clientMembers }: Props) {
   const router = useRouter();
   const [selectedId, setSelectedIdRaw] = useState<string | null>(
     projectData[0]?.project.id ?? null
@@ -558,6 +560,9 @@ export function ClientsPageClient({ client, projectData, portalActivity }: Props
 
           <div className="px-4 pt-3">
             <ClientStatusControl client={client} />
+          </div>
+          <div className="px-4 pt-3">
+            <ClientPeople clientId={client.id} initial={clientMembers ?? []} />
           </div>
 
           {/* Projects list */}
@@ -706,6 +711,88 @@ function ClientStatusControl({ client }: { client: Client }) {
             </button>
           ))}
         </div>
+      </div>
+      {error && <p className="mt-2 text-[11.5px] text-red-500">{error}</p>}
+    </section>
+  );
+}
+
+// ── The client's own people ──────────────────────────────────────
+// Their founder, their designer — whoever they want on the portal. Adding
+// the first person turns that portal from link-only into sign-in only.
+function ClientPeople({ clientId, initial }: { clientId: string; initial: ClientMember[] }) {
+  const [rows, setRows] = useState(initial);
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"owner" | "member">("member");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function add() {
+    if (!email.trim() || busy) return;
+    setBusy(true); setError(null);
+    const res = await addClientMember(clientId, email, role);
+    if (!res.success) { setError(res.error); setBusy(false); return; }
+    setRows((prev) => [...prev.filter((r) => r.id !== res.member.id), res.member]);
+    setEmail("");
+    setBusy(false);
+  }
+
+  async function remove(m: ClientMember) {
+    if (!window.confirm(`Remove ${m.email} from this portal?`)) return;
+    const res = await removeClientMember(m.id, clientId);
+    if (!res.success) { setError(res.error ?? "Could not remove"); return; }
+    setRows((prev) => prev.filter((r) => r.id !== m.id));
+  }
+
+  const inp = "rounded-md border border-[var(--sa-border)] bg-[var(--sa-window)] px-2 py-1.5 text-[12.5px] text-[var(--sa-text-primary)] outline-none";
+
+  return (
+    <section className="rounded-xl border border-[var(--sa-border)] p-4 bg-[var(--sa-window)]">
+      <p className="text-[13px] font-medium text-[var(--sa-text-primary)]">Portal access</p>
+      <p className="mt-0.5 text-[12px] text-[var(--sa-text-secondary)]">
+        {rows.length === 0
+          ? "Anyone with the link can open this portal. Add someone to require a sign-in."
+          : `${rows.length} ${rows.length === 1 ? "person" : "people"} — the link alone no longer works.`}
+      </p>
+
+      {rows.length > 0 && (
+        <div className="mt-3 flex flex-col gap-1.5">
+          {rows.map((m) => (
+            <div key={m.id} className="flex items-center gap-2 rounded-lg border border-[var(--sa-border)] px-2.5 py-1.5">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[12.5px] text-[var(--sa-text-primary)]">{m.email}</p>
+                <p className="text-[11px] text-[var(--sa-text-tertiary)]">
+                  {m.role === "owner" ? "Owner" : "Member"}
+                  {m.claimed_at ? " · signed in" : " · invite not used yet"}
+                </p>
+              </div>
+              <button onClick={() => remove(m)} className="text-[var(--sa-text-tertiary)] hover:text-red-500" title="Remove">
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <input
+          className={`${inp} min-w-0 flex-1`}
+          placeholder="their@email.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") add(); }}
+        />
+        <select className={inp} value={role} onChange={(e) => setRole(e.target.value as "owner" | "member")}>
+          <option value="member">Member</option>
+          <option value="owner">Owner</option>
+        </select>
+        <button
+          onClick={add}
+          disabled={busy || !email.trim()}
+          className="rounded-md bg-[var(--sa-accent)] px-3 py-1.5 text-[12.5px] font-medium text-white disabled:opacity-40"
+        >
+          {busy ? "Adding…" : "Add"}
+        </button>
       </div>
       {error && <p className="mt-2 text-[11.5px] text-red-500">{error}</p>}
     </section>
