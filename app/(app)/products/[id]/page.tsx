@@ -7,6 +7,8 @@ import {
 } from "@/lib/data";
 import { ProductDetailClient } from "./ProductDetailClient";
 import { ProductionLogPanel } from "./ProductionLogPanel";
+import { StageSelector } from "./StageSelector";
+import { can } from "@/lib/permissions";
 import { listProductionLog } from "./production-log-actions";
 import { getAgencyContext } from "@/lib/agency-data";
 import type { ProductionLogEntry } from "@/lib/production-log";
@@ -54,6 +56,13 @@ export default async function ProductDetailPage({ params }: Props) {
       client={client}
       factories={factories}
       priceHistory={priceHistory}
+      stageSelector={
+        <StageSelector
+          productId={id}
+          stage={(product as { stage?: string }).stage ?? "brief"}
+          canChange={ctx ? can(ctx.role, ctx.permissions, "stage.change") : false}
+        />
+      }
       productionLog={
         <ProductionLogPanel
           productId={id}

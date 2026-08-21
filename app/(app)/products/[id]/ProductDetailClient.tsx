@@ -37,6 +37,8 @@ interface Props {
   priceHistory: ProductPriceHistoryEntry[];
   /** Rendered at the end of the main column — the production log release desk. */
   productionLog?: React.ReactNode;
+  /** Rendered at the top of the right column — the stage control. */
+  stageSelector?: React.ReactNode;
 }
 
 function EditProductDrawer({
@@ -1534,6 +1536,7 @@ export function ProductDetailClient({
   client,
   priceHistory,
   productionLog,
+  stageSelector,
 }: Props) {
   const router = useRouter();
   const [product, setProduct] = useState(initialProduct);
@@ -1993,6 +1996,8 @@ export function ProductDetailClient({
 
         {/* Right column — below on mobile, sidebar on desktop */}
         <div className="px-4 py-5 space-y-4 bg-[var(--sa-window)] border-t md:border-t-0 md:border-l border-[var(--sa-border)] md:flex-[3] md:min-w-64 md:max-w-80 md:overflow-y-auto">
+
+          {stageSelector}
 
           {/* Pricing */}
           <PricingCard product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />

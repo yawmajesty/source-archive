@@ -620,111 +620,6 @@ function ProductDetailView({ product, files, client, agencyLabel, onClose }: {
             )}
           </div>
 
-          {/* Product info */}
-          <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
-            <p className="text-[11px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--portal-text-muted)" }}>Product details</p>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                ["Category", product.category],
-                ["MOQ", product.moq != null ? product.moq.toLocaleString() + " units" : "TBC"],
-                ["Order qty", product.order_qty ? product.order_qty.toLocaleString() + " units" : "TBC"],
-                ...(product.price_tiers && product.price_tiers.length > 0
-                  ? []
-                  : [["Unit price", product.quoted_cost_usd ? `$${product.quoted_cost_usd}` : "TBC"]]),
-              ].map(([k, v]) => (
-                <div key={k} className="rounded-lg p-3" style={{ background: "var(--portal-surface-raised)" }}>
-                  <p className="text-[10px] mb-0.5" style={{ color: "var(--portal-text-muted)" }}>{k}</p>
-                  <p className="text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>{v}</p>
-                </div>
-              ))}
-              {product.sample_fee_usd != null && (
-                <div className="col-span-2 rounded-lg p-3" style={{ background: "var(--portal-surface-raised)", border: "1px solid var(--portal-border)" }}>
-                  <p className="text-[10px] mb-0.5" style={{ color: "var(--portal-text-muted)" }}>Sample cost</p>
-                  <p className="text-[16px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>${product.sample_fee_usd.toFixed(2)}</p>
-                </div>
-              )}
-              {product.price_tiers && product.price_tiers.length > 0 && (
-                <div className="col-span-2 rounded-lg p-3" style={{ background: "var(--portal-surface-raised)", border: "1px solid var(--portal-border)" }}>
-                  <p className="text-[10px] mb-2" style={{ color: "var(--portal-text-muted)" }}>Volume pricing</p>
-                  <table className="w-full text-[12px]">
-                    <thead>
-                      <tr>
-                        <th className="text-left pb-1.5 text-[10px] uppercase tracking-wide font-semibold" style={{ color: "var(--portal-text-muted)" }}>Units</th>
-                        <th className="text-right pb-1.5 text-[10px] uppercase tracking-wide font-semibold" style={{ color: "var(--portal-text-muted)" }}>Unit price</th>
-                        <th className="text-right pb-1.5 text-[10px] uppercase tracking-wide font-semibold" style={{ color: "var(--portal-text-muted)" }}>Line total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {product.price_tiers.map((t, i) => (
-                        <tr key={i} style={{ borderTop: i === 0 ? undefined : "1px solid var(--portal-border-subtle)" }}>
-                          <td className="py-1.5 font-mono" style={{ color: "var(--portal-text-secondary)" }}>{t.moq.toLocaleString()}</td>
-                          <td className="py-1.5 font-mono font-semibold text-right" style={{ color: "var(--portal-text-primary)" }}>${t.unit_price_usd.toFixed(2)}</td>
-                          <td className="py-1.5 font-mono text-right" style={{ color: "var(--portal-text-muted)" }}>${(t.moq * t.unit_price_usd).toLocaleString("en-US", { maximumFractionDigits: 0 })}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-            {product.colorways.length > 0 && (
-              <div className="mt-3">
-                <p className="text-[10px] mb-2" style={{ color: "var(--portal-text-muted)" }}>Colourways</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {product.colorways.map((c) => (
-                    <span key={c} className="rounded-full px-2.5 py-1 text-[11px]" style={{ border: "1px solid var(--portal-border)", color: "var(--portal-text-secondary)", background: "var(--portal-surface)" }}>{c}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Milestone timeline */}
-          {sorted.length > 0 && (
-            <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
-              <p className="text-[11px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--portal-text-muted)" }}>Timeline</p>
-              <div className="flex flex-col gap-0">
-                {sorted.map((m, i) => {
-                  const done = !!m.completed_at;
-                  return (
-                    <div key={m.id} className="flex items-start gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className={`mt-0.5 h-4 w-4 shrink-0 rounded-full flex items-center justify-center ${done ? "bg-emerald-500" : new Date(m.due_date) < now ? "bg-red-400" : "border-2 border-[#C8963C]"}`}
-                          style={!done && new Date(m.due_date) >= now ? { background: "var(--portal-surface)" } : {}}>
-                          {done && <CheckCircle2 size={10} className="text-white" />}
-                        </div>
-                        {i < sorted.length - 1 && <div className="w-px flex-1 min-h-[20px] mt-0.5" style={{ background: "var(--portal-border)" }} />}
-                      </div>
-                      <div className="pb-4">
-                        <p className={`text-[12px] font-medium ${done ? "line-through" : ""}`} style={{ color: done ? "var(--portal-text-muted)" : "var(--portal-text-primary)" }}>{m.title}</p>
-                        <p className="text-[11px] mt-0.5" style={{ color: "var(--portal-text-muted)" }}>
-                          {new Date(m.due_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Files */}
-          {productFiles.length > 0 && (
-            <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
-              <p className="text-[11px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--portal-text-muted)" }}>Files & documents</p>
-              {productFiles.map((f) => (
-                <div key={f.id} className="flex items-center gap-2.5 py-2 last:border-0" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
-                  <FileText size={13} className="shrink-0" style={{ color: "var(--portal-text-muted)" }} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-medium truncate" style={{ color: "var(--portal-text-primary)" }}>{f.filename}</p>
-                    <p className="text-[11px]" style={{ color: "var(--portal-text-muted)" }}>{f.source === "agency" ? "Shared by agency" : "Your upload"}</p>
-                  </div>
-                  <button className="shrink-0 text-[11px]" style={{ color: "#0066CC" }}>Download</button>
-                </div>
-              ))}
-            </div>
-          )}
-
           {/* Feedback & updates */}
           <div className="px-6 py-4">
             <p className="text-[11px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--portal-text-muted)" }}>Updates & Feedback</p>
@@ -830,6 +725,111 @@ function ProductDetailView({ product, files, client, agencyLabel, onClose }: {
             )}
           </div>
         </div>
+
+          {/* Product info */}
+          <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
+            <p className="text-[11px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--portal-text-muted)" }}>Product details</p>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                ["Category", product.category],
+                ["MOQ", product.moq != null ? product.moq.toLocaleString() + " units" : "TBC"],
+                ["Order qty", product.order_qty ? product.order_qty.toLocaleString() + " units" : "TBC"],
+                ...(product.price_tiers && product.price_tiers.length > 0
+                  ? []
+                  : [["Unit price", product.quoted_cost_usd ? `$${product.quoted_cost_usd}` : "TBC"]]),
+              ].map(([k, v]) => (
+                <div key={k} className="rounded-lg p-3" style={{ background: "var(--portal-surface-raised)" }}>
+                  <p className="text-[10px] mb-0.5" style={{ color: "var(--portal-text-muted)" }}>{k}</p>
+                  <p className="text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>{v}</p>
+                </div>
+              ))}
+              {product.sample_fee_usd != null && (
+                <div className="col-span-2 rounded-lg p-3" style={{ background: "var(--portal-surface-raised)", border: "1px solid var(--portal-border)" }}>
+                  <p className="text-[10px] mb-0.5" style={{ color: "var(--portal-text-muted)" }}>Sample cost</p>
+                  <p className="text-[16px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>${product.sample_fee_usd.toFixed(2)}</p>
+                </div>
+              )}
+              {product.price_tiers && product.price_tiers.length > 0 && (
+                <div className="col-span-2 rounded-lg p-3" style={{ background: "var(--portal-surface-raised)", border: "1px solid var(--portal-border)" }}>
+                  <p className="text-[10px] mb-2" style={{ color: "var(--portal-text-muted)" }}>Volume pricing</p>
+                  <table className="w-full text-[12px]">
+                    <thead>
+                      <tr>
+                        <th className="text-left pb-1.5 text-[10px] uppercase tracking-wide font-semibold" style={{ color: "var(--portal-text-muted)" }}>Units</th>
+                        <th className="text-right pb-1.5 text-[10px] uppercase tracking-wide font-semibold" style={{ color: "var(--portal-text-muted)" }}>Unit price</th>
+                        <th className="text-right pb-1.5 text-[10px] uppercase tracking-wide font-semibold" style={{ color: "var(--portal-text-muted)" }}>Line total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {product.price_tiers.map((t, i) => (
+                        <tr key={i} style={{ borderTop: i === 0 ? undefined : "1px solid var(--portal-border-subtle)" }}>
+                          <td className="py-1.5 font-mono" style={{ color: "var(--portal-text-secondary)" }}>{t.moq.toLocaleString()}</td>
+                          <td className="py-1.5 font-mono font-semibold text-right" style={{ color: "var(--portal-text-primary)" }}>${t.unit_price_usd.toFixed(2)}</td>
+                          <td className="py-1.5 font-mono text-right" style={{ color: "var(--portal-text-muted)" }}>${(t.moq * t.unit_price_usd).toLocaleString("en-US", { maximumFractionDigits: 0 })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            {product.colorways.length > 0 && (
+              <div className="mt-3">
+                <p className="text-[10px] mb-2" style={{ color: "var(--portal-text-muted)" }}>Colourways</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {product.colorways.map((c) => (
+                    <span key={c} className="rounded-full px-2.5 py-1 text-[11px]" style={{ border: "1px solid var(--portal-border)", color: "var(--portal-text-secondary)", background: "var(--portal-surface)" }}>{c}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Milestone timeline */}
+          {sorted.length > 0 && (
+            <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--portal-text-muted)" }}>Timeline</p>
+              <div className="flex flex-col gap-0">
+                {sorted.map((m, i) => {
+                  const done = !!m.completed_at;
+                  return (
+                    <div key={m.id} className="flex items-start gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className={`mt-0.5 h-4 w-4 shrink-0 rounded-full flex items-center justify-center ${done ? "bg-emerald-500" : new Date(m.due_date) < now ? "bg-red-400" : "border-2 border-[#C8963C]"}`}
+                          style={!done && new Date(m.due_date) >= now ? { background: "var(--portal-surface)" } : {}}>
+                          {done && <CheckCircle2 size={10} className="text-white" />}
+                        </div>
+                        {i < sorted.length - 1 && <div className="w-px flex-1 min-h-[20px] mt-0.5" style={{ background: "var(--portal-border)" }} />}
+                      </div>
+                      <div className="pb-4">
+                        <p className={`text-[12px] font-medium ${done ? "line-through" : ""}`} style={{ color: done ? "var(--portal-text-muted)" : "var(--portal-text-primary)" }}>{m.title}</p>
+                        <p className="text-[11px] mt-0.5" style={{ color: "var(--portal-text-muted)" }}>
+                          {new Date(m.due_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Files */}
+          {productFiles.length > 0 && (
+            <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--portal-text-muted)" }}>Files & documents</p>
+              {productFiles.map((f) => (
+                <div key={f.id} className="flex items-center gap-2.5 py-2 last:border-0" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
+                  <FileText size={13} className="shrink-0" style={{ color: "var(--portal-text-muted)" }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-medium truncate" style={{ color: "var(--portal-text-primary)" }}>{f.filename}</p>
+                    <p className="text-[11px]" style={{ color: "var(--portal-text-muted)" }}>{f.source === "agency" ? "Shared by agency" : "Your upload"}</p>
+                  </div>
+                  <button className="shrink-0 text-[11px]" style={{ color: "#0066CC" }}>Download</button>
+                </div>
+              ))}
+            </div>
+          )}
 
         {/* Sample approval CTA */}
         {stage === "sampling" && (
