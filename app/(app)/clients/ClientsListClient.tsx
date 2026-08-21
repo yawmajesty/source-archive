@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, ExternalLink, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { SharePortalModal } from "./SharePortalModal";
 import { createClient as createClientAction, createProjectForClient, deleteClientCascade } from "./actions";
 import type { Client, Project, Product } from "@/lib/data";
 
@@ -205,6 +206,7 @@ export function ClientsListClient({ clients, projects, products }: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const [addProjectFor, setAddProjectFor] = useState<string | null>(null);
   const [deleteClient, setDeleteClient] = useState<Client | null>(null);
+  const [sharePortalFor, setSharePortalFor] = useState<{ id: string; name: string } | null>(null);
 
   function getStats(clientId: string) {
     const clientProjects = projects.filter((p) => p.client_id === clientId);
@@ -286,13 +288,13 @@ export function ClientsListClient({ clients, projects, products }: Props) {
                   >
                     <Plus size={11} strokeWidth={2.5} /> Collection
                   </button>
-                  <Link
-                    href={`/portal/${client.id}`}
+                  <button
+                    onClick={() => setSharePortalFor({ id: client.id, name: client.name })}
                     className="flex items-center gap-1 rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
-                    target="_blank"
+                    title="Copy the portal link and choose who can open it"
                   >
-                    <ExternalLink size={11} /> Portal
-                  </Link>
+                    <ExternalLink size={11} /> Share portal
+                  </button>
                   <button
                     onClick={() => setDeleteClient(client)}
                     className="flex items-center justify-center rounded-lg border border-[var(--sa-border)] p-1.5 text-[var(--sa-text-tertiary)] hover:border-[var(--sa-danger)] hover:text-[var(--sa-danger)] transition-colors"
@@ -312,6 +314,14 @@ export function ClientsListClient({ clients, projects, products }: Props) {
         <AddProjectModal clientId={addProjectFor} onClose={() => setAddProjectFor(null)} />
       )}
       <AnimatePresence>
+        {sharePortalFor && (
+          <SharePortalModal
+            clientId={sharePortalFor.id}
+            clientName={sharePortalFor.name}
+            onClose={() => setSharePortalFor(null)}
+          />
+        )}
+
         {deleteClient && (
           <DeleteClientModal client={deleteClient} onClose={() => setDeleteClient(null)} />
         )}
