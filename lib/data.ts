@@ -573,7 +573,9 @@ export async function getDashboardCollections(): Promise<CollectionActionItem[]>
   ] = await Promise.all([
     supabase.from("products").select("id, name, stage, project_id").neq("stage", "shipped"),
     supabase.from("projects").select("id, name, client_id, season"),
-    supabase.from("clients").select("id, name, logo_initial"),
+    // Inactive clients stay in the database and keep their portal; they just
+    // stop competing for attention in the command centre.
+    supabase.from("clients").select("id, name, logo_initial").neq("status", "inactive"),
     supabase.from("milestones").select("id, product_id, title, due_date").is("completed_at", null).order("due_date"),
     supabase.from("updates").select("product_id, created_at").order("created_at", { ascending: false }).limit(500),
   ]);
@@ -626,6 +628,12 @@ export async function getDashboardCollections(): Promise<CollectionActionItem[]>
   }
 
   return Object.entries(byProject)
+    // An absent client means inactive (they were filtered out of the query
+    // above), so their collections drop out of the command centre entirely.
+    .filter(([projectId]) => {
+      const project = projectMap[projectId];
+      return !!project && !!clientMap[project.client_id];
+    })
     .map(([projectId, prods]) => {
       const project = projectMap[projectId];
       const client = project ? clientMap[project.client_id] : null;
@@ -654,7 +662,7 @@ export async function getDashboardTasks(): Promise<DashboardTask[]> {
   const [{ data: tasks }, { data: projects }, { data: clients }] = await Promise.all([
     supabase.from("tasks").select("*").neq("status", "done").order("due_date"),
     supabase.from("projects").select("id, name, client_id"),
-    supabase.from("clients").select("id, name"),
+    supabase.from("clients").select("id, name").neq("status", "inactive"),
   ]);
 
   const projectMap = Object.fromEntries((projects ?? []).map((p: any) => [p.id, p]));
@@ -662,6 +670,12 @@ export async function getDashboardTasks(): Promise<DashboardTask[]> {
 
   return ((tasks ?? []) as any[])
     .filter((t) => !t.due_date || t.due_date <= inThreeDays)
+    // Same rule as collections: no client in the map means inactive.
+    .filter((t) => {
+      if (!t.project_id) return true;          // agency-wide task, always shown
+      const project = projectMap[t.project_id];
+      return !!project && !!clientMap[project.client_id];
+    })
     .map((t) => {
       const project = projectMap[t.project_id];
       const client = project ? clientMap[project.client_id] : null;

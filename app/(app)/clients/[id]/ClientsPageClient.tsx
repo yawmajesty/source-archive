@@ -1,5 +1,7 @@
 "use client";
 
+import { setClientStatus, CLIENT_STATUSES } from "../status-actions";
+
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -553,6 +555,10 @@ export function ClientsPageClient({ client, projectData, portalActivity }: Props
             </div>
           </div>
 
+          <div className="px-4 pt-3">
+            <ClientStatusControl client={client} />
+          </div>
+
           {/* Projects list */}
           <div className="flex-1 overflow-y-auto">
             {projectData.length === 0 ? (
@@ -643,5 +649,64 @@ export function ClientsPageClient({ client, projectData, portalActivity }: Props
         />
       )}
     </div>
+  );
+}
+
+// ── Relationship status ──────────────────────────────────────────
+// Marking a client inactive is how a finished relationship stops competing
+// for attention. Nothing is deleted: their products, tasks, history and
+// portal all stay exactly as they are, so it is a single click to undo.
+function ClientStatusControl({ client }: { client: Client }) {
+  const [status, setStatus] = useState<string>(client.status);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function change(next: string) {
+    if (next === status || busy) return;
+    setBusy(true); setError(null);
+    const prev = status;
+    setStatus(next);
+    const res = await setClientStatus(client.id, next);
+    if (!res.success) { setStatus(prev); setError(res.error ?? "Could not update"); }
+    setBusy(false);
+  }
+
+  const isInactive = status === "inactive";
+
+  return (
+    <section
+      className="rounded-xl border p-4"
+      style={{
+        borderColor: isInactive ? "var(--sa-warning)" : "var(--sa-border)",
+        background: "var(--sa-window)",
+      }}
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-medium text-[var(--sa-text-primary)]">Relationship</p>
+          <p className="text-[12px] text-[var(--sa-text-secondary)]">
+            {CLIENT_STATUSES.find((s) => s.id === status)?.hint ?? "Set where this client stands."}
+          </p>
+        </div>
+        <div className="flex gap-1.5">
+          {CLIENT_STATUSES.map((s) => (
+            <button
+              key={s.id}
+              disabled={busy}
+              onClick={() => change(s.id)}
+              title={s.hint}
+              className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-50"
+              style={{
+                background: status === s.id ? "var(--sa-accent)" : "var(--sa-hover)",
+                color: status === s.id ? "#fff" : "var(--sa-text-secondary)",
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {error && <p className="mt-2 text-[11.5px] text-red-500">{error}</p>}
+    </section>
   );
 }

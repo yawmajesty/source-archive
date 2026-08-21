@@ -1,5 +1,7 @@
 import type { ProductMediaItem } from "@/lib/product-media";
 import type { ProductionLogEntry } from "@/lib/production-log";
+import { getAgencyContext } from "@/lib/agency-data";
+import { can } from "@/lib/permissions";
 import {
   getPortalClient,
   getPortalProjects,
@@ -57,6 +59,14 @@ export default async function PortalPage({ params }: Props) {
   const { userId } = await auth();
   const isAgency = !!userId;
 
+  // Agency staff — designers included — work from the client portal, so the
+  // stage control lives here rather than only in the backend.
+  let canChangeStage = false;
+  if (isAgency) {
+    const agencyCtx = await getAgencyContext();
+    canChangeStage = agencyCtx ? can(agencyCtx.role, agencyCtx.permissions, "stage.change") : false;
+  }
+
   const client = await getPortalClient(clientId);
   if (!client) notFound();
 
@@ -69,7 +79,7 @@ export default async function PortalPage({ params }: Props) {
   ]);
 
   if (!client.portal_enabled) {
-    return <PortalClient client={client} locked={true} projects={[]} contracts={contracts} files={files} agencySettings={agencySettings} isAgency={isAgency} savedInvoices={savedInvoices} />;
+    return <PortalClient client={client} locked={true} projects={[]} contracts={contracts} files={files} agencySettings={agencySettings} isAgency={isAgency} canChangeStage={false} savedInvoices={savedInvoices} />;
   }
 
   const portalProjects: PortalProject[] = await Promise.all(
@@ -140,6 +150,7 @@ export default async function PortalPage({ params }: Props) {
       files={files}
       agencySettings={agencySettings}
       isAgency={isAgency}
+      canChangeStage={canChangeStage}
       savedInvoices={savedInvoices}
     />
   );

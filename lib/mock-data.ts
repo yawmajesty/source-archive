@@ -2,7 +2,7 @@
 // Kōru Mock Data — swap this file for Supabase
 // ─────────────────────────────────────────
 
-export type ClientStatus = "active" | "onboarding" | "paused";
+export type ClientStatus = "active" | "onboarding" | "paused" | "inactive";
 export type ProjectStatus = "active" | "completed" | "on_hold";
 export type Stage =
   | "brief"

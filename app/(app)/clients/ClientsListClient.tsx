@@ -15,6 +15,7 @@ const STATUS_COLORS: Record<Client["status"], string> = {
   active:     "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400",
   onboarding: "bg-amber-50 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400",
   paused:     "bg-gray-100 text-gray-500 dark:bg-gray-500/20 dark:text-gray-400",
+  inactive:   "bg-gray-100 text-gray-500 dark:bg-gray-500/20 dark:text-gray-400",
 };
 
 function AddClientModal({ onClose }: { onClose: () => void }) {

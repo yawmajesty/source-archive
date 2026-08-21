@@ -29,6 +29,7 @@ import {
   COLLECTION_VIEWS, type CollectionView,
 } from "./shell/CollectionViews";
 import { CostingInspector, SampleTimeline } from "./shell/CostingInspector";
+import { StageSelector } from "@/app/(app)/products/[id]/StageSelector";
 import {
   LeftRail, RightRailOverview, attentionItems, upcomingItems,
   type PortalRoute,
@@ -72,6 +73,7 @@ interface Props {
   files: PortalFile[];
   agencySettings: AgencySettings;
   isAgency: boolean;
+  canChangeStage?: boolean;
   savedInvoices: SavedInvoice[];
 }
 
@@ -1992,7 +1994,7 @@ function CollectionBody({ view, projects, onSelect }: {
 }
 
 // ── Main portal ──────────────────────────────────────────────
-export function PortalClient({ client, locked, projects, contracts, files, agencySettings, isAgency, savedInvoices }: Props) {
+export function PortalClient({ client, locked, projects, contracts, files, agencySettings, isAgency, canChangeStage, savedInvoices }: Props) {
   const [route, setRoute] = useState<PortalRoute>("overview");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [view, setView] = useState<CollectionView>("gallery");
@@ -2123,6 +2125,17 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
 
   const right = selectedProduct ? (
     <>
+      {isAgency && canChangeStage && (
+        <RailSection title="Move this product">
+          <div className="mac-card p-3">
+            <StageSelector
+              productId={selectedProduct.id}
+              stage={selectedProduct.stage}
+              canChange
+            />
+          </div>
+        </RailSection>
+      )}
       <CostingInspector product={selectedProduct} />
       <SampleTimeline product={selectedProduct} />
       <RailSection title="Activity">
