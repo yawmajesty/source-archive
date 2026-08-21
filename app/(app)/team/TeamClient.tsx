@@ -5,17 +5,18 @@ import { UserPlus, Trash2, AlertCircle } from "lucide-react";
 import type { AgencyRole } from "@/lib/agency-data";
 import { CAPABILITIES, ROLE_LABEL, ROLE_HINT, type Capability } from "@/lib/permissions";
 import type { TeamMember } from "../settings/team-actions";
-import { addMember, setMemberRole, setMemberPermissions, removeMember, setMemberClientScope } from "../settings/team-actions";
+import { addMember, setMemberRole, setMemberPermissions, removeMember, setMemberClientScope, setMemberProjectScope } from "../settings/team-actions";
 
 const ROLES: AgencyRole[] = ["admin", "team", "maker"];
 
-export function TeamClient({ agencyName, currentUserId, isAdmin, members, unattached, clients }: {
+export function TeamClient({ agencyName, currentUserId, isAdmin, members, unattached, clients, projects }: {
   agencyName: string;
   currentUserId: string;
   isAdmin: boolean;
   members: TeamMember[];
   unattached: TeamMember[];
   clients: { id: string; name: string }[];
+  projects: { id: string; name: string; client_id: string }[];
 }) {
   const [rows, setRows] = useState(members);
   const [pending, setPending] = useState(unattached);
@@ -61,6 +62,21 @@ export function TeamClient({ agencyName, currentUserId, isAdmin, members, unatta
     setRows((r) => r.map((x) => (x.user_id === m.user_id ? { ...x, client_scope: [] } : x)));
     const res = await setMemberClientScope(m.user_id, []);
     if (!res.success) setError(res.error ?? "Could not save client access");
+  }
+
+  async function toggleProject(m: TeamMember, projectId: string) {
+    const next = m.project_scope.includes(projectId)
+      ? m.project_scope.filter((p) => p !== projectId)
+      : [...m.project_scope, projectId];
+    setRows((r) => r.map((x) => (x.user_id === m.user_id ? { ...x, project_scope: next } : x)));
+    const res = await setMemberProjectScope(m.user_id, next);
+    if (!res.success) setError(res.error ?? "Could not save project access");
+  }
+
+  async function clearProjectScope(m: TeamMember) {
+    setRows((r) => r.map((x) => (x.user_id === m.user_id ? { ...x, project_scope: [] } : x)));
+    const res = await setMemberProjectScope(m.user_id, []);
+    if (!res.success) setError(res.error ?? "Could not save project access");
   }
 
   async function remove(m: TeamMember) {
@@ -220,6 +236,52 @@ export function TeamClient({ agencyName, currentUserId, isAdmin, members, unatta
                         </button>
                       );
                     })}
+                  </div>
+
+                  <div className="mt-3 border-t border-[var(--sa-border)] pt-3">
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <span className="text-[12.5px] font-medium text-[var(--sa-text-primary)]">
+                        Or narrow to specific collections
+                      </span>
+                      {m.project_scope.length > 0 && isAdmin && (
+                        <button onClick={() => clearProjectScope(m)} className="text-[11.5px] text-[var(--sa-accent)]">
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <p className="mb-2 text-[11.5px] text-[var(--sa-text-tertiary)]">
+                      {m.project_scope.length > 0
+                        ? `On ${m.project_scope.length} collection${m.project_scope.length === 1 ? "" : "s"} — this overrides the client selection above.`
+                        : "Leave empty to use the client selection above."}
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {clients
+                        .filter((c) => projects.some((p) => p.client_id === c.id))
+                        .map((c) => (
+                          <div key={c.id}>
+                            <p className="mb-1 text-[11px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{c.name}</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {projects.filter((p) => p.client_id === c.id).map((p) => {
+                                const on = m.project_scope.includes(p.id);
+                                return (
+                                  <button
+                                    key={p.id}
+                                    disabled={!isAdmin}
+                                    onClick={() => toggleProject(m, p.id)}
+                                    className="rounded-md px-2 py-1 text-[11.5px] transition-colors disabled:opacity-60"
+                                    style={{
+                                      background: on ? "var(--sa-accent)" : "var(--sa-hover)",
+                                      color: on ? "#fff" : "var(--sa-text-secondary)",
+                                    }}
+                                  >
+                                    {p.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
                   </div>
                 </div>
               )}

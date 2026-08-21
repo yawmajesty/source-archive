@@ -13,6 +13,8 @@ export interface TeamMember {
   permissions: string[];
   /** Client ids this member is limited to. Empty = every client. */
   client_scope: string[];
+  /** Project ids this member is limited to. Empty = fall back to client_scope. */
+  project_scope: string[];
   created_at: string;
   email: string | null;
   name: string | null;
@@ -34,7 +36,7 @@ export async function listTeam(): Promise<TeamMember[]> {
   const supabase = await getAgencySupabase();
   const { data } = await supabase
     .from("agency_members")
-    .select("user_id, role, permissions, client_scope, created_at")
+    .select("user_id, role, permissions, client_scope, project_scope, created_at")
     .eq("agency_id", ctx.agency.id)
     .order("created_at");
 
@@ -53,7 +55,7 @@ export async function listTeam(): Promise<TeamMember[]> {
         // Deleted Clerk user, or a permissions issue — show the id rather
         // than failing the whole page.
       }
-      return { ...r, client_scope: r.client_scope ?? [], email, name, other_agency: null };
+      return { ...r, client_scope: r.client_scope ?? [], project_scope: r.project_scope ?? [], email, name, other_agency: null };
     }),
   );
 }
@@ -103,6 +105,7 @@ export async function listUnattachedUsers(): Promise<TeamMember[]> {
         role: r.role as AgencyRole,
         permissions: r.permissions ?? [],
         client_scope: r.client_scope ?? [],
+        project_scope: r.project_scope ?? [],
         created_at: r.created_at,
         email,
         name,
@@ -203,6 +206,30 @@ export async function setMemberClientScope(
     .eq("user_id", userId);
   if (error) return { success: false, error: error.message };
   revalidatePath("/settings");
+  revalidatePath("/team");
+  return { success: true };
+}
+
+/**
+ * Put someone on specific collections. Most specific wins: a project scope
+ * overrides the client scope entirely, so a person on two collections sees
+ * those two even if their client has ten.
+ */
+export async function setMemberProjectScope(
+  userId: string,
+  projectIds: string[],
+): Promise<{ success: boolean; error?: string }> {
+  const ctx = await adminOrThrow();
+  if (userId === ctx.currentUserId) {
+    return { success: false, error: "You can't limit your own access" };
+  }
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase
+    .from("agency_members")
+    .update({ project_scope: projectIds })
+    .eq("agency_id", ctx.agency.id)
+    .eq("user_id", userId);
+  if (error) return { success: false, error: error.message };
   revalidatePath("/team");
   return { success: true };
 }
