@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon, Plus, Trash2, X, CreditCard, Play, ChevronLeft } from "lucide-react";
 import { uploadFile } from "@/lib/storage";
 import { mediaKindFor, type ProductMediaItem } from "@/lib/product-media";
-import { STAGE_LABEL, groupByDate } from "@/lib/production-log";
+import { STAGE_LABEL as WORK_LABEL, groupByDate } from "@/lib/production-log";
+import { STAGE_LABEL as PRODUCT_STAGE_LABEL } from "@/app/(app)/products/[id]/stage-actions";
 import type { Client, Contract, PortalFile, AgencySettings, SavedInvoice } from "@/lib/data";
 import {
   updateInvoiceStatus,
@@ -659,6 +660,41 @@ function ProductDetailView({ product, files, client, agencyLabel, onClose }: {
                 </button>
               </div>
             </div>
+            {(product.stageHistory.length > 0 || product.productionLog.length > 0) && (
+              <div className="px-5 py-4" style={{ boxShadow: "inset 0 -0.5px 0 var(--sep)" }}>
+                <p className="mb-3 text-[11px] font-semibold uppercase tracking-[.04em]" style={{ color: "var(--label-3)" }}>
+                  Progress
+                </p>
+                <div className="flex flex-col gap-3">
+                  {product.stageHistory.map((ev) => (
+                    <div key={ev.id} className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <span className="mt-1 h-[9px] w-[9px] rounded-full" style={{ background: "var(--green)" }} />
+                        <span className="mt-1 w-px flex-1" style={{ background: "var(--sep)" }} />
+                      </div>
+                      <div className="min-w-0 flex-1 pb-1">
+                        <p className="text-[13px]" style={{ color: "var(--label)" }}>
+                          Moved to <strong>{PRODUCT_STAGE_LABEL[ev.to_stage] ?? ev.to_stage}</strong>
+                          {ev.from_stage && (
+                            <span style={{ color: "var(--label-3)" }}>
+                              {" "}from {PRODUCT_STAGE_LABEL[ev.from_stage] ?? ev.from_stage}
+                            </span>
+                          )}
+                        </p>
+                        {ev.note && (
+                          <p className="mt-0.5 text-[12.5px]" style={{ color: "var(--label-2)" }}>{ev.note}</p>
+                        )}
+                        <p className="tnum mt-0.5 text-[11.5px]" style={{ color: "var(--label-3)" }}>
+                          {new Date(ev.created_at).toLocaleDateString(undefined, { day: "numeric", month: "long" })}
+                          {ev.changed_by_name ? ` · ${ev.changed_by_name}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {product.productionLog.length > 0 && (
               <div className="px-5 py-4" style={{ boxShadow: "inset 0 -0.5px 0 var(--sep)" }}>
                 <p className="mb-3 text-[11px] font-semibold uppercase tracking-[.04em]" style={{ color: "var(--label-3)" }}>
@@ -678,7 +714,7 @@ function ProductDetailView({ product, files, client, agencyLabel, onClose }: {
                         {day.entries.map((e) => (
                           <div key={e.id} className="mt-1">
                             <span className="mr-1.5 rounded-[5px] px-1.5 py-0.5 text-[10.5px] font-semibold" style={{ background: "var(--fill)", color: "var(--label-2)" }}>
-                              {STAGE_LABEL[e.stage]}
+                              {WORK_LABEL[e.stage]}
                             </span>
                             <span className="text-[12.5px]" style={{ color: "var(--label)" }}>{e.summary}</span>
                           </div>

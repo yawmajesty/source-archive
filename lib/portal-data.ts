@@ -182,3 +182,31 @@ export async function getPortalProductionLog(productId: string): Promise<Product
   if (error) return [];
   return (data ?? []) as ProductionLogEntry[];
 }
+
+// ── Stage history ────────────────────────────────────────────────
+// Every stage move is recorded with who moved it and why. These are factual
+// progress rather than internal notes, so they reach the client by default —
+// but the visible_to_client flag still governs, in case one needs pulling.
+export interface PortalStageEvent {
+  id: string;
+  product_id: string;
+  from_stage: string | null;
+  to_stage: string;
+  note: string | null;
+  changed_by_name: string | null;
+  created_at: string;
+}
+
+export async function getPortalStageEvents(productId: string): Promise<PortalStageEvent[]> {
+  const supabase = getAgencyServiceSupabase();
+  const { data, error } = await supabase
+    .from("product_stage_events")
+    .select("id, product_id, from_stage, to_stage, note, changed_by_name, created_at")
+    .eq("product_id", productId)
+    .eq("visible_to_client", true)
+    .order("created_at", { ascending: false });
+
+  // Table absent until migration 014 is applied.
+  if (error) return [];
+  return (data ?? []) as PortalStageEvent[];
+}

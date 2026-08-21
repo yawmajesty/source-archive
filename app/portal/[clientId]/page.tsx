@@ -1,5 +1,6 @@
 import type { ProductMediaItem } from "@/lib/product-media";
 import type { ProductionLogEntry } from "@/lib/production-log";
+import type { PortalStageEvent } from "@/lib/portal-data";
 import { getAgencyContext } from "@/lib/agency-data";
 import { can } from "@/lib/permissions";
 import {
@@ -10,6 +11,7 @@ import {
   getPortalUpdates,
   getPortalProductMedia,
   getPortalProductionLog,
+  getPortalStageEvents,
   getPortalContracts,
   getPortalFilesForClient,
   getPortalAgencySettings,
@@ -38,6 +40,7 @@ export interface PortalProduct {
   images: string[];
   media: ProductMediaItem[];
   productionLog: ProductionLogEntry[];
+  stageHistory: PortalStageEvent[];
   sample_fee_usd: number | null;
   expected_sample_date: string | null;
   sample_round: number;
@@ -89,11 +92,12 @@ export default async function PortalPage({ params }: Props) {
       const products = allProducts.filter((p) => !p.production_excluded_at);
       const enriched: PortalProduct[] = await Promise.all(
         products.map(async (product) => {
-          const [milestones, updates, media, productionLog] = await Promise.all([
+          const [milestones, updates, media, productionLog, stageHistory] = await Promise.all([
             getPortalMilestones(product.id),
             getPortalUpdates(product.id),
             getPortalProductMedia(product.id),
             getPortalProductionLog(product.id),
+            getPortalStageEvents(product.id),
           ]);
           // Strip all internal fields — only expose client-safe shape
           return {
@@ -108,6 +112,7 @@ export default async function PortalPage({ params }: Props) {
             images: (product as any).images ?? [],
             media,
             productionLog,
+            stageHistory,
             sample_fee_usd: (product as any).sample_fee_usd ?? null,
             expected_sample_date: (product as any).expected_sample_date ?? null,
             sample_round: (product as any).sample_round ?? 1,
