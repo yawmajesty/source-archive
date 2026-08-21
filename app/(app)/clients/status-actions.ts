@@ -4,12 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getAgencySupabase } from "@/lib/supabase-agency";
 import { getAgencyContext } from "@/lib/agency-data";
 import { can } from "@/lib/permissions";
-
-export const CLIENT_STATUSES = [
-  { id: "onboarding", label: "Onboarding", hint: "Signed up, work not started." },
-  { id: "active",     label: "Active",     hint: "Currently working with us." },
-  { id: "inactive",   label: "Inactive",   hint: "No longer working with us. Their products and tasks drop out of the command centre; nothing is deleted." },
-] as const;
+import { CLIENT_STATUSES } from "@/lib/client-status";
 
 /**
  * Marking a client inactive is how a finished relationship stops cluttering

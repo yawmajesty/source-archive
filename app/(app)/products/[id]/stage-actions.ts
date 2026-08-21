@@ -4,39 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getAgencySupabase } from "@/lib/supabase-agency";
 import { getAgencyContext } from "@/lib/agency-data";
 import { can } from "@/lib/permissions";
-
-/**
- * The stages a product actually moves through, in the studio's own language.
- *
- * `pattern`, `review` and `revision` are new; the rest reuse the ids already
- * in the database so the 155 existing products keep their stage without a
- * risky data migration. `sourcing`, `approved` and `qc` are still valid stored
- * values — they just aren't offered in the picker any more, and STAGE_LABEL
- * below still renders them.
- */
-export const PRODUCT_STAGES = [
-  { id: "brief",      label: "Concept / design",  hint: "Working out what it is." },
-  { id: "pattern",    label: "Pattern making",    hint: "Drafting and correcting the pattern." },
-  { id: "sampling",   label: "Sampling",          hint: "First sample being made." },
-  { id: "review",     label: "Review",            hint: "With the client for comment." },
-  { id: "revision",   label: "Revision sample",   hint: "Second round after feedback." },
-  { id: "production", label: "Production",        hint: "In bulk production." },
-  { id: "shipped",    label: "Item complete",     hint: "Finished and with the client." },
-] as const;
-
-/** Covers legacy values too, so older products still render a sensible label. */
-export const STAGE_LABEL: Record<string, string> = {
-  brief: "Concept / design",
-  pattern: "Pattern making",
-  sourcing: "Sourcing",
-  sampling: "Sampling",
-  review: "Review",
-  approved: "Approved",
-  revision: "Revision sample",
-  production: "Production",
-  qc: "Quality check",
-  shipped: "Item complete",
-};
+import { PRODUCT_STAGES } from "@/lib/stages";
 
 export interface StageEvent {
   id: string;

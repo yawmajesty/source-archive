@@ -1,6 +1,7 @@
 "use client";
 
-import { setClientStatus, CLIENT_STATUSES } from "../status-actions";
+import { setClientStatus } from "../status-actions";
+import { CLIENT_STATUSES } from "@/lib/client-status";
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";

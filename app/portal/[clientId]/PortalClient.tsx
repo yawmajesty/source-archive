@@ -7,7 +7,7 @@ import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown
 import { uploadFile } from "@/lib/storage";
 import { mediaKindFor, type ProductMediaItem } from "@/lib/product-media";
 import { STAGE_LABEL as WORK_LABEL, groupByDate } from "@/lib/production-log";
-import { STAGE_LABEL as PRODUCT_STAGE_LABEL } from "@/app/(app)/products/[id]/stage-actions";
+import { STAGE_LABEL as PRODUCT_STAGE_LABEL } from "@/lib/stages";
 import type { Client, Contract, PortalFile, AgencySettings, SavedInvoice } from "@/lib/data";
 import {
   updateInvoiceStatus,

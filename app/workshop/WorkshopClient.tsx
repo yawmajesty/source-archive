@@ -6,7 +6,8 @@ import { uploadFile } from "@/lib/storage";
 import { mediaKindFor } from "@/lib/product-media";
 import { PRODUCTION_STAGES, STAGE_LABEL, groupByDate, type ProductionLogEntry, type ProductionStage } from "@/lib/production-log";
 import { createLogEntry, attachLogPhotos } from "@/app/(app)/products/[id]/production-log-actions";
-import { changeProductStage, PRODUCT_STAGES } from "@/app/(app)/products/[id]/stage-actions";
+import { changeProductStage } from "@/app/(app)/products/[id]/stage-actions";
+import { PRODUCT_STAGES } from "@/lib/stages";
 import { completeTask, type WorkshopTask } from "./tasks-actions";
 
 interface ProductLite { id: string; name: string; category: string; stage: string }

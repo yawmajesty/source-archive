@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Check, Loader2 } from "lucide-react";
-import { changeProductStage, PRODUCT_STAGES, STAGE_LABEL } from "./stage-actions";
+import { changeProductStage } from "./stage-actions";
+import { PRODUCT_STAGES, STAGE_LABEL } from "@/lib/stages";
 
 /**
  * The designer's stage control, in the product page's right column.
