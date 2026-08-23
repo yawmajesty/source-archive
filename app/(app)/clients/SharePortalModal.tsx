@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Check, Trash2, Link2, X } from "lucide-react";
+import { Copy, Check, Trash2, Link2, X, Send } from "lucide-react";
 import {
-  listClientMembers, addClientMember, removeClientMember, type ClientMember,
+  listClientMembers, addClientMember, removeClientMember, resendClientInvite, type ClientMember,
 } from "./member-actions";
 
 /**
@@ -25,6 +25,7 @@ export function SharePortalModal({ clientId, clientName, onClose }: {
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const url = typeof window !== "undefined" ? `${window.location.origin}/portal/${clientId}` : "";
 
@@ -47,12 +48,34 @@ export function SharePortalModal({ clientId, clientName, onClose }: {
 
   async function add() {
     if (!email.trim() || busy) return;
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setNotice(null);
     const res = await addClientMember(clientId, email, role);
     if (!res.success) { setError(res.error); setBusy(false); return; }
+
     setMembers((prev) => [...prev.filter((m) => m.id !== res.member.id), res.member]);
+    // Say plainly what just happened, rather than leaving them to wonder.
+    if (res.invited === "sent") {
+      setNotice(`Invite emailed to ${res.member.email}. They'll land on this portal after signing up.`);
+    } else if (res.invited === "already_registered") {
+      setNotice(`${res.member.email} already has an account — send them the link and they can sign straight in.`);
+    } else {
+      setError(
+        `Added, but the invite email didn't send${res.inviteError ? `: ${res.inviteError}` : ""}. Send them the link yourself.`,
+      );
+    }
     setEmail("");
     setBusy(false);
+  }
+
+  async function resend(m: ClientMember) {
+    setError(null); setNotice(null);
+    const res = await resendClientInvite(m.id, clientId);
+    if (!res.success) { setError(res.error ?? "Could not resend"); return; }
+    setNotice(
+      res.state === "already_registered"
+        ? `${m.email} already has an account — they can sign in now.`
+        : `Invite re-sent to ${m.email}.`,
+    );
   }
 
   async function remove(m: ClientMember) {
@@ -116,6 +139,15 @@ export function SharePortalModal({ clientId, clientName, onClose }: {
                       {m.claimed_at ? " · signed in" : " · hasn't signed in yet"}
                     </p>
                   </div>
+                  {!m.claimed_at && (
+                    <button
+                      onClick={() => resend(m)}
+                      className="flex items-center gap-1 rounded-md border border-[var(--sa-border)] px-2 py-1 text-[11.5px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
+                      title="Send them the invitation email again"
+                    >
+                      <Send size={11} /> Resend
+                    </button>
+                  )}
                   <button onClick={() => remove(m)} className="text-[var(--sa-text-tertiary)] hover:text-red-500" title="Remove">
                     <Trash2 size={13} />
                   </button>
@@ -146,10 +178,11 @@ export function SharePortalModal({ clientId, clientName, onClose }: {
           </div>
 
           <p className="mt-2 text-[11.5px] text-[var(--sa-text-tertiary)]">
-            They sign in at <strong>/sign-in</strong> with this address. There is no automatic invite email yet — send them the link yourself.
+            Adding someone emails them an invitation. They sign up with that address and land straight on this portal.
           </p>
         </div>
 
+        {notice && <p className="mt-3 text-[12px]" style={{ color: "var(--sa-success)" }}>{notice}</p>}
         {error && <p className="mt-3 text-[12px] text-red-500">{error}</p>}
       </div>
     </div>

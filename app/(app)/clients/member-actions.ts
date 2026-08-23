@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { currentUser } from "@clerk/nextjs/server";
+import { currentUser, clerkClient } from "@clerk/nextjs/server";
+import { getPublicOrigin } from "@/lib/url";
 import { getAgencySupabase, getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { getAgencyContext } from "@/lib/agency-data";
 import { can } from "@/lib/permissions";
@@ -32,7 +33,10 @@ export async function addClientMember(
   clientId: string,
   email: string,
   role: "owner" | "member",
-): Promise<{ success: true; member: ClientMember } | { success: false; error: string }> {
+): Promise<
+  | { success: true; member: ClientMember; invited: "sent" | "already_registered" | "failed"; inviteError: string | null }
+  | { success: false; error: string }
+> {
   const ctx = await getAgencyContext();
   if (!ctx) return { success: false, error: "Not a member of any agency" };
   if (!can(ctx.role, ctx.permissions, "client.edit")) {
@@ -61,8 +65,35 @@ export async function addClientMember(
     .single();
 
   if (error) return { success: false, error: error.message };
+
+  // Send a real invitation. Clerk mails it and hands them a sign-up link that
+  // lands on the portal, so being added actually tells them something.
+  let invited: "sent" | "already_registered" | "failed" = "failed";
+  let inviteError: string | null = null;
+  try {
+    const clerk = await clerkClient();
+    const existing = await clerk.users.getUserList({ emailAddress: [clean], limit: 1 });
+    if (existing.data.length > 0) {
+      // Already has an account — no invitation to send; signing in is enough.
+      invited = "already_registered";
+      await supabase
+        .from("client_members")
+        .update({ user_id: existing.data[0].id })
+        .eq("id", (data as ClientMember).id);
+    } else {
+      await clerk.invitations.createInvitation({
+        emailAddress: clean,
+        redirectUrl: `${getPublicOrigin()}/portal/${clientId}`,
+        ignoreExisting: true,
+      });
+      invited = "sent";
+    }
+  } catch (e) {
+    inviteError = e instanceof Error ? e.message : "Could not send the invitation";
+  }
+
   revalidatePath(`/clients/${clientId}`);
-  return { success: true, member: data as ClientMember };
+  return { success: true, member: data as ClientMember, invited, inviteError };
 }
 
 export async function removeClientMember(
@@ -132,4 +163,49 @@ export async function resolvePortalAccess(clientId: string): Promise<{
   }
 
   return { allowed: true, gated: true, signedIn: true, memberRole: match.role };
+}
+
+/**
+ * Re-send an invitation to someone already on the list.
+ *
+ * Deliberately a manual action rather than something that fires on deploy:
+ * these are the client's people, and emailing them is the agency's call to
+ * make, not a side effect of a code change.
+ */
+export async function resendClientInvite(
+  memberId: string,
+  clientId: string,
+): Promise<{ success: boolean; error?: string; state?: "sent" | "already_registered" }> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return { success: false, error: "Not signed in" };
+  if (!can(ctx.role, ctx.permissions, "client.edit")) {
+    return { success: false, error: "You don't have permission to manage this client's people" };
+  }
+
+  const supabase = await getAgencySupabase();
+  const { data: member } = await supabase
+    .from("client_members")
+    .select("id, email, client_id")
+    .eq("id", memberId)
+    .maybeSingle();
+  if (!member) return { success: false, error: "That person is no longer on the list" };
+
+  const email = (member as { email: string }).email;
+
+  try {
+    const clerk = await clerkClient();
+    const existing = await clerk.users.getUserList({ emailAddress: [email], limit: 1 });
+    if (existing.data.length > 0) {
+      await supabase.from("client_members").update({ user_id: existing.data[0].id }).eq("id", memberId);
+      return { success: true, state: "already_registered" };
+    }
+    await clerk.invitations.createInvitation({
+      emailAddress: email,
+      redirectUrl: `${getPublicOrigin()}/portal/${clientId}`,
+      ignoreExisting: true,
+    });
+    return { success: true, state: "sent" };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Could not send the invitation" };
+  }
 }

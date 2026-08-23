@@ -733,6 +733,9 @@ function ClientPeople({ clientId, initial }: { clientId: string; initial: Client
     const res = await addClientMember(clientId, email, role);
     if (!res.success) { setError(res.error); setBusy(false); return; }
     setRows((prev) => [...prev.filter((r) => r.id !== res.member.id), res.member]);
+    if (res.invited === "failed") {
+      setError(`Added, but the invite email didn't send. Send them the portal link yourself.`);
+    }
     setEmail("");
     setBusy(false);
   }
