@@ -122,12 +122,22 @@ export async function addMember(
 ): Promise<{ success: boolean; error?: string }> {
   const ctx = await adminOrThrow();
   const supabase = await getAgencySupabase();
+  // Clear any existing primary first: one per user, enforced by a unique index.
+  await supabase
+    .from("agency_members")
+    .update({ is_primary: false })
+    .eq("user_id", userId)
+    .neq("agency_id", ctx.agency.id);
+
   const { error } = await supabase.from("agency_members").upsert(
     {
       agency_id: ctx.agency.id,
       user_id: userId,
       role,
       permissions: ROLE_DEFAULTS[role] ?? [],
+      // Being added by an admin is the deliberate choice; the agency someone
+      // got by signing up is not.
+      is_primary: true,
     },
     { onConflict: "agency_id,user_id" },
   );

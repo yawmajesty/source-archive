@@ -61,8 +61,13 @@ export const getAgencyContext = cache(async (): Promise<AgencyContext | null> =>
   const supabase = await getAgencySupabase();
   const { data } = await supabase
     .from("agency_members")
-    .select("role, permissions, agency:agencies(*)")
+    .select("role, permissions, is_primary, agency:agencies(*)")
     .eq("user_id", userId)
+    // Primary first. Signing up creates an agency of your own, so "oldest
+    // membership" used to mean people added to a real agency still worked
+    // inside their accidental one — everything they created was stamped with
+    // it and invisible to the team.
+    .order("is_primary", { ascending: false })
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
