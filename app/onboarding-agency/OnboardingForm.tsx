@@ -7,6 +7,7 @@ import { createAgencyAction } from "./actions";
 
 export function OnboardingForm() {
   const router = useRouter();
+  const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugTouched, setSlugTouched] = useState(false);
@@ -34,6 +35,35 @@ export function OnboardingForm() {
       router.push("/dashboard");
     });
   }
+
+  // Kept available — a genuinely new agency still needs to be created — but
+
+  // no longer the thing a new signup falls into by accident.
+
+  if (!showCreate) {
+
+    return (
+
+      <div className="text-center">
+
+        <button
+
+          onClick={() => setShowCreate(true)}
+
+          className="text-[12px] text-[var(--sa-text-tertiary)] underline underline-offset-4 hover:text-[var(--sa-text-secondary)]"
+
+        >
+
+          I&apos;m setting up a new agency instead
+
+        </button>
+
+      </div>
+
+    );
+
+  }
+
 
   return (
     <form

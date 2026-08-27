@@ -1,15 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { UserPlus, Trash2, AlertCircle } from "lucide-react";
+import { UserPlus, Trash2, AlertCircle, Mail, X } from "lucide-react";
 import type { AgencyRole } from "@/lib/agency-data";
 import { CAPABILITIES, ROLE_LABEL, ROLE_HINT, type Capability } from "@/lib/permissions";
 import type { TeamMember } from "../settings/team-actions";
 import { addMember, setMemberRole, setMemberPermissions, removeMember, setMemberClientScope, setMemberProjectScope } from "../settings/team-actions";
+import { inviteToAgency, revokeInvite, deleteEmptyAgency, type AgencyInvite } from "../settings/invite-actions";
 
 const ROLES: AgencyRole[] = ["admin", "team", "maker"];
 
-export function TeamClient({ agencyName, currentUserId, isAdmin, members, unattached, clients, projects }: {
+export function TeamClient({ agencyName, currentUserId, isAdmin, members, unattached, clients, projects, invites, emptyAgencies }: {
   agencyName: string;
   currentUserId: string;
   isAdmin: boolean;
@@ -17,11 +18,48 @@ export function TeamClient({ agencyName, currentUserId, isAdmin, members, unatta
   unattached: TeamMember[];
   clients: { id: string; name: string }[];
   projects: { id: string; name: string; client_id: string }[];
+  invites: AgencyInvite[];
+  emptyAgencies: { id: string; name: string; members: number }[];
 }) {
   const [rows, setRows] = useState(members);
   const [pending, setPending] = useState(unattached);
   const [busy, setBusy] = useState<string | null>(null);
+  const [pendingInvites, setPendingInvites] = useState(invites);
+  const [strays, setStrays] = useState(emptyAgencies);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<AgencyRole>("team");
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  async function sendInvite() {
+    if (!inviteEmail.trim() || busy) return;
+    setBusy("invite"); setError(null); setNotice(null);
+    const res = await inviteToAgency({ email: inviteEmail, role: inviteRole });
+    if (!res.success) { setError(res.error); setBusy(null); return; }
+    setPendingInvites((prev) => [res.invite, ...prev.filter((i) => i.id !== res.invite.id)]);
+    setNotice(
+      res.emailed
+        ? `Invited ${res.invite.email}. They'll join ${agencyName} automatically when they sign in.`
+        : `Invite recorded, but the email didn't send${res.emailError ? `: ${res.emailError}` : ""}.`,
+    );
+    setInviteEmail("");
+    setBusy(null);
+  }
+
+  async function cancelInvite(i: AgencyInvite) {
+    const res = await revokeInvite(i.id);
+    if (!res.success) { setError(res.error ?? "Could not revoke"); return; }
+    setPendingInvites((prev) => prev.filter((x) => x.id !== i.id));
+  }
+
+  async function removeStray(a: { id: string; name: string }) {
+    if (!window.confirm(`Delete the empty agency "${a.name}"? Anyone in it will be asked to be invited again.`)) return;
+    setBusy(a.id);
+    const res = await deleteEmptyAgency(a.id);
+    if (!res.success) setError(res.error ?? "Could not delete");
+    else setStrays((prev) => prev.filter((x) => x.id !== a.id));
+    setBusy(null);
+  }
 
   async function adopt(m: TeamMember, role: AgencyRole) {
     setBusy(m.user_id); setError(null);
@@ -99,6 +137,89 @@ export function TeamClient({ agencyName, currentUserId, isAdmin, members, unatta
 
       <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-4 pb-10 pt-4 md:px-6">
       {error && <p className="text-[12.5px] text-red-500">{error}</p>}
+
+      {isAdmin && (
+        <div className="rounded-xl border border-[var(--sa-border)] p-4">
+          <p className="text-[13px] font-medium text-[var(--sa-text-primary)]">Invite someone</p>
+          <p className="mt-0.5 text-[12px] text-[var(--sa-text-secondary)]">
+            They get an email, and joining puts them straight into {agencyName} with the role you pick —
+            no separate workspace, nothing to adopt afterwards.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <input
+              className="min-w-0 flex-1 rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-2.5 py-2 text-[13px] text-[var(--sa-text-primary)] outline-none"
+              placeholder="their@email.com"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") sendInvite(); }}
+            />
+            <select
+              className="rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-2.5 py-2 text-[13px] text-[var(--sa-text-primary)]"
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value as AgencyRole)}
+            >
+              {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+            </select>
+            <button
+              onClick={sendInvite}
+              disabled={busy === "invite" || !inviteEmail.trim()}
+              className="flex items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-3.5 py-2 text-[12.5px] font-medium text-white disabled:opacity-40"
+            >
+              <Mail size={13} /> {busy === "invite" ? "Sending…" : "Send invite"}
+            </button>
+          </div>
+
+          {pendingInvites.length > 0 && (
+            <div className="mt-3 flex flex-col gap-1.5">
+              {pendingInvites.map((i) => (
+                <div key={i.id} className="flex items-center gap-2 rounded-lg border border-[var(--sa-border)] px-2.5 py-1.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12.5px] text-[var(--sa-text-primary)]">{i.email}</p>
+                    <p className="text-[11px] text-[var(--sa-text-tertiary)]">
+                      Invited as {ROLE_LABEL[i.role] ?? i.role} · not accepted yet
+                    </p>
+                  </div>
+                  <button onClick={() => cancelInvite(i)} className="text-[var(--sa-text-tertiary)] hover:text-red-500" title="Revoke">
+                    <X size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {notice && <p className="mt-2 text-[12px]" style={{ color: "var(--sa-success)" }}>{notice}</p>}
+        </div>
+      )}
+
+      {isAdmin && strays.length > 0 && (
+        <div className="rounded-xl border border-[var(--sa-border)] p-4">
+          <p className="text-[13px] font-medium text-[var(--sa-text-primary)]">
+            {strays.length} empty workspace{strays.length === 1 ? "" : "s"}
+          </p>
+          <p className="mt-0.5 mb-3 text-[12px] text-[var(--sa-text-secondary)]">
+            Left over from before invites existed — each was created automatically when someone signed up.
+            None holds any products or clients. Removing them keeps work from landing somewhere you can&apos;t see.
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {strays.map((a) => (
+              <div key={a.id} className="flex items-center gap-2 rounded-lg border border-[var(--sa-border)] px-2.5 py-1.5">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[12.5px] text-[var(--sa-text-primary)]">{a.name}</p>
+                  <p className="text-[11px] text-[var(--sa-text-tertiary)]">
+                    empty · {a.members} member{a.members === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => removeStray(a)}
+                  disabled={busy === a.id}
+                  className="rounded-md border border-[var(--sa-border)] px-2.5 py-1 text-[11.5px] text-[var(--sa-text-secondary)] hover:border-red-400 hover:text-red-500 disabled:opacity-40"
+                >
+                  {busy === a.id ? "Removing…" : "Remove"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isAdmin && pending.length > 0 && (
         <div className="rounded-xl border border-amber-300/60 bg-amber-50/40 p-4 dark:bg-amber-500/5">
