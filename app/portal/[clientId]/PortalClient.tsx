@@ -80,18 +80,23 @@ interface Props {
 
 // ── Stage config (from spec Prompt 3) ────────────────────────
 const STAGE_CFG: Record<Stage, { bg: string; fg: string; label: string }> = {
-  brief:      { bg: "#F1EFE8", fg: "#444441", label: "Brief received" },
+  brief:      { bg: "#F1EFE8", fg: "#444441", label: "Concept & design" },
+  pattern:    { bg: "#E7ECFB", fg: "#2B3F7A", label: "Pattern making" },
   sourcing:   { bg: "#E1F5EE", fg: "#085041", label: "Finding manufacturer" },
   sampling:   { bg: "#E1F5EE", fg: "#085041", label: "Sampling" },
+  review:     { bg: "#FBE9F1", fg: "#7A2348", label: "With you for review" },
   approved:   { bg: "#EAF3DE", fg: "#27500A", label: "Sample approved" },
+  revision:   { bg: "#FDE8E8", fg: "#8A2020", label: "Revision sample" },
   production: { bg: "#FAEEDA", fg: "#633806", label: "In production" },
   qc:         { bg: "#FAEEDA", fg: "#633806", label: "Quality inspection" },
-  shipped:    { bg: "#EEEDFE", fg: "#3C3489", label: "On the way" },
+  shipped:    { bg: "#EEEDFE", fg: "#3C3489", label: "Item complete" },
 };
-const STAGE_ORDER: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
+const STAGE_ORDER: Stage[] = ["brief", "pattern", "sourcing", "sampling", "review", "approved", "revision", "production", "qc", "shipped"];
 
 function StagePill({ stage }: { stage: Stage }) {
-  const c = STAGE_CFG[stage];
+  // Same guard as the dashboard: an unknown stage must not break a client's
+  // portal.
+  const c = STAGE_CFG[stage] ?? { bg: "#F1EFE8", fg: "#444441", label: String(stage) };
   return (
     <span
       className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-medium leading-none whitespace-nowrap"

@@ -20,17 +20,22 @@ interface Props {
 
 // ── Stage config ─────────────────────────────────────
 const STAGE_CFG: Record<Stage, { label: string; bg: string; fg: string }> = {
-  brief:      { label: "Brief",      bg: "#F1EFE8", fg: "#444441" },
+  brief:      { label: "Concept",    bg: "#F1EFE8", fg: "#444441" },
+  pattern:    { label: "Pattern",    bg: "#E0E7FF", fg: "#3730A3" },
   sourcing:   { label: "Sourcing",   bg: "#DBEAFE", fg: "#1E40AF" },
   sampling:   { label: "Sampling",   bg: "#EDE9FE", fg: "#5B21B6" },
+  review:     { label: "Review",     bg: "#FCE7F3", fg: "#9D174D" },
   approved:   { label: "Approved",   bg: "#D1FAE5", fg: "#065F46" },
+  revision:   { label: "Revision",   bg: "#FFE4E6", fg: "#9F1239" },
   production: { label: "Production", bg: "#FEF3C7", fg: "#92400E" },
   qc:         { label: "QC",         bg: "#FEF3C7", fg: "#92400E" },
-  shipped:    { label: "Shipped",    bg: "#F3F4F6", fg: "#6B7280" },
+  shipped:    { label: "Complete",   bg: "#F3F4F6", fg: "#6B7280" },
 };
 
 function StagePill({ stage }: { stage: Stage }) {
-  const c = STAGE_CFG[stage];
+  // Never crash on a stage this map hasn't been taught yet — a new stage
+  // should show as a plain chip, not take the whole dashboard down.
+  const c = STAGE_CFG[stage] ?? { label: String(stage), bg: "#F1EFE8", fg: "#444441" };
   return (
     <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none whitespace-nowrap" style={{ background: c.bg, color: c.fg }}>
       {c.label}

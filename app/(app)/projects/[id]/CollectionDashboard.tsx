@@ -9,9 +9,12 @@ const STAGE_ORDER: Stage[] = ["brief", "sourcing", "sampling", "approved", "prod
 
 const STAGE_COLORS: Record<Stage, string> = {
   brief:      "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+  pattern:    "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300",
   sourcing:   "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
   sampling:   "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+  review:     "bg-pink-50 text-pink-700 dark:bg-pink-950 dark:text-pink-300",
   approved:   "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+  revision:   "bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
   production: "bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
   qc:         "bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
   shipped:    "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300",

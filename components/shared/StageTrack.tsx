@@ -6,10 +6,13 @@ import type { Stage } from "@/lib/mock-data";
 
 const STAGES: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
 const STAGE_LABELS: Record<Stage, string> = {
-  brief: "Brief",
+  brief: "Concept",
+  pattern: "Pattern",
   sourcing: "Sourcing",
   sampling: "Sampling",
+  review: "Review",
   approved: "Approved",
+  revision: "Revision",
   production: "Production",
   qc: "QC",
   shipped: "Shipped",

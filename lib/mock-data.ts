@@ -4,11 +4,18 @@
 
 export type ClientStatus = "active" | "onboarding" | "paused" | "inactive";
 export type ProjectStatus = "active" | "completed" | "on_hold";
+// Must stay in step with PRODUCT_STAGES in lib/stages.ts, which is what the
+// stage picker writes. `sourcing`, `approved` and `qc` are legacy values still
+// held by existing products; `pattern`, `review` and `revision` were added
+// with the studio's own vocabulary.
 export type Stage =
   | "brief"
+  | "pattern"
   | "sourcing"
   | "sampling"
+  | "review"
   | "approved"
+  | "revision"
   | "production"
   | "qc"
   | "shipped";

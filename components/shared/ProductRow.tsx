@@ -8,9 +8,12 @@ import type { Product, Factory, Stage } from "@/lib/mock-data";
 
 const STAGE_DOT_COLORS: Record<Stage, string> = {
   brief: "bg-gray-400",
+  pattern: "bg-indigo-500",
   sourcing: "bg-blue-500",
   sampling: "bg-amber-500",
+  review: "bg-pink-500",
   approved: "bg-green-600",
+  revision: "bg-rose-500",
   production: "bg-purple-600",
   qc: "bg-orange-500",
   shipped: "bg-emerald-600",
