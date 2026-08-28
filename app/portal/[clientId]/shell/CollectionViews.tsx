@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { Download } from "lucide-react";
+import { PRODUCT_STAGES } from "@/lib/stages";
 import type { PortalProduct, PortalProject } from "../page";
 
 // ─────────────────────────────────────────────────────────────
@@ -21,18 +22,90 @@ export const COLLECTION_VIEWS: { id: CollectionView; label: string }[] = [
   { id: "timeline", label: "Timeline" },
 ];
 
-const STAGES: { id: string; label: string; hint?: string }[] = [
-  { id: "brief",      label: "Brief" },
-  { id: "sourcing",   label: "Sourcing" },
-  { id: "sampling",   label: "Sampling" },
-  { id: "approved",   label: "Approved",   hint: "Moves here once you approve a sample." },
-  { id: "production", label: "Production" },
-  { id: "qc",         label: "Quality check", hint: "We post factory-floor QC photos here." },
-  { id: "shipped",    label: "Shipped",    hint: "Delivered pieces land here." },
-];
+/**
+ * The stage track shown to clients, taken from lib/stages.ts rather than
+ * redeclared here. A second copy is exactly how the dashboard crash happened:
+ * a stage existed in one list and not another, and anything set to it fell
+ * through. Kanban hints are layered on by id.
+ */
+const STAGE_HINTS: Record<string, string> = {
+  review: "Waiting on your comments before we go again.",
+  approved: "Moves here once you approve a sample.",
+  revision: "A second sample, built from your feedback.",
+  qc: "We post factory-floor QC photos here.",
+  shipped: "Finished pieces land here.",
+};
+
+const STAGES: { id: string; label: string; hint?: string }[] = PRODUCT_STAGES.map((s) => ({
+  id: s.id,
+  label: s.label,
+  hint: STAGE_HINTS[s.id],
+}));
 
 const money = (n: number | null) =>
   n == null ? "—" : n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+/**
+ * Where a product has got to, at a glance.
+ *
+ * Seven segments, one per stage: the ones behind you fill in, the one you're
+ * on breathes. It turns "sampling" from a word into visible progress, which is
+ * the thing a brand actually wants to know when they open the portal.
+ */
+function StageProgress({ stage }: { stage: string }) {
+  const idx = STAGES.findIndex((s) => s.id === stage);
+  const current = STAGES[idx];
+  const done = idx >= STAGES.length - 1;
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-center gap-1" aria-label={`Stage: ${current?.label ?? stage}`}>
+        {STAGES.map((s, i) => {
+          const passed = idx >= 0 && i < idx;
+          const isCurrent = i === idx;
+          return (
+            <span
+              key={s.id}
+              className={`h-[3px] flex-1 rounded-full transition-all duration-500 ${isCurrent ? "stage-pulse" : ""}`}
+              style={{
+                background: passed || isCurrent ? STAGE_TINT[s.id] ?? "var(--accent)" : "var(--fill)",
+                opacity: passed ? 0.55 : isCurrent ? 1 : 1,
+              }}
+            />
+          );
+        })}
+      </div>
+      <p className="mt-1.5 flex items-center gap-1.5 text-[11px]" style={{ color: "var(--label-2)" }}>
+        <span
+          className="inline-block h-[6px] w-[6px] rounded-full"
+          style={{ background: STAGE_TINT[stage] ?? "var(--accent)" }}
+        />
+        {current?.label ?? stage}
+        {!done && idx >= 0 && (
+          <span className="tnum" style={{ color: "var(--label-3)" }}>
+            · {idx + 1} of {STAGES.length}
+          </span>
+        )}
+        {done && <span style={{ color: "var(--green)" }}>· done</span>}
+      </p>
+    </div>
+  );
+}
+
+// Warm at the start, cool through the middle, green at the finish — so the
+// colour itself reads as progress rather than being decorative.
+const STAGE_TINT: Record<string, string> = {
+  brief: "#A88CE0",
+  pattern: "#6F86E8",
+  sourcing: "#6F86E8",
+  sampling: "#3E9BD6",
+  review: "#E0913C",
+  approved: "#3EA97A",
+  revision: "#E06C6C",
+  production: "#2F9E68",
+  qc: "#2F9E68",
+  shipped: "#1F7A4C",
+};
 
 function productsOf(projects: PortalProject[]): PortalProduct[] {
   return projects.flatMap((p) => p.products);
@@ -114,6 +187,7 @@ export function GalleryView({ projects, onSelect }: {
           <div className="p-2.5">
             <p className="truncate text-[13px] font-medium tight" style={{ color: "var(--label)" }}>{p.name}</p>
             <p className="mt-0.5 truncate text-[11.5px]" style={{ color: "var(--label-2)" }}>{p.category}</p>
+            <StageProgress stage={p.stage} />
           </div>
         </button>
       ))}

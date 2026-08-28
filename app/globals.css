@@ -608,3 +608,20 @@
   .portal-tabbar { display: flex; }
 }
 .portal-tabbar { display: none; grid-column: 1 / -1; grid-row: 3; }
+
+/* Current-stage marker on a product card. Deliberately gentle: a slow breath
+   that reads as "in progress", not a notification demanding attention.
+   Honoured only when the viewer hasn't asked for reduced motion. */
+@keyframes stage-breathe {
+  0%, 100% { opacity: 1;    transform: scaleY(1); }
+  50%      { opacity: 0.55; transform: scaleY(1.9); }
+}
+
+.stage-pulse {
+  animation: stage-breathe 2.4s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-pulse { animation: none; }
+}

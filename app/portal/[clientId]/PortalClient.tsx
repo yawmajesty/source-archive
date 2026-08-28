@@ -422,6 +422,7 @@ function ProductDetailView({ product, files, client, agencyLabel, onClose }: {
   const [updates, setUpdates] = useState(product.updates.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
   const [media, setMedia] = useState<ProductMediaItem[]>(product.media ?? []);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [heroIdx, setHeroIdx] = useState(0);
   const [feedback, setFeedback] = useState("");
   const [sendingFeedback, setSendingFeedback] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -572,54 +573,93 @@ function ProductDetailView({ product, files, client, agencyLabel, onClose }: {
             </div>
             {photoError && <p className="mt-2 text-[11px] text-red-500">Upload failed: {photoError}</p>}
             {media.length > 0 ? (
-              <div className="grid grid-cols-3 gap-2">
-                {media.map((item, i) => {
-                  const mine = item.uploaded_by_role === "client";
+              <div className="flex flex-col gap-2">
+                {/* Hero — the product should lead with its own photograph */}
+                {(() => {
+                  const hero = media[heroIdx] ?? media[0];
+                  const heroPos = media.findIndex((m) => m.id === hero.id);
+                  const mine = hero.uploaded_by_role === "client";
                   return (
-                    <div key={item.id} className="group relative aspect-square rounded-xl overflow-hidden" style={{ background: "var(--portal-surface-raised)", border: "1px solid var(--portal-border)" }}>
-                      <button className="h-full w-full" onClick={() => setLightboxIdx(i)}>
-                        {item.kind === "video" ? (
+                    <div
+                      className="group relative w-full overflow-hidden rounded-2xl"
+                      style={{
+                        aspectRatio: "4 / 5",
+                        background: "var(--portal-surface-raised)",
+                        border: "1px solid var(--portal-border)",
+                      }}
+                    >
+                      <button className="h-full w-full" onClick={() => setLightboxIdx(heroPos)}>
+                        {hero.kind === "video" ? (
                           <>
-                            <video src={item.url} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                            <video src={hero.url} className="h-full w-full object-cover" muted playsInline preload="metadata" />
                             <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                              <span className="flex h-8 w-8 items-center justify-center rounded-full text-white" style={{ background: "rgba(0,0,0,0.55)" }}>
-                                <Play size={13} fill="currentColor" />
+                              <span className="flex h-14 w-14 items-center justify-center rounded-full text-white backdrop-blur-sm" style={{ background: "rgba(0,0,0,0.45)" }}>
+                                <Play size={20} fill="currentColor" />
                               </span>
                             </span>
                           </>
                         ) : (
-                          <img src={item.url} alt={item.caption ?? ""} className="h-full w-full object-cover" />
+                          <img
+                            src={hero.url}
+                            alt={hero.caption ?? ""}
+                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+                          />
                         )}
                       </button>
-
-                      {/* Who added this */}
                       <span
-                        className="absolute bottom-1 left-1 rounded-md px-1.5 py-0.5 text-[9px] font-semibold pointer-events-none"
-                        style={{
-                          background: mine ? "rgba(37,99,235,0.85)" : "rgba(0,0,0,0.55)",
-                          color: "#fff",
-                        }}
+                        className="absolute bottom-2.5 left-2.5 rounded-lg px-2 py-1 text-[10px] font-semibold backdrop-blur-sm pointer-events-none"
+                        style={{ background: mine ? "rgba(37,99,235,0.85)" : "rgba(0,0,0,0.45)", color: "#fff" }}
                       >
-                        {mine ? "You" : agencyLabel}
+                        {mine ? "Added by you" : `From ${agencyLabel}`}
                       </span>
-
                       {mine && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleDeletePhoto(item); }}
-                          className="absolute top-1 right-1 hidden group-hover:flex h-6 w-6 items-center justify-center rounded-full text-white transition-colors"
-                          style={{ background: "rgba(0,0,0,0.55)" }}
+                          onClick={(e) => { e.stopPropagation(); handleDeletePhoto(hero); }}
+                          className="absolute right-2.5 top-2.5 hidden h-7 w-7 items-center justify-center rounded-full text-white group-hover:flex"
+                          style={{ background: "rgba(0,0,0,0.5)" }}
                         >
                           ✕
                         </button>
                       )}
                     </div>
                   );
-                })}
+                })()}
+
+                {/* Thumbnails — only worth showing when there's a choice */}
+                {media.length > 1 && (
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {media.map((item, i) => {
+                      const active = i === heroIdx;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => setHeroIdx(i)}
+                          onDoubleClick={() => setLightboxIdx(i)}
+                          className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl transition-all"
+                          style={{
+                            border: active ? "2px solid var(--portal-brand)" : "1px solid var(--portal-border)",
+                            opacity: active ? 1 : 0.65,
+                          }}
+                          title={item.kind === "video" ? "Video" : "Photo"}
+                        >
+                          {item.kind === "video" ? (
+                            <video src={item.url} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                          ) : (
+                            <img src={item.url} alt="" className="h-full w-full object-cover" />
+                          )}
+                          {item.uploaded_by_role === "client" && (
+                            <span className="absolute bottom-0 left-0 right-0 h-1" style={{ background: "rgba(37,99,235,0.9)" }} />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             ) : (
               <button
                 onClick={() => fileRef.current?.click()}
-                className="flex w-full flex-col items-center gap-2 rounded-xl border-dashed py-6"
+                className="flex w-full flex-col items-center gap-2 rounded-2xl border-dashed py-10"
                 style={{ border: "1px dashed var(--portal-border)", background: "var(--portal-surface-raised)" }}
               >
                 <Upload size={18} strokeWidth={1.5} style={{ color: "var(--portal-text-muted)" }} />
@@ -2028,6 +2068,7 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
         <RailSection title="Move this product">
           <div className="mac-card p-3">
             <StageSelector
+              key={selectedProduct.id}
               productId={selectedProduct.id}
               stage={selectedProduct.stage}
               canChange
@@ -2035,7 +2076,7 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
           </div>
         </RailSection>
       )}
-      <CostingInspector product={selectedProduct} />
+      <CostingInspector key={selectedProduct.id} product={selectedProduct} />
       <SampleTimeline product={selectedProduct} />
       <RailSection title="Activity">
         {productActivity.length === 0 ? (
@@ -2066,6 +2107,11 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
       <PortalShell topbar={topbar} left={left} right={right} rightOpen={rightOpen}>
         {selectedProduct && (
           <ProductDetailView
+            // Remount per product. This component seeds media, updates, stage
+            // and more from props, and React only runs a useState initialiser
+            // on mount — without a key, switching products in the left rail
+            // kept the previous product's photos, notes and stage on screen.
+            key={selectedProduct.id}
             product={selectedProduct}
             files={files}
             client={client}
