@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { Download } from "lucide-react";
 import type { PortalProduct, PortalProject } from "../page";
 
 // ─────────────────────────────────────────────────────────────
@@ -35,6 +36,58 @@ const money = (n: number | null) =>
 
 function productsOf(projects: PortalProject[]): PortalProduct[] {
   return projects.flatMap((p) => p.products);
+}
+
+/**
+ * Export what's on screen, as a spreadsheet.
+ *
+ * The portal had a CSV download before the collection views replaced the old
+ * projects table; this restores it against the same figures the Table view
+ * shows, so the file and the screen can't disagree.
+ */
+function exportCsv(projects: PortalProject[], filenameHint: string) {
+  const rows = projects.flatMap((proj) =>
+    proj.products.map((p) => {
+      const qty = p.order_qty ?? 0;
+      const unit = p.quoted_cost_usd;
+      return {
+        Collection: proj.name,
+        Product: p.name,
+        Category: p.category,
+        Stage: STAGES.find((s) => s.id === p.stage)?.label ?? p.stage,
+        Quantity: qty || "",
+        "Unit cost (USD)": unit ?? "",
+        "Total spend (USD)": unit != null && qty ? (unit * qty).toFixed(2) : "",
+        MOQ: p.moq ?? "",
+        "Sample round": p.sample_round ?? "",
+        "Expected sample": p.expected_sample_date
+          ? new Date(p.expected_sample_date).toISOString().slice(0, 10)
+          : "",
+      };
+    }),
+  );
+  if (rows.length === 0) return;
+
+  const headers = Object.keys(rows[0]);
+  // Quote every field and double any embedded quotes — product names contain
+  // commas and inches often enough to matter.
+  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const csv = [
+    headers.map(esc).join(","),
+    ...rows.map((r) => headers.map((h) => esc((r as Record<string, unknown>)[h])).join(",")),
+  ].join("\n");
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  const name = `${filenameHint.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-${stamp}.csv`;
+
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ── Gallery ──────────────────────────────────────────────────
@@ -72,8 +125,8 @@ export function GalleryView({ projects, onSelect }: {
 // The line-sheet math clients otherwise keep in a spreadsheet. The totals
 // footer is the whole reason to stop keeping it there.
 
-export function TableView({ projects, onSelect }: {
-  projects: PortalProject[]; onSelect: (p: PortalProduct) => void;
+export function TableView({ projects, onSelect, exportName = "collection" }: {
+  projects: PortalProject[]; onSelect: (p: PortalProduct) => void; exportName?: string;
 }) {
   const products = productsOf(projects);
 
@@ -93,7 +146,18 @@ export function TableView({ projects, onSelect }: {
   const td = "px-2.5 py-2 text-[12.5px]";
 
   return (
-    <div className="mac-card overflow-hidden">
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-end">
+        <button
+          onClick={() => exportCsv(projects, exportName)}
+          className="mac-button flex items-center gap-1.5"
+          title="Download these products as a spreadsheet"
+        >
+          <Download size={13} strokeWidth={1.6} /> Export CSV
+        </button>
+      </div>
+
+      <div className="mac-card overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -151,6 +215,7 @@ export function TableView({ projects, onSelect }: {
             </tr>
           </tfoot>
         </table>
+      </div>
       </div>
     </div>
   );

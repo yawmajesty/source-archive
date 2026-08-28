@@ -1025,149 +1025,6 @@ function getDelivery(product: PortalProduct, projectTarget: string): string {
   return last?.due_date ?? projectTarget;
 }
 
-function downloadCSV(rows: { name: string; category: string; stage: Stage; moq: number | null; price: string; sampleDue: string; delivery: string; approved: string }[], clientName: string) {
-  const date = new Date().toISOString().slice(0, 10);
-  const filename = `sourceos-projects-${clientName.toLowerCase().replace(/\s+/g, "-")}-${date}.csv`;
-  const headers = ["Product name","Category","Stage","MOQ","Unit price","Sample due","Delivery","Approved"];
-  const lines = [headers.join(","), ...rows.map((r) =>
-    [r.name, r.category, r.stage, r.moq, r.price, r.sampleDue, r.delivery, r.approved].map((v) => `"${v}"`).join(",")
-  )];
-  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-}
-
-function ProjectsTable({ projects, client }: { projects: PortalProject[]; client: Client }) {
-  const [sortKey, setSortKey] = useState<SortKey>("sample_due");
-  const [sortAsc, setSortAsc] = useState(true);
-
-  const rows = useMemo(() => {
-    return projects.flatMap((proj) =>
-      proj.products.map((p) => ({
-        product: p,
-        sampleDue: getSampleDue(p),
-        delivery: getDelivery(p, proj.target_completion),
-      }))
-    );
-  }, [projects]);
-
-  const sorted = useMemo(() => {
-    return [...rows].sort((a, b) => {
-      let cmp = 0;
-      if (sortKey === "stage") {
-        cmp = STAGE_ORDER.indexOf(a.product.stage) - STAGE_ORDER.indexOf(b.product.stage);
-      } else if (sortKey === "moq") {
-        cmp = (a.product.moq ?? 0) - (b.product.moq ?? 0);
-      } else if (sortKey === "sample_due") {
-        if (!a.sampleDue && !b.sampleDue) cmp = 0;
-        else if (!a.sampleDue) cmp = 1;
-        else if (!b.sampleDue) cmp = -1;
-        else cmp = new Date(a.sampleDue).getTime() - new Date(b.sampleDue).getTime();
-      } else if (sortKey === "delivery") {
-        cmp = new Date(a.delivery).getTime() - new Date(b.delivery).getTime();
-      }
-      return sortAsc ? cmp : -cmp;
-    });
-  }, [rows, sortKey, sortAsc]);
-
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) setSortAsc(!sortAsc);
-    else { setSortKey(key); setSortAsc(true); }
-  }
-
-  function SortIcon({ k }: { k: SortKey }) {
-    if (sortKey !== k) return null;
-    return sortAsc ? <ChevronUp size={10} className="inline ml-0.5" /> : <ChevronDown size={10} className="inline ml-0.5" />;
-  }
-
-  const csvRows = sorted.map(({ product, sampleDue, delivery }) => ({
-    name: product.name,
-    category: product.category,
-    stage: product.stage,
-    moq: product.moq,
-    price: product.quoted_cost_usd ? `$${product.quoted_cost_usd}` : "—",
-    sampleDue: sampleDue ? formatDate(sampleDue) : "—",
-    delivery: formatDate(delivery),
-    approved: STAGE_ORDER.indexOf(product.stage) >= STAGE_ORDER.indexOf("approved") ? "Yes" : "No",
-  }));
-
-  const TH = ({ label, sortable, k }: { label: string; sortable?: boolean; k?: SortKey }) => (
-    <th
-      className={`px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wide whitespace-nowrap ${sortable ? "cursor-pointer select-none" : ""}`}
-      style={{ color: "var(--portal-text-secondary)" }}
-      onClick={sortable && k ? () => toggleSort(k) : undefined}
-    >
-      {label}{sortable && k && <SortIcon k={k} />}
-    </th>
-  );
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>All products ({sorted.length})</p>
-        <button
-          onClick={() => downloadCSV(csvRows, client.name)}
-          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] transition-colors"
-          style={{ border: "1px solid var(--portal-border)", color: "var(--portal-text-secondary)", background: "transparent" }}
-        >
-          <Download size={11} />
-          Export CSV
-        </button>
-      </div>
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
-        <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
-          <thead style={{ background: "var(--portal-thead)", borderBottom: "1px solid var(--portal-border)" }}>
-            <tr>
-              <TH label="Product" />
-              <TH label="Category" />
-              <TH label="Stage" sortable k="stage" />
-              <TH label="MOQ" sortable k="moq" />
-              <TH label="Unit price" />
-              <TH label="Sample due" sortable k="sample_due" />
-              <TH label="Delivery" sortable k="delivery" />
-              <TH label="Approved" />
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map(({ product, sampleDue, delivery }, i) => {
-              const isApproved = STAGE_ORDER.indexOf(product.stage) >= STAGE_ORDER.indexOf("approved");
-              return (
-                <tr key={product.id} style={{ borderBottom: "1px solid var(--portal-border-subtle)", background: i % 2 === 0 ? "transparent" : "var(--portal-row-alt)" }}>
-                  <td className="px-3 py-2.5 text-[12px] font-medium" style={{ color: "var(--portal-text-primary)" }}>{product.name}</td>
-                  <td className="px-3 py-2.5">
-                    <span className="text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>{product.category}</span>
-                  </td>
-                  <td className="px-3 py-2.5"><StagePill stage={product.stage} /></td>
-                  <td className="px-3 py-2.5 text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>{product.moq != null ? product.moq.toLocaleString() : "—"}</td>
-                  <td className="px-3 py-2.5 text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>
-                    {product.quoted_cost_usd ? `$${product.quoted_cost_usd}` : "—"}
-                  </td>
-                  <td className="px-3 py-2.5 text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>{sampleDue ? formatDate(sampleDue) : "—"}</td>
-                  <td className="px-3 py-2.5 text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>{formatDate(delivery)}</td>
-                  <td className="px-3 py-2.5">
-                    {isApproved ? (
-                      <CheckCircle2 size={14} strokeWidth={2} className="text-emerald-500" />
-                    ) : (
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        <rect x="0.75" y="0.75" width="12.5" height="12.5" rx="2.25" stroke="var(--portal-border)" strokeWidth="1.5"/>
-                      </svg>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── FilesSection ─────────────────────────────────────────────
 function FileRow({ file }: { file: PortalFile }) {
   const ext = file.filename.split(".").pop()?.toLowerCase() ?? "";
   const isImage = ["jpg", "jpeg", "png", "ai", "psd"].includes(ext);
@@ -2023,12 +1880,13 @@ function usePortalVisitTracker(clientId: string, tab: Tab, enabled: boolean) {
   }, [clientId, tab, enabled]);
 }
 
-function CollectionBody({ view, projects, onSelect }: {
+function CollectionBody({ view, projects, onSelect, exportName }: {
   view: CollectionView;
   projects: PortalProject[];
   onSelect: (p: PortalProduct) => void;
+  exportName?: string;
 }) {
-  if (view === "table") return <TableView projects={projects} onSelect={onSelect} />;
+  if (view === "table") return <TableView projects={projects} onSelect={onSelect} exportName={exportName} />;
   if (view === "kanban") return <KanbanView projects={projects} onSelect={onSelect} />;
   if (view === "timeline") return <TimelineView projects={projects} onSelect={onSelect} />;
   return <GalleryView projects={projects} onSelect={onSelect} />;
@@ -2219,7 +2077,7 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
         {!selectedProduct && route === "overview" && (
           <div className="flex flex-col gap-5">
             <StatsRow projects={projects} files={files} />
-            <CollectionBody view={view} projects={projects} onSelect={setSelectedProduct} />
+            <CollectionBody view={view} projects={projects} onSelect={setSelectedProduct} exportName={client.name} />
           </div>
         )}
 
@@ -2252,7 +2110,12 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
             <h2 className="text-[17px] font-semibold tight" style={{ color: "var(--label)" }}>
               {projects.find((p) => p.id === selectedProjectId)?.name ?? "All collections"}
             </h2>
-            <CollectionBody view={view} projects={visibleProjects} onSelect={setSelectedProduct} />
+            <CollectionBody
+              view={view}
+              projects={visibleProjects}
+              onSelect={setSelectedProduct}
+              exportName={projects.find((p) => p.id === selectedProjectId)?.name ?? client.name}
+            />
           </div>
         )}
 
