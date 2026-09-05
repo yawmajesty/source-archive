@@ -1,6 +1,6 @@
 "use client";
 
-import { setClientStatus } from "../status-actions";
+import { setClientStatus, renameClient } from "../status-actions";
 import { CLIENT_STATUSES } from "@/lib/client-status";
 import { addClientMember, removeClientMember, type ClientMember } from "../member-actions";
 
@@ -526,7 +526,7 @@ export function ClientsPageClient({ client, projectData, portalActivity, clientM
               {client.logo_initial}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold text-[var(--sa-text-primary)]">{client.name}</p>
+              <ClientNameField client={client} />
               <p className="text-[11px] text-[var(--sa-text-tertiary)]">
                 {client.industry} · {client.country}
               </p>
@@ -799,5 +799,55 @@ function ClientPeople({ clientId, initial }: { clientId: string; initial: Client
       </div>
       {error && <p className="mt-2 text-[11.5px] text-red-500">{error}</p>}
     </section>
+  );
+}
+
+// ── Rename ───────────────────────────────────────────────────────
+// Click the name, type, Enter. A rename is a small enough act that a modal
+// would be more ceremony than it deserves.
+function ClientNameField({ client }: { client: Client }) {
+  const [name, setName] = useState(client.name);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(client.name);
+  const [error, setError] = useState<string | null>(null);
+
+  async function commit() {
+    const next = draft.trim();
+    setEditing(false);
+    if (!next || next === name) { setDraft(name); return; }
+    const previous = name;
+    setName(next);
+    setError(null);
+    const res = await renameClient(client.id, next);
+    if (!res.success) { setName(previous); setDraft(previous); setError(res.error ?? "Could not rename"); }
+  }
+
+  if (!editing) {
+    return (
+      <>
+        <button
+          onClick={() => { setDraft(name); setEditing(true); }}
+          className="max-w-full truncate text-left text-[13px] font-semibold text-[var(--sa-text-primary)] hover:underline"
+          title="Click to rename"
+        >
+          {name}
+        </button>
+        {error && <p className="text-[11px] text-red-500">{error}</p>}
+      </>
+    );
+  }
+
+  return (
+    <input
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit();
+        if (e.key === "Escape") { setDraft(name); setEditing(false); }
+      }}
+      className="w-full rounded-md border border-[var(--sa-border)] bg-[var(--sa-window)] px-1.5 py-0.5 text-[13px] font-semibold text-[var(--sa-text-primary)] outline-none"
+    />
   );
 }

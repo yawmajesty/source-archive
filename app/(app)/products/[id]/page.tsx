@@ -8,6 +8,9 @@ import {
 import { ProductDetailClient } from "./ProductDetailClient";
 import { ProductionLogPanel } from "./ProductionLogPanel";
 import { StageSelector } from "./StageSelector";
+import { CostSheetPanel } from "./CostSheetPanel";
+import { listCostSheets, getCostSheetLines } from "./cost-sheet-actions";
+import type { CostSheet, CostSheetLine } from "@/lib/cost-sheet";
 import { can } from "@/lib/permissions";
 import { listProductionLog } from "./production-log-actions";
 import { getAgencyContext } from "@/lib/agency-data";
@@ -44,6 +47,15 @@ export default async function ProductDetailPage({ params }: Props) {
   let logEntries: ProductionLogEntry[] = [];
   try { logEntries = await listProductionLog(id); } catch { logEntries = []; }
 
+  // Newest sheet only — older ones stay as history and can be surfaced later.
+  let costSheet: CostSheet | null = null;
+  let costLines: CostSheetLine[] = [];
+  try {
+    const sheets = await listCostSheets(id);
+    costSheet = sheets[0] ?? null;
+    if (costSheet) costLines = await getCostSheetLines(costSheet.id);
+  } catch { costSheet = null; }
+
   return (
     <ProductDetailClient
       product={product}
@@ -64,11 +76,19 @@ export default async function ProductDetailPage({ params }: Props) {
         />
       }
       productionLog={
+        <div className="flex flex-col gap-4">
+        <CostSheetPanel
+          productId={id}
+          sheet={costSheet}
+          lines={costLines}
+          canEdit={ctx ? can(ctx.role, ctx.permissions, "cost.view") : false}
+        />
         <ProductionLogPanel
           productId={id}
           entries={logEntries}
           canRelease={ctx?.role === "admin" || ctx?.role === "team"}
         />
+        </div>
       }
     />
   );

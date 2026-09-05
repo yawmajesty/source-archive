@@ -8,6 +8,7 @@ const isPublicRoute = createRouteMatcher([
   "/enquire(.*)",
   "/techpack(.*)",
   "/factory(.*)",
+  "/cost-sheet(.*)",   // factory cost breakdown, protected by its own token
   "/for-brands(.*)",
   "/api/webhook(.*)",
 ]);
