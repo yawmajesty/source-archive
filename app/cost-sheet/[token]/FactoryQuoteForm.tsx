@@ -4,13 +4,13 @@ import { useMemo, useState } from "react";
 import { Check, Send } from "lucide-react";
 import {
   SECTIONS, money, lineCost,
-  type CostSheet, type CostSheetLine,
+  type FactorySheetView, type CostSheetLine,
 } from "@/lib/cost-sheet";
 import { submitFactoryQuote } from "@/app/(app)/products/[id]/cost-sheet-actions";
 
 export function FactoryQuoteForm({ token, sheet, lines: initial, productName }: {
   token: string;
-  sheet: CostSheet;
+  sheet: FactorySheetView;
   lines: CostSheetLine[];
   productName: string;
 }) {

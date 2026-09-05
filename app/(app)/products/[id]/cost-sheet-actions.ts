@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { getAgencySupabase, getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { getAgencyContext } from "@/lib/agency-data";
 import { can } from "@/lib/permissions";
-import type { CostSheet, CostSheetLine, CostSection } from "@/lib/cost-sheet";
+import { toFactoryView } from "@/lib/cost-sheet";
+import type { CostSheet, CostSheetLine, CostSection, FactorySheetView } from "@/lib/cost-sheet";
 
 async function costCtxOrThrow() {
   const ctx = await getAgencyContext();
@@ -225,7 +226,7 @@ export async function revokeFactoryLink(
 // not an agency member and RLS would hide everything.
 
 export async function getSheetByToken(token: string): Promise<
-  { sheet: CostSheet; lines: CostSheetLine[]; productName: string } | null
+  { sheet: FactorySheetView; lines: CostSheetLine[]; productName: string } | null
 > {
   const service = getAgencyServiceSupabase();
   const { data: sheet } = await service
@@ -244,7 +245,8 @@ export async function getSheetByToken(token: string): Promise<
   ]);
 
   return {
-    sheet: s,
+    // Narrowed on purpose — see FactorySheetView. Never hand `s` out whole.
+    sheet: toFactoryView(s),
     lines: (lines ?? []) as CostSheetLine[],
     productName: (product as { name: string } | null)?.name ?? "Product",
   };

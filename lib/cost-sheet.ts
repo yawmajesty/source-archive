@@ -144,3 +144,29 @@ export function canSaveToLibrary(line: CostSheetLine): boolean {
     !!line.label.trim()
   );
 }
+
+/**
+ * The only fields that may cross to the factory's browser.
+ *
+ * The factory page is public, so anything handed to the client component ends
+ * up in the page payload whether it's rendered or not — view-source counts as
+ * disclosure. Freight, duty, overhead, target margin, agency_id, product_id
+ * and the share token itself are all deliberately absent.
+ */
+export type FactorySheetView = Pick<
+  CostSheet,
+  "id" | "title" | "currency" | "quantity" | "labor_cmt" | "labor_notes" | "status" | "factory_name"
+>;
+
+export function toFactoryView(sheet: CostSheet): FactorySheetView {
+  return {
+    id: sheet.id,
+    title: sheet.title,
+    currency: sheet.currency,
+    quantity: sheet.quantity,
+    labor_cmt: sheet.labor_cmt,
+    labor_notes: sheet.labor_notes,
+    status: sheet.status,
+    factory_name: sheet.factory_name,
+  };
+}
