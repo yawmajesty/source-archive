@@ -7,13 +7,23 @@ import { OnboardingForm } from "./OnboardingForm";
 // base currency, creates an independent workspace + 14-day trial, and
 // redirects into the dashboard. Agency team members bypass this — they
 // never see /onboarding because /page.tsx dispatches them to /dashboard.
-export default async function OnboardingPage() {
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string }>;
+}) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
+  // Someone arriving from the public calculator has a style waiting in
+  // their browser, so send them to the page that knows how to claim it.
+  const fromPrice = (await searchParams).from === "price";
+
   // Already have a workspace? Skip onboarding.
   const existing = await getUserWorkspaces();
-  if (existing.length > 0) redirect(`/app/${existing[0].slug}`);
+  if (existing.length > 0) {
+    redirect(fromPrice ? `/app/${existing[0].slug}/pricing` : `/app/${existing[0].slug}`);
+  }
 
   return (
     <div className="min-h-screen bg-[var(--sa-bg)] flex items-center justify-center px-6">
@@ -22,9 +32,11 @@ export default async function OnboardingPage() {
           Set up your workspace
         </h1>
         <p className="text-[13px] text-[var(--sa-text-tertiary)] mb-6">
-          Everything else — collections, samples, costing — lives inside it. You&apos;ll be able to change these later.
+          {fromPrice
+            ? "Name your brand and your style will be waiting inside, exactly as you left it."
+            : "Everything else — collections, samples, costing — lives inside it. You'll be able to change these later."}
         </p>
-        <OnboardingForm />
+        <OnboardingForm landOnPricing={fromPrice} />
       </div>
     </div>
   );

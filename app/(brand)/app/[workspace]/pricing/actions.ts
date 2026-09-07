@@ -165,3 +165,71 @@ export async function deletePriceSheet(
   revalidatePath(`/app/${input.workspace_slug}/pricing`);
   return { success: true };
 }
+
+/**
+ * Claim a calculation built on the public /price page.
+ *
+ * Everything arrives from the visitor's own browser, so nothing in it is
+ * trusted: the sheet is written under the caller's workspace with the
+ * server's own ids, and only the fields the calculator owns are copied.
+ * Numbers are coerced and the name is capped so a hand-edited payload
+ * can't write junk into the row.
+ */
+export async function importPriceSheet(
+  input: Base & { value: Partial<PriceSheet> },
+): Promise<{ success: true; sheet: PriceSheet } | { success: false; error: string }> {
+  const { userId } = await auth();
+  if (!userId) return { success: false, error: "Not authenticated" };
+  if (!can(input.role, "cost.edit", input.mode)) {
+    return { success: false, error: "You don't have permission to edit pricing" };
+  }
+
+  const v = input.value ?? {};
+  const lines: PricingLine[] = Array.isArray(v.lines)
+    ? v.lines.slice(0, 100).map((l, i) => ({
+        id: `l-${i}-${Math.random().toString(36).slice(2, 8)}`,
+        section: l?.section === "trim" || l?.section === "other" ? l.section : "fabric",
+        label: String(l?.label ?? "").slice(0, 200),
+        supplier: l?.supplier ? String(l.supplier).slice(0, 200) : null,
+        unitPrice: num(l?.unitPrice),
+        unit: String(l?.unit ?? "piece").slice(0, 20),
+        consumption: num(l?.consumption),
+      }))
+    : [];
+
+  const supabase = await getBrandSupabase();
+  const { data, error } = await supabase
+    .from("brand_price_sheets")
+    .insert({
+      workspace_id: input.workspace_id,
+      name: String(v.name ?? "").trim().slice(0, 200) || "My first style",
+      currency: String(v.currency ?? "USD").slice(0, 8),
+      quantity: Math.max(1, Math.floor(Number(v.quantity) || 100)),
+      lines,
+      materials: num(v.materials),
+      trims: num(v.trims),
+      labour: num(v.labour),
+      packaging: num(v.packaging),
+      other_per_unit: num(v.otherPerUnit),
+      freight: num(v.freight),
+      duty_pct: num(v.dutyPct),
+      sampling: num(v.sampling),
+      tooling: num(v.tooling),
+      discount_pct: num(v.discountPct),
+      payment_fee_pct: num(v.paymentFeePct),
+      returns_pct: num(v.returnsPct),
+      fulfilment_per_unit: num(v.fulfilmentPerUnit),
+      target_margin_pct: num(v.targetMarginPct),
+      wholesale_multiple: num(v.wholesaleMultiple),
+      retail_multiple: num(v.retailMultiple),
+      chosen_price: num(v.chosen_price),
+      notes: v.notes ? String(v.notes).slice(0, 5000) : null,
+      created_by: userId,
+    })
+    .select()
+    .single();
+
+  if (error || !data) return { success: false, error: error?.message ?? "Could not save the style" };
+  revalidatePath(`/app/${input.workspace_slug}/pricing`);
+  return { success: true, sheet: fromRow(data) };
+}

@@ -64,10 +64,13 @@ export function newLine(section: LineSection): PricingLine {
  * arriving on a shared link needs to see.
  */
 export function starterLines(): PricingLine[] {
+  // Fixed ids, not newLine()'s random ones: this runs on the server and
+  // again during hydration, and two different sets of React keys for the
+  // same three rows is a reconciliation bug waiting to happen.
   return [
-    { ...newLine("fabric"), label: "Shell fabric" },
-    { ...newLine("fabric"), label: "Lining" },
-    { ...newLine("trim"),   label: "Main zip" },
+    { id: "seed-shell",  section: "fabric", label: "Shell fabric", supplier: null, unitPrice: null, unit: "metre", consumption: null },
+    { id: "seed-lining", section: "fabric", label: "Lining",       supplier: null, unitPrice: null, unit: "metre", consumption: null },
+    { id: "seed-zip",    section: "trim",   label: "Main zip",     supplier: null, unitPrice: null, unit: "piece", consumption: 1 },
   ];
 }
 

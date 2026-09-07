@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { Plus, Trash2, Check } from "lucide-react";
 import { PriceBuilder, type PriceBuilderValue } from "@/components/pricing/PriceBuilder";
 import type { Role, WorkspaceMode } from "@/lib/mode-policy";
-import { createPriceSheet, updatePriceSheet, deletePriceSheet, type PriceSheet } from "./actions";
+import { createPriceSheet, updatePriceSheet, deletePriceSheet, importPriceSheet, type PriceSheet } from "./actions";
+import { takeHandoff } from "@/lib/price-handoff";
 
 interface Props {
   workspaceId: string;
@@ -22,10 +23,36 @@ export function PricingClient({
   const [sheets, setSheets] = useState(initialSheets);
   const [activeId, setActiveId] = useState<string | null>(initialSheets[0]?.id ?? null);
   const [error, setError] = useState<string | null>(null);
+  const [claimed, setClaimed] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+  // Effects run twice in development; without this the style they built on
+  // the public page would be saved twice.
+  const claimRan = useRef(false);
 
   const sheet = sheets.find((s) => s.id === activeId) ?? null;
   const base = { workspace_id: workspaceId, workspace_slug: workspaceSlug, mode, role };
+
+  // Claim anything built on the public calculator before signing up.
+  // takeHandoff clears the stash as it reads, so a failure here can't
+  // loop — and the user is told rather than silently losing the work.
+  useEffect(() => {
+    if (claimRan.current) return;
+    claimRan.current = true;
+    const pending = takeHandoff<Partial<PriceSheet>>();
+    if (!pending) return;
+    (async () => {
+      const res = await importPriceSheet({ ...base, value: pending });
+      if (!res.success) {
+        setError(`Your style couldn't be saved: ${res.error}. Nothing was lost — the calculator still has it at /price.`);
+        return;
+      }
+      setSheets((prev) => [res.sheet, ...prev]);
+      setActiveId(res.sheet.id);
+      setClaimed(res.sheet.name);
+    })();
+    // Runs once on mount by design.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function addSheet() {
     setError(null);
@@ -70,6 +97,15 @@ export function PricingClient({
           <Plus size={13} /> New style
         </button>
       </div>
+
+      {claimed && (
+        <p className="flex items-center gap-2 border-b border-[var(--sa-border)] px-6 py-2 text-[12.5px] text-[var(--sa-success)]">
+          <Check size={13} />
+          <span>
+            <b className="font-medium">{claimed}</b> came with you from the calculator — it&apos;s saved here now.
+          </span>
+        </p>
+      )}
 
       {error && (
         <p className="border-b border-[var(--sa-border)] bg-red-50 px-6 py-2 text-[12px] text-red-600 dark:bg-red-500/10 dark:text-red-400">

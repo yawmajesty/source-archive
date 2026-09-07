@@ -14,7 +14,7 @@ const CURRENCIES = [
   { code: "CAD", label: "CAD — Canadian Dollar" },
 ];
 
-export function OnboardingForm() {
+export function OnboardingForm({ landOnPricing = false }: { landOnPricing?: boolean }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [currency, setCurrency] = useState("USD");
@@ -33,7 +33,7 @@ export function OnboardingForm() {
         setError(res.error);
         return;
       }
-      router.push(`/app/${res.slug}`);
+      router.push(landOnPricing ? `/app/${res.slug}/pricing` : `/app/${res.slug}`);
     });
   }
 
