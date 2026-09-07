@@ -15,7 +15,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // legacy and only used inside individual actions. A user with no
   // agency goes through /onboarding-agency to create one.
   const agencyCtx = await getAgencyContext();
-  if (!agencyCtx) redirect("/onboarding-agency");
+  if (!agencyCtx) redirect("/welcome");
 
   // The workshop is its own surface. Makers have no reason to see client
   // records, costing or factories, so they never reach the agency backend at
