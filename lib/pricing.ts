@@ -16,7 +16,69 @@
 // future test all call the same maths.
 // ─────────────────────────────────────────────────────────────
 
+export type LineSection = "fabric" | "trim" | "other";
+
+export const LINE_SECTIONS: { id: LineSection; label: string; hint: string; unit: string }[] = [
+  { id: "fabric", label: "Fabrics",  hint: "Shell, lining, interlining — one line each",  unit: "metre" },
+  { id: "trim",   label: "Trims",    hint: "Zips, buttons, labels, thread, hardware",     unit: "piece" },
+  { id: "other",  label: "Finishing", hint: "Wash, print, embroidery, packaging",         unit: "piece" },
+];
+
+export const LINE_UNITS = ["metre", "yard", "piece", "set", "kg", "gram"];
+
+/**
+ * One material on the bill. A garment whose shell uses two fabrics records
+ * both as separate lines with their own supplier, price and consumption —
+ * a single "fabric cost" field can't be checked against a quote.
+ */
+export interface PricingLine {
+  id: string;
+  section: LineSection;
+  label: string;
+  supplier: string | null;
+  unitPrice: number | null;
+  unit: string;
+  consumption: number | null;
+}
+
+export function lineCost(line: PricingLine): number {
+  return n(line.unitPrice) * n(line.consumption);
+}
+
+export function newLine(section: LineSection): PricingLine {
+  const spec = LINE_SECTIONS.find((s) => s.id === section);
+  return {
+    id: `l-${Math.random().toString(36).slice(2, 10)}`,
+    section,
+    label: "",
+    supplier: null,
+    unitPrice: null,
+    unit: spec?.unit ?? "piece",
+    consumption: section === "trim" ? 1 : null,
+  };
+}
+
+/**
+ * What a new sheet opens with. Three empty sections read as a form to fill
+ * in; two named rows read as an example to edit, which is what someone
+ * arriving on a shared link needs to see.
+ */
+export function starterLines(): PricingLine[] {
+  return [
+    { ...newLine("fabric"), label: "Shell fabric" },
+    { ...newLine("fabric"), label: "Lining" },
+    { ...newLine("trim"),   label: "Main zip" },
+  ];
+}
+
 export interface PricingInputs {
+  /**
+   * The bill of materials. When present it replaces the flat materials and
+   * trims figures entirely — those remain only so sheets written before
+   * line items existed still total correctly.
+   */
+  lines?: PricingLine[];
+
   currency: string;
   /** Units in the production run. Development costs are spread across it. */
   quantity: number;
@@ -49,6 +111,7 @@ export interface PricingInputs {
 }
 
 export const PRICING_DEFAULTS: PricingInputs = {
+  lines: [],
   currency: "USD",
   quantity: 100,
   materials: null,
@@ -71,6 +134,10 @@ export const PRICING_DEFAULTS: PricingInputs = {
 };
 
 export interface CostBuildUp {
+  fabric: number;
+  trim: number;
+  otherLines: number;
+  materials: number;          // whatever the lines (or the legacy fields) total
   exFactory: number;          // what the factory charges you
   duty: number;
   landed: number;             // ex-factory + freight + duty
@@ -99,15 +166,32 @@ const n = (v: number | null | undefined): number =>
 
 const pct = (v: number | null | undefined): number => n(v) / 100;
 
+export function sectionTotal(lines: PricingLine[] | undefined, section: LineSection): number {
+  return (lines ?? []).filter((l) => l.section === section).reduce((sum, l) => sum + lineCost(l), 0);
+}
+
 export function buildCost(input: PricingInputs): CostBuildUp {
-  const exFactory =
-    n(input.materials) + n(input.trims) + n(input.labour) + n(input.packaging) + n(input.otherPerUnit);
+  const lines = input.lines ?? [];
+  // Lines win outright when there are any — mixing the two would double-count
+  // a sheet that was part-migrated.
+  const materialsTotal = lines.length > 0
+    ? lines.reduce((sum, l) => sum + lineCost(l), 0)
+    : n(input.materials) + n(input.trims);
+
+  const exFactory = materialsTotal + n(input.labour) + n(input.packaging) + n(input.otherPerUnit);
   // Duty is charged on the value of the goods, not on the freight.
   const duty = exFactory * pct(input.dutyPct);
   const landed = exFactory + n(input.freight) + duty;
   const qty = Math.max(1, Math.floor(n(input.quantity)) || 1);
   const developmentPerUnit = (n(input.sampling) + n(input.tooling)) / qty;
-  return { exFactory, duty, landed, developmentPerUnit, trueCost: landed + developmentPerUnit };
+  return {
+    fabric: sectionTotal(lines, "fabric"),
+    trim: sectionTotal(lines, "trim"),
+    otherLines: sectionTotal(lines, "other"),
+    materials: materialsTotal,
+    exFactory, duty, landed, developmentPerUnit,
+    trueCost: landed + developmentPerUnit,
+  };
 }
 
 /**
@@ -243,12 +327,11 @@ export function marginVerdict(marginPct: number | null): {
 }
 
 /** The cost lines, in the order a garment actually accumulates them. */
+/** Fabric and trims are line items now; these are the flat per-garment costs. */
 export const COST_FIELDS: Array<{ key: keyof PricingInputs; label: string; hint: string }> = [
-  { key: "materials",    label: "Fabric",        hint: "Shell and lining, at the price per garment" },
-  { key: "trims",        label: "Trims",         hint: "Zips, buttons, labels, thread" },
-  { key: "labour",       label: "Labour (CMT)",  hint: "What the factory charges to cut, make and trim" },
-  { key: "packaging",    label: "Packaging",     hint: "Polybag, hangtag, box" },
-  { key: "otherPerUnit", label: "Other",         hint: "Wash, print, embroidery, anything else per garment" },
+  { key: "labour",       label: "Cut, make & trim", hint: "The factory's CMT or labour quote per garment" },
+  { key: "packaging",    label: "Packaging",        hint: "Polybag, hangtag, box" },
+  { key: "otherPerUnit", label: "Other",            hint: "Anything else charged per garment" },
 ];
 
 export const LANDING_FIELDS: Array<{ key: keyof PricingInputs; label: string; hint: string; suffix?: string }> = [

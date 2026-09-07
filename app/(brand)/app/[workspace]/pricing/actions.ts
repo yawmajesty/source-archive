@@ -4,7 +4,8 @@ import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { getBrandSupabase } from "@/lib/supabase-brand";
 import { can, type Role, type WorkspaceMode } from "@/lib/mode-policy";
-import type { PricingInputs } from "@/lib/pricing";
+import { starterLines } from "@/lib/pricing";
+import type { PricingInputs, PricingLine } from "@/lib/pricing";
 
 export interface PriceSheet extends PricingInputs {
   id: string;
@@ -38,6 +39,7 @@ const num = (v: unknown): number | null =>
 function fromRow(row: Row): PriceSheet {
   return {
     id: String(row.id),
+    lines: Array.isArray(row.lines) ? (row.lines as PricingLine[]) : [],
     workspace_id: String(row.workspace_id),
     product_id: (row.product_id as string) ?? null,
     name: String(row.name ?? "Untitled style"),
@@ -109,6 +111,7 @@ export async function createPriceSheet(
       workspace_id: input.workspace_id,
       name: input.name?.trim() || "Untitled style",
       currency: input.currency || "USD",
+      lines: starterLines(),
       created_by: userId,
     })
     .select()

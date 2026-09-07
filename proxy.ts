@@ -10,6 +10,7 @@ const isPublicRoute = createRouteMatcher([
   "/factory(.*)",
   "/cost-sheet(.*)",   // factory cost breakdown, protected by its own token
   "/for-brands(.*)",
+  "/price",            // the free, shareable pricing calculator
   "/api/webhook(.*)",
 ]);
 
