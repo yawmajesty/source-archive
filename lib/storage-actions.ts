@@ -22,7 +22,7 @@ import { getAgencyServiceSupabase } from "./supabase-agency";
 
 // Buckets written by unauthenticated public surfaces: the client portal, the
 // public brief form, and the token-gated factory RFQ portal.
-const PUBLIC_BUCKETS = new Set(["product-media", "brief-attachments", "rfq-assets", "rfq-media"]);
+const PUBLIC_BUCKETS = new Set(["product-media", "brief-attachments", "rfq-assets", "rfq-media", "moodboard-media"]);
 
 // Buckets only signed-in agency staff may write to.
 const AUTHED_BUCKETS = new Set(["brand-assets", "brand-receipts"]);

@@ -2,7 +2,7 @@
 
 import {
   LayoutGrid, CheckCircle2, FolderOpen, FileText, Receipt,
-  Paperclip, Sparkles, Clock, AlertCircle,
+  Paperclip, Sparkles, Clock, AlertCircle, Images,
 } from "lucide-react";
 import { RailSection } from "./PortalShell";
 import type { PortalProject, PortalProduct } from "../page";
@@ -10,7 +10,7 @@ import type { SavedInvoice, AgencySettings } from "@/lib/data";
 
 export type PortalRoute =
   | "overview" | "approvals" | "sampling" | "projects"
-  | "files" | "contracts" | "references";
+  | "moodboard" | "files" | "contracts" | "references";
 
 // ── The decision queue ───────────────────────────────────────
 // A brand owner opens the portal to answer one question: what needs me?
@@ -128,6 +128,8 @@ export function LeftRail({
           <span className="rail-label tnum text-[11px]" style={{ color: "var(--label-3)" }}>{p.products.length}</span>
         </button>
       ))}
+
+      <NavItem icon={<Images {...ICON} />} label="Moodboard" active={route === "moodboard"} onClick={() => setRoute("moodboard")} />
 
       <div className="mac-nav-group">Business</div>
       <NavItem icon={<Receipt {...ICON} />} label="Invoices" active={route === "sampling"} onClick={() => setRoute("sampling")} />

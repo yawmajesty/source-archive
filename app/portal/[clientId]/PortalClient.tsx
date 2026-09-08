@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon, Plus, Trash2, X, CreditCard, Play, ChevronLeft } from "lucide-react";
 import { uploadFile } from "@/lib/storage";
+import { MoodboardCanvas } from "./moodboard/MoodboardCanvas";
+import { getOrCreateBoard, listLinkableProducts } from "./moodboard-actions";
+import type { MoodboardItem, MoodboardLink } from "@/lib/moodboard";
 import { mediaKindFor, type ProductMediaItem } from "@/lib/product-media";
 import { STAGE_LABEL as WORK_LABEL, groupByDate } from "@/lib/production-log";
 import { STAGE_LABEL as PRODUCT_STAGE_LABEL } from "@/lib/stages";
@@ -64,7 +67,7 @@ function usePortalTheme() {
 }
 
 // ── Types ────────────────────────────────────────────────────
-type Tab = "overview" | "sampling" | "projects" | "files" | "contracts" | "references";
+type Tab = "overview" | "sampling" | "projects" | "moodboard" | "files" | "contracts" | "references";
 
 interface Props {
   client: Client;
@@ -192,6 +195,7 @@ function PortalNavBar({ client, tab, setTab, dark, onToggleTheme }: {
     { id: "projects",    label: "Projects" },
     { id: "files",       label: "Files" },
     { id: "contracts",   label: "Contracts" },
+    { id: "moodboard",   label: "Moodboard" },
     { id: "references",  label: "References" },
   ];
   return (
@@ -1977,6 +1981,7 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
     projects: "Collections",
     files: "Files",
     contracts: "Contracts",
+    moodboard: "Moodboard",
     references: "References",
   };
 
@@ -2174,9 +2179,72 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
           </>
         )}
 
+        {!selectedProduct && route === "moodboard" && (
+          <MoodboardTab clientId={client.id} />
+        )}
         {!selectedProduct && route === "references" && <ReferencesTab client={client} projects={projects} />}
       </PortalShell>
 
     </>
   );
+}
+
+
+// ── Moodboard ────────────────────────────────────────────────
+// Loaded on demand rather than with the rest of the portal: a board can
+// hold a hundred images and most visits never open it.
+
+function MoodboardTab({ clientId }: { clientId: string }) {
+  const [state, setState] = useState<
+    | { status: "loading" }
+    | { status: "error"; message: string }
+    | { status: "ready"; board: MoodboardData }
+  >({ status: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [board, products] = await Promise.all([
+          getOrCreateBoard(clientId),
+          listLinkableProducts(clientId),
+        ]);
+        if (cancelled) return;
+        if (!board) {
+          setState({ status: "error", message: "This board isn't available." });
+          return;
+        }
+        setState({ status: "ready", board: { ...board, products } });
+      } catch {
+        if (!cancelled) setState({ status: "error", message: "Couldn't open the moodboard." });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [clientId]);
+
+  if (state.status === "loading") {
+    return <p className="p-6 text-[13px]" style={{ color: "var(--portal-text-secondary)" }}>Opening the board…</p>;
+  }
+  if (state.status === "error") {
+    return <p className="p-6 text-[13px]" style={{ color: "var(--portal-text-secondary)" }}>{state.message}</p>;
+  }
+
+  return (
+    <div className="h-[calc(100vh-190px)] min-h-[520px] p-4">
+      <MoodboardCanvas
+        boardId={state.board.board.id}
+        clientId={clientId}
+        initialItems={state.board.items}
+        initialLinks={state.board.links}
+        products={state.board.products}
+      />
+    </div>
+  );
+}
+
+interface MoodboardData {
+  board: { id: string; client_id: string; title: string };
+  items: MoodboardItem[];
+  links: MoodboardLink[];
+  products: Array<{ id: string; name: string; project: string | null }>;
 }
