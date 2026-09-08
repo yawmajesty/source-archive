@@ -25,7 +25,7 @@ import { getAgencyServiceSupabase } from "./supabase-agency";
 const PUBLIC_BUCKETS = new Set(["product-media", "brief-attachments", "rfq-assets", "rfq-media", "moodboard-media"]);
 
 // Buckets only signed-in agency staff may write to.
-const AUTHED_BUCKETS = new Set(["brand-assets", "brand-receipts"]);
+const AUTHED_BUCKETS = new Set(["brand-assets", "brand-receipts", "shoot-media"]);
 
 // Storage object keys reject characters that browsers and S3-style backends
 // disagree about. The common real-world offender is macOS screenshots, which
