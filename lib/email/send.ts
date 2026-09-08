@@ -27,7 +27,8 @@ export type EmailTemplate =
   | "enquiry_received_admin"
   | "techpack_received_client"
   | "techpack_received_admin"
-  | "stage_update_client";
+  | "stage_update_client"
+  | "crm_message";
 
 export interface OutboundEmail {
   agencyId: string;

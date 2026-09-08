@@ -268,3 +268,29 @@ export function stageUpdateClient(input: {
       `\nSee it in your portal: ${input.portalUrl}`,
   };
 }
+
+// ── Written by hand from the CRM ─────────────────────────────
+
+/**
+ * A message someone typed themselves, wrapped in the same shell as the
+ * automated ones so a client's inbox looks consistent.
+ *
+ * The body is plain text from a textarea, escaped and then given
+ * paragraph breaks — never interpolated as markup. It is typed by our
+ * own team, but "trusted author" is not a reason to build an HTML
+ * injection into an email that goes to a client's inbox.
+ */
+export function crmMessage(input: { subject: string; body: string }): Built {
+  const paragraphs = input.body
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => p(esc(block).replace(/\n/g, "<br />")))
+    .join("");
+
+  return {
+    subject: input.subject,
+    html: shell(paragraphs || p(esc(input.body))),
+    text: input.body,
+  };
+}
