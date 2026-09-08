@@ -491,3 +491,220 @@ export async function deleteCampaignItem(id: string): Promise<{ success: boolean
   await supabase.from("campaign_items").delete().eq("id", id);
   return { success: true };
 }
+
+// ── Sample readiness ──────────────────────────────────────────
+
+export interface Readiness {
+  productId: string;
+  name: string;
+  stage: string | null;
+  ready: boolean;
+}
+
+/**
+ * Whether the garments on the call sheet actually exist yet.
+ *
+ * The commonest reason a shoot gets rebooked is a sample not turning up,
+ * and the system already knows each product's stage. A shoot that says
+ * "booked" while a garment on its list is still being cut is a shoot
+ * about to be moved.
+ */
+const READY_STAGES = new Set(["review", "approved", "revision", "production", "shipped", "qc"]);
+
+export async function shootReadiness(shootId: string): Promise<Readiness[]> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return [];
+  const supabase = await getAgencySupabase();
+
+  const { data: links } = await supabase
+    .from("shoot_products").select("product_id").eq("shoot_id", shootId);
+  const ids = ((links ?? []) as Array<{ product_id: string }>).map((l) => l.product_id);
+  if (ids.length === 0) return [];
+
+  const { data: products } = await supabase
+    .from("products").select("id, name, stage").in("id", ids);
+
+  return ((products ?? []) as Array<{ id: string; name: string | null; stage: string | null }>).map((p) => ({
+    productId: p.id,
+    name: p.name ?? "Unnamed",
+    stage: p.stage,
+    ready: READY_STAGES.has(p.stage ?? ""),
+  }));
+}
+
+// ── Delivered assets ──────────────────────────────────────────
+
+export interface AssetRow {
+  id: string; shoot_id: string; product_id: string | null;
+  image_url: string; storage_path: string | null;
+  kind: string; caption: string | null; released: boolean; position: number;
+}
+
+export async function listAssets(shootId: string): Promise<AssetRow[]> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return [];
+  const supabase = await getAgencySupabase();
+  const { data } = await supabase
+    .from("shoot_assets").select("*").eq("shoot_id", shootId).order("position");
+  return (data ?? []) as AssetRow[];
+}
+
+export async function addAssets(input: {
+  shootId: string;
+  items: Array<{ image_url: string; storage_path?: string | null; kind?: string; product_id?: string | null }>;
+}): Promise<{ success: true; assets: AssetRow[] } | { success: false; error: string }> {
+  let ctx;
+  try { ctx = await editor(); } catch (e) { return { success: false, error: (e as Error).message }; }
+  const supabase = await getAgencySupabase();
+  const { data, error } = await supabase
+    .from("shoot_assets")
+    .insert(
+      input.items.map((i, n) => ({
+        agency_id: ctx.agency.id,
+        shoot_id: input.shootId,
+        image_url: i.image_url,
+        storage_path: i.storage_path ?? null,
+        kind: i.kind === "video" ? "video" : "photo",
+        product_id: i.product_id ?? null,
+        position: n,
+      })),
+    )
+    .select();
+  if (error) return { success: false, error: error.message };
+  return { success: true, assets: (data ?? []) as AssetRow[] };
+}
+
+export async function updateAsset(
+  id: string,
+  patch: Partial<Pick<AssetRow, "caption" | "released" | "product_id">>,
+): Promise<{ success: boolean }> {
+  try { await editor(); } catch { return { success: false }; }
+  const supabase = await getAgencySupabase();
+  await supabase.from("shoot_assets").update(patch).eq("id", id);
+  revalidatePath("/studio-plan");
+  return { success: true };
+}
+
+export async function deleteAsset(id: string): Promise<{ success: boolean }> {
+  try { await editor(); } catch { return { success: false }; }
+  const supabase = await getAgencySupabase();
+  await supabase.from("shoot_assets").delete().eq("id", id);
+  return { success: true };
+}
+
+/**
+ * Push released shots onto the products they belong to.
+ *
+ * The point of a shoot is that the images end up somewhere. Without this
+ * the brief is a nicely organised dead end — the assets sit in the shoot
+ * and the product page still shows nothing.
+ */
+export async function pushAssetsToProducts(
+  shootId: string,
+): Promise<{ success: true; count: number } | { success: false; error: string }> {
+  let ctx;
+  try { ctx = await editor(); } catch (e) { return { success: false, error: (e as Error).message }; }
+
+  const supabase = await getAgencySupabase();
+  const { data: assets } = await supabase
+    .from("shoot_assets").select("*").eq("shoot_id", shootId).eq("released", true);
+
+  const rows = ((assets ?? []) as AssetRow[]).filter((a) => a.product_id);
+  if (rows.length === 0) {
+    return { success: false, error: "Nothing to push — release some shots and tag them to a product first." };
+  }
+
+  // product_media is the same table the portal reads, so a pushed image
+  // appears to the client immediately without a second copy anywhere.
+  const { error } = await supabase.from("product_media").insert(
+    rows.map((a) => ({
+      agency_id: ctx.agency.id,
+      product_id: a.product_id,
+      url: a.image_url,
+      kind: a.kind === "video" ? "video" : "image",
+      caption: a.caption,
+      uploaded_by_role: "agency",
+      uploaded_by_name: "Shoot",
+      // Only released assets get here, and released means the client may
+      // see them — so say so rather than relying on a column default.
+      visible_to_client: true,
+    })),
+  );
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/studio-plan");
+  return { success: true, count: rows.length };
+}
+
+// ── Budget → cost tracker ─────────────────────────────────────
+
+/**
+ * Record a shoot or campaign budget as a real cost.
+ *
+ * cost_id is stamped on the row so pressing the button twice can't bill
+ * the client twice — the second press updates the entry it already made.
+ */
+export async function pushBudgetToCosts(
+  kind: "shoot" | "campaign",
+  id: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+  let ctx;
+  try { ctx = await editor(); } catch (e) { return { success: false, error: (e as Error).message }; }
+
+  const table = kind === "shoot" ? "shoots" : "campaigns";
+  const supabase = await getAgencySupabase();
+  const { data: row } = await supabase
+    .from(table)
+    .select("id, title, name, budget, currency, project_id, client_id, cost_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  const r = row as Record<string, unknown> | null;
+  if (!r) return { success: false, error: "Not found" };
+
+  const amount = Number(r.budget ?? 0);
+  if (!amount) return { success: false, error: "Set a budget first" };
+  if (!r.project_id) return { success: false, error: "Attach it to a collection first — costs hang off a collection." };
+
+  const label = String(r.title ?? r.name ?? "Untitled");
+  const payload = {
+    agency_id: ctx.agency.id,
+    project_id: r.project_id as string,
+    category: kind === "shoot" ? "Photography" : "Marketing",
+    description: `${kind === "shoot" ? "Shoot" : "Campaign"} — ${label}`,
+    amount,
+    currency: (r.currency as string) ?? "GBP",
+    // The column is billable_to_client, not billable — a shoot billed on
+    // to the brand is the normal case for an agency.
+    billable_to_client: true,
+    client_id: (r.client_id as string) ?? null,
+  };
+
+  if (r.cost_id) {
+    const { error } = await supabase.from("costs").update(payload).eq("id", r.cost_id as string);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  }
+
+  const { data: created, error } = await supabase.from("costs").insert(payload).select("id").single();
+  if (error || !created) return { success: false, error: error?.message ?? "Could not record the cost" };
+
+  await supabase.from(table).update({ cost_id: (created as { id: string }).id }).eq("id", id);
+  revalidatePath("/costs");
+  revalidatePath("/studio-plan");
+  return { success: true };
+}
+
+/** Let the client see the brief, the way the production log is released. */
+export async function setSharedWithClient(
+  kind: "shoot" | "campaign",
+  id: string,
+  shared: boolean,
+): Promise<{ success: boolean }> {
+  try { await editor(); } catch { return { success: false }; }
+  const supabase = await getAgencySupabase();
+  await supabase.from(kind === "shoot" ? "shoots" : "campaigns")
+    .update({ shared_with_client: shared }).eq("id", id);
+  revalidatePath("/studio-plan");
+  return { success: true };
+}

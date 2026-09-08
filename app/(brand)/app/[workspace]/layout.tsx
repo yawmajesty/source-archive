@@ -51,6 +51,9 @@ export default async function WorkspaceLayout({
             <Link href={`/app/${slug}/pricing`} className="px-2 py-1.5 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] hover:text-[var(--sa-text-primary)] rounded">
               Pricing
             </Link>
+            <Link href={`/app/${slug}/shoots`} className="px-2 py-1.5 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] hover:text-[var(--sa-text-primary)] rounded">
+              Shoots &amp; Marketing
+            </Link>
             <Link href={`/app/${slug}/activity`} className="px-2 py-1.5 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] hover:text-[var(--sa-text-primary)] rounded">
               Activity
             </Link>

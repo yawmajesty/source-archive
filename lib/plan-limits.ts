@@ -32,6 +32,12 @@ export interface PlanLimits {
   activityRetentionDays: number;
   csvExport: boolean;
   pdfLineSheet: boolean;
+  /**
+   * Shoot planning is a paid extra. It is the feature a brand owner is
+   * most likely to have a budget line for, and the trial includes it so
+   * they can see what they'd be buying rather than a locked door.
+   */
+  shootPlanner: boolean;
 }
 
 export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
@@ -54,6 +60,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     activityRetentionDays: 30,
     csvExport: true,
     pdfLineSheet: false,
+    shootPlanner: true,
   },
   solo: {
     displayName: "Solo",
@@ -74,6 +81,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     activityRetentionDays: 90,
     csvExport: true,
     pdfLineSheet: true,
+    shootPlanner: false,
   },
   studio: {
     displayName: "Studio",
@@ -88,12 +96,14 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     highlights: [
       "50 active collections",
       "10 seats across design, production, ops",
+      "Shoot briefs & marketing planner",
       "Timeline & full costing rollups",
       "1-year activity history",
     ],
     activityRetentionDays: 365,
     csvExport: true,
     pdfLineSheet: true,
+    shootPlanner: true,
   },
   atelier: {
     displayName: "Atelier",
@@ -114,6 +124,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     activityRetentionDays: -1,
     csvExport: true,
     pdfLineSheet: true,
+    shootPlanner: true,
   },
 };
 
@@ -123,4 +134,35 @@ export function limitsFor(plan: Plan | null | undefined): PlanLimits {
 
 export function isUnlimited(value: number): boolean {
   return value === -1;
+}
+
+
+/**
+ * Whether a workspace may use the shoot and marketing planner.
+ *
+ * Trial included on purpose: a locked door teaches someone nothing about
+ * whether the thing is worth paying for, and this is the feature most
+ * likely to justify the upgrade on its own.
+ */
+const VALID_PLANS = new Set<string>(Object.keys(PLAN_LIMITS));
+
+export function canUseShootPlanner(plan: string | null | undefined): boolean {
+  // subscriptions.plan is a text column, so an unknown value is possible
+  // and a stray one must not unlock a paid feature.
+  //
+  // Checked against a Set rather than `plan in PLAN_LIMITS`: `in` walks
+  // the prototype chain, so "constructor" and "toString" pass it and the
+  // lookup then returns undefined. Undefined is falsy, so the gate held
+  // by luck — a paid feature should not be gated by luck.
+  if (!plan || !VALID_PLANS.has(plan)) return false;
+  return PLAN_LIMITS[plan as Plan].shootPlanner === true;
+}
+
+/** The cheapest plan that includes it, for the upgrade prompt. */
+export function lowestPlanWithShootPlanner(): { plan: Plan; limits: PlanLimits } {
+  const order: Plan[] = ["solo", "studio", "atelier"];
+  for (const p of order) {
+    if (PLAN_LIMITS[p].shootPlanner) return { plan: p, limits: PLAN_LIMITS[p] };
+  }
+  return { plan: "studio", limits: PLAN_LIMITS.studio };
 }
