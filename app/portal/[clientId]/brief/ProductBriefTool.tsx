@@ -20,6 +20,7 @@ import {
 import {
   listBriefs, getBrief, createBrief, updateBrief,
   addBriefMedia, captionBriefMedia, removeBriefMedia, submitBrief, deleteBrief,
+  listBriefReplies, replyAsClient, type BriefReply,
 } from "../product-brief-actions";
 
 interface Collection { id: string; name: string }
@@ -203,6 +204,9 @@ function BriefEditor({
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [who, setWho] = useState({ name: "", email: "" });
+  const [replies, setReplies] = useState<BriefReply[]>([]);
+  const [replyBody, setReplyBody] = useState("");
+  const [replying, setReplying] = useState(false);
 
   useEffect(() => {
     getBrief(briefId).then((d) => {
@@ -210,6 +214,7 @@ function BriefEditor({
       setBrief(d.brief);
       setMedia(d.media);
     });
+    listBriefReplies(briefId).then(setReplies);
   }, [briefId]);
 
   function patch(p: Partial<ProductBrief>) {
@@ -461,6 +466,68 @@ function BriefEditor({
             />
           </label>
         </Card>
+
+        {done && (
+          <Card>
+            <p className="text-[12.5px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>
+              Conversation
+            </p>
+            <div className="mt-2 flex flex-col gap-2">
+              {replies.length === 0 ? (
+                <p className="text-[12px]" style={{ color: "var(--portal-text-tertiary)" }}>
+                  Nothing yet. We&apos;ll come back to you here.
+                </p>
+              ) : (
+                replies.map((r) => (
+                  <div
+                    key={r.id}
+                    className="rounded-lg p-2.5"
+                    style={{
+                      background: r.side === "agency" ? "rgba(0,88,176,.08)" : "rgba(0,0,0,.04)",
+                    }}
+                  >
+                    <p className="text-[11px] font-medium" style={{ color: "var(--portal-text-tertiary)" }}>
+                      {r.side === "agency" ? r.author_name || "Source Archive" : r.author_name || "You"}
+                    </p>
+                    <p
+                      className="mt-0.5 whitespace-pre-wrap text-[12.5px] leading-relaxed"
+                      style={{ color: "var(--portal-text-primary)" }}
+                    >
+                      {r.body}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <textarea
+              className={`${INPUT} mt-2 resize-y`}
+              style={inputStyle}
+              rows={3}
+              placeholder="Ask a question, or answer one"
+              value={replyBody}
+              onChange={(e) => setReplyBody(e.target.value)}
+            />
+            <button
+              disabled={replying || !replyBody.trim()}
+              onClick={async () => {
+                setReplying(true);
+                setError(null);
+                const res = await replyAsClient({
+                  briefId: brief.id, body: replyBody, authorName: brief.submitted_by_name ?? undefined,
+                });
+                setReplying(false);
+                if (!res.success) { setError(res.error); return; }
+                setReplies((p) => [...p, res.reply]);
+                setReplyBody("");
+              }}
+              className="mt-2 flex items-center gap-1.5 rounded-md px-3.5 py-2 text-[13px] font-medium text-white disabled:opacity-40"
+              style={{ background: "var(--portal-accent, #0058B0)" }}
+            >
+              <Send size={13} /> {replying ? "Sending…" : "Send"}
+            </button>
+          </Card>
+        )}
 
         {/* Send */}
         {!done && (

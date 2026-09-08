@@ -10,6 +10,8 @@ import { ProductionLogPanel } from "./ProductionLogPanel";
 import { StageSelector } from "./StageSelector";
 import { CostSheetPanel } from "./CostSheetPanel";
 import { ProductFabrics } from "./ProductFabrics";
+import { ClientBriefPanel } from "./ClientBriefPanel";
+import { getBriefForProduct } from "./brief-actions";
 import { listProductFabrics, listFabrics } from "@/app/(app)/fabrics/actions";
 import type { Fabric } from "@/lib/fabrics";
 import { listCostSheets, getCostSheetLines } from "./cost-sheet-actions";
@@ -50,6 +52,8 @@ export default async function ProductDetailPage({ params }: Props) {
   let logEntries: ProductionLogEntry[] = [];
   try { logEntries = await listProductionLog(id); } catch { logEntries = []; }
 
+  const clientBrief = await getBriefForProduct(id).catch(() => null);
+
   let productFabrics: Fabric[] = [];
   let fabricLibrary: Fabric[] = [];
   try {
@@ -86,6 +90,14 @@ export default async function ProductDetailPage({ params }: Props) {
       }
       productionLog={
         <div className="flex flex-col gap-4">
+        {clientBrief && (
+          <ClientBriefPanel
+            brief={clientBrief.brief}
+            media={clientBrief.media}
+            replies={clientBrief.replies}
+            canReply={ctx ? can(ctx.role, ctx.permissions, "product.edit") : false}
+          />
+        )}
         <ProductFabrics
           productId={id}
           initial={productFabrics}

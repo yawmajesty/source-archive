@@ -3,6 +3,8 @@ import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { sendAll, looksLikeEmail } from "@/lib/email/send";
 import { campaignItemDue } from "@/lib/email/templates";
 import { buildPublicUrl } from "@/lib/url";
+import { runBackup } from "@/app/(app)/settings/backup-actions";
+import { notifySlack } from "@/lib/slack";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -35,7 +37,7 @@ export async function GET(request: Request) {
 
   const supabase = getAgencyServiceSupabase();
   const today = new Date().toISOString().slice(0, 10);
-  const summary: Record<string, number> = { chased: 0, owners: 0, shootsTomorrow: 0 };
+  const summary: Record<string, number | string> = { chased: 0, owners: 0, shootsTomorrow: 0, backup: "skipped" };
 
   // ── Overdue campaign items, grouped by owner ──
   const { data: items } = await supabase
@@ -108,6 +110,31 @@ export async function GET(request: Request) {
     .eq("shoot_date", tomorrow.toISOString().slice(0, 10))
     .in("status", ["planning", "booked"]);
   summary.shootsTomorrow = (soon ?? []).length;
+
+  // ── Weekly backup, on Mondays ──
+  // Daily would be wasteful for a dataset this size and weekly is short
+  // enough that a bad migration is caught before the copy is useless.
+  if (new Date().getUTCDay() === 1) {
+    const { data: agencies } = await supabase.from("agencies").select("id");
+    for (const a of ((agencies ?? []) as Array<{ id: string }>).slice(0, 20)) {
+      const res = await runBackup("scheduled", a.id);
+      if (res.success) summary.backup = `${res.rowTotal} rows`;
+      else summary.backup = `failed: ${res.error}`;
+    }
+  }
+
+  if (Number(summary.chased) > 0 || summary.backup !== "skipped") {
+    await notifySlack({
+      title: "Source Archive — daily run",
+      fields: [
+        ["Chased", `${summary.chased} of ${summary.owners} people`],
+        ["Shoots tomorrow", String(summary.shootsTomorrow)],
+        ["Backup", String(summary.backup)],
+      ],
+      url: buildPublicUrl("/studio-plan"),
+      urlLabel: "Open the planner",
+    });
+  }
 
   return NextResponse.json({ ok: true, ranAt: new Date().toISOString(), ...summary });
 }

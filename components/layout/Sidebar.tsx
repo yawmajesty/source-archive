@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Package, DollarSign, Factory, CheckSquare,
-  Users, Inbox, Folder, FolderOpen, Settings, Menu, X, LogOut, Layers, FileText, Sparkles, Calculator, Mail, Contact, Camera,
+  Users, Inbox, Folder, FolderOpen, Settings, Menu, X, LogOut, Layers, FileText, Sparkles, Calculator, Mail, Contact, Camera, DatabaseBackup,
 } from "lucide-react";
 import { useClerk } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
@@ -36,6 +36,7 @@ const WORKSPACE_NAV = [
   { href: "/techpacks",   label: "Tech Packs",   icon: FileText },
   { href: "/pricing-tool", label: "Pricing Tool", icon: Calculator },
   { href: "/emails",      label: "Emails",       icon: Mail },
+  { href: "/settings/backups", label: "Backups", icon: DatabaseBackup },
 ];
 
 const staggerContainer = {

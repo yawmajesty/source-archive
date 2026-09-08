@@ -2,6 +2,7 @@
 
 import { setClientStatus, renameClient } from "../status-actions";
 import { CLIENT_STATUSES } from "@/lib/client-status";
+import { setFabricLibraryAccess } from "../status-actions";
 import { addClientMember, removeClientMember, type ClientMember } from "../member-actions";
 
 import { useState, useRef } from "react";
@@ -560,6 +561,7 @@ export function ClientsPageClient({ client, projectData, portalActivity, clientM
 
           <div className="px-4 pt-3">
             <ClientStatusControl client={client} />
+            <FabricAccessControl client={client} />
           </div>
           <div className="px-4 pt-3">
             <ClientPeople clientId={client.id} initial={clientMembers ?? []} />
@@ -662,6 +664,53 @@ export function ClientsPageClient({ client, projectData, portalActivity, clientM
 // Marking a client inactive is how a finished relationship stops competing
 // for attention. Nothing is deleted: their products, tasks, history and
 // portal all stay exactly as they are, so it is a single click to undo.
+/**
+ * Whether this client can browse the fabric library.
+ *
+ * Off by default. The library carries mill names, MOQs and pricing, so
+ * it is something a paying client is given rather than something every
+ * portal link-holder finds.
+ */
+function FabricAccessControl({ client }: { client: Client }) {
+  const [on, setOn] = useState(
+    Boolean((client as unknown as { fabric_library_enabled?: boolean }).fabric_library_enabled),
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <div className="rounded-xl border border-[var(--sa-border)] p-4">
+      <div className="flex items-center gap-2">
+        <p className="text-[12.5px] font-medium text-[var(--sa-text-primary)]">Fabric library</p>
+        <div className="flex-1" />
+        <button
+          role="switch"
+          aria-checked={on}
+          onClick={async () => {
+            const next = !on;
+            setOn(next);
+            setError(null);
+            const res = await setFabricLibraryAccess(client.id, next);
+            if (!res.success) { setOn(!next); setError(res.error); }
+          }}
+          className="relative h-5 w-9 rounded-full transition-colors"
+          style={{ background: on ? "var(--sa-accent)" : "var(--sa-border-strong)" }}
+        >
+          <span
+            className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all"
+            style={{ left: on ? 18 : 2 }}
+          />
+        </button>
+      </div>
+      <p className="mt-1 text-[11.5px] leading-relaxed text-[var(--sa-text-tertiary)]">
+        {on
+          ? "They can browse every published fabric from their portal — code, composition, price, MOQ and lead time. Your cost and mill notes are never sent."
+          : "Off. Turn this on for clients paying for library access."}
+      </p>
+      {error && <p className="mt-1 text-[11.5px] text-red-500">{error}</p>}
+    </div>
+  );
+}
+
 function ClientStatusControl({ client }: { client: Client }) {
   const [status, setStatus] = useState<string>(client.status);
   const [busy, setBusy] = useState(false);

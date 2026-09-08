@@ -62,3 +62,30 @@ export async function renameClient(
   revalidatePath("/dashboard");
   return { success: true };
 }
+
+/**
+ * Whether this client can browse the fabric library.
+ *
+ * Off by default and switched on per client: the library carries mill
+ * names, our costs and MOQs, and it is a thing paying clients get rather
+ * than something every link-holder sees.
+ */
+export async function setFabricLibraryAccess(
+  clientId: string,
+  enabled: boolean,
+): Promise<{ success: true } | { success: false; error: string }> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return { success: false, error: "Not a member of any agency" };
+  if (!can(ctx.role, ctx.permissions, "client.edit")) {
+    return { success: false, error: "You don't have permission to change client settings" };
+  }
+
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase
+    .from("clients").update({ fabric_library_enabled: enabled }).eq("id", clientId);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/clients");
+  revalidatePath(`/portal/${clientId}`);
+  return { success: true };
+}

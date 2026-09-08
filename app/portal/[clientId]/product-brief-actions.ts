@@ -6,6 +6,7 @@ import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { resolvePortalAccess } from "@/app/(app)/clients/member-actions";
 import { sendAll, agencyNotificationRecipients } from "@/lib/email/send";
 import { buildPublicUrl } from "@/lib/url";
+import { notifySlack } from "@/lib/slack";
 import type { ProductBrief, BriefMedia } from "@/lib/product-brief";
 
 // ─────────────────────────────────────────────────────────────
@@ -269,6 +270,18 @@ export async function submitBrief(
 }
 
 async function notifyAgency(agencyId: string, brief: ProductBrief, productId: string) {
+  const productUrl = buildPublicUrl(`/products/${productId}`);
+  await notifySlack({
+    title: `New product brief — ${brief.name}`,
+    body: brief.description ?? undefined,
+    fields: [
+      ["Quantity", brief.target_quantity ? String(brief.target_quantity) : "—"],
+      ["Needed by", brief.needed_by ?? "—"],
+    ],
+    url: productUrl,
+    urlLabel: "Open the product",
+  });
+
   try {
     const recipients = await agencyNotificationRecipients(agencyId);
     if (recipients.length === 0) return;
@@ -317,4 +330,64 @@ export async function deleteBrief(briefId: string): Promise<{ success: boolean }
   await supabase.from("product_briefs").delete().eq("id", briefId).is("product_id", null);
   revalidatePath(`/portal/${owner.clientId}`);
   return { success: true };
+}
+
+// ── The conversation on a brief ───────────────────────────────
+
+export interface BriefReply {
+  id: string;
+  brief_id: string;
+  side: "agency" | "client";
+  author_name: string | null;
+  body: string;
+  created_at: string;
+}
+
+export async function listBriefReplies(briefId: string): Promise<BriefReply[]> {
+  const owner = await briefOwner(briefId);
+  if (!owner || !(await allowed(owner.clientId))) return [];
+  const supabase = getAgencyServiceSupabase();
+  const { data } = await supabase
+    .from("product_brief_replies").select("*").eq("brief_id", briefId).order("created_at");
+  return (data ?? []) as BriefReply[];
+}
+
+/**
+ * The client's side of the conversation.
+ *
+ * Deliberately hard-codes side = "client": this runs on a page with no
+ * session, and a caller who could choose their own side could put words
+ * in the agency's mouth in a thread the agency later relies on.
+ */
+export async function replyAsClient(input: {
+  briefId: string;
+  body: string;
+  authorName?: string;
+}): Promise<{ success: true; reply: BriefReply } | { success: false; error: string }> {
+  const owner = await briefOwner(input.briefId);
+  if (!owner || !(await allowed(owner.clientId))) return { success: false, error: "Not allowed" };
+  if (!input.body.trim()) return { success: false, error: "Write something first" };
+
+  const supabase = getAgencyServiceSupabase();
+  const { data, error } = await supabase
+    .from("product_brief_replies")
+    .insert({
+      agency_id: owner.agencyId,
+      brief_id: input.briefId,
+      side: "client",
+      author_name: input.authorName?.slice(0, 120) ?? null,
+      body: input.body.trim().slice(0, 5000),
+    })
+    .select()
+    .single();
+
+  if (error || !data) return { success: false, error: error?.message ?? "Could not send" };
+
+  await supabase
+    .from("product_briefs")
+    .update({ last_reply_side: "client", last_reply_at: new Date().toISOString() })
+    .eq("id", input.briefId);
+
+  revalidatePath(`/portal/${owner.clientId}`);
+  return { success: true, reply: data as BriefReply };
 }
