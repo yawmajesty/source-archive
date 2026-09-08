@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { resolvePortalAccess } from "@/app/(app)/clients/member-actions";
-import type { Moodboard, MoodboardItem, MoodboardLink, LinkType } from "@/lib/moodboard";
-import { LINK_TYPES } from "@/lib/moodboard";
+import type { Moodboard, MoodboardItem, MoodboardLink, LinkType, BlockKind, BlockContent } from "@/lib/moodboard";
+import { LINK_TYPES, BLOCK_KINDS, DEFAULT_SIZE, defaultContent } from "@/lib/moodboard";
 
 // ─────────────────────────────────────────────────────────────
 // The portal has no Clerk session, so everything here runs through the
@@ -87,9 +87,12 @@ export async function getOrCreateBoard(
 function numeric(item: MoodboardItem): MoodboardItem {
   return {
     ...item,
+    kind: (item.kind ?? "image") as BlockKind,
+    content: (item.content ?? {}) as BlockContent,
     x: Number(item.x),
     y: Number(item.y),
     width: Number(item.width),
+    height: item.height == null ? null : Number(item.height),
     z: Number(item.z),
   };
 }
@@ -113,6 +116,8 @@ export async function addItems(input: {
       input.items.map((i) => ({
         agency_id: owner.agencyId,
         board_id: input.boardId,
+        kind: "image",
+        content: {},
         image_url: String(i.image_url).slice(0, 2000),
         storage_path: i.storage_path ?? null,
         x: i.x, y: i.y, width: i.width, z: i.z,
@@ -293,5 +298,74 @@ export async function unlinkItem(linkId: string): Promise<{ success: boolean }> 
 
   await supabase.from("moodboard_links").delete().eq("id", linkId);
   revalidatePath(`/portal/${owner.clientId}`);
+  return { success: true };
+}
+
+
+/**
+ * Add a sticky note, heading, list or colour swatch.
+ *
+ * Content is not trusted as it arrives — kind decides the shape, and the
+ * defaults are filled server-side, so a crafted payload can't store a
+ * swatch that renders as something else.
+ */
+export async function addBlock(input: {
+  boardId: string;
+  kind: BlockKind;
+  x: number;
+  y: number;
+  z: number;
+  content?: BlockContent;
+}): Promise<{ success: true; item: MoodboardItem } | { success: false; error: string }> {
+  if (!BLOCK_KINDS.some((b) => b.id === input.kind)) {
+    return { success: false, error: "Unknown block type" };
+  }
+  const owner = await boardClient(input.boardId);
+  if (!owner) return { success: false, error: "Board not found" };
+  if (!(await assertPortalAccess(owner.clientId))) return { success: false, error: "Not allowed" };
+
+  const size = DEFAULT_SIZE[input.kind];
+  const supabase = getAgencyServiceSupabase();
+  const { data, error } = await supabase
+    .from("moodboard_items")
+    .insert({
+      agency_id: owner.agencyId,
+      board_id: input.boardId,
+      kind: input.kind,
+      content: { ...defaultContent(input.kind), ...(input.content ?? {}) },
+      image_url: null,
+      x: input.x, y: input.y,
+      width: size.width, height: size.height,
+      z: input.z,
+    })
+    .select()
+    .single();
+
+  if (error || !data) return { success: false, error: error?.message ?? "Could not add" };
+  revalidatePath(`/portal/${owner.clientId}`);
+  return { success: true, item: numeric(data as MoodboardItem) };
+}
+
+/** Save the text, list or colour inside a block. */
+export async function updateBlockContent(input: {
+  itemId: string;
+  content: BlockContent;
+  height?: number | null;
+}): Promise<{ success: boolean }> {
+  const supabase = getAgencyServiceSupabase();
+  const { data: item } = await supabase
+    .from("moodboard_items").select("board_id").eq("id", input.itemId).maybeSingle();
+  const boardId = (item as { board_id: string } | null)?.board_id;
+  if (!boardId) return { success: false };
+  const owner = await boardClient(boardId);
+  if (!owner || !(await assertPortalAccess(owner.clientId))) return { success: false };
+
+  await supabase
+    .from("moodboard_items")
+    .update({
+      content: input.content,
+      ...(input.height !== undefined ? { height: input.height } : {}),
+    })
+    .eq("id", input.itemId);
   return { success: true };
 }

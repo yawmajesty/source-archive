@@ -13,17 +13,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Plus, Trash2, Link2, X, ZoomIn, ZoomOut, Maximize2, Loader2, ImagePlus,
+  Plus, Trash2, Link2, X, ZoomIn, ZoomOut, Maximize2, Loader2, ImagePlus, StickyNote,
 } from "lucide-react";
 import { createUploadTicket } from "@/lib/storage-actions";
 import { createClient } from "@supabase/supabase-js";
 import {
-  LINK_TYPES, LINK_LABEL, DEFAULT_WIDTH, nextSlot, topZ,
+  LINK_TYPES, LINK_LABEL, DEFAULT_WIDTH, BLOCK_KINDS, nextSlot, topZ,
   type MoodboardItem, type MoodboardLink, type LinkType,
+  type BlockKind, type BlockContent,
 } from "@/lib/moodboard";
 import {
-  addItems, moveItem, updateItem, removeItem, linkItemToProduct, unlinkItem,
+  addItems, addBlock, moveItem, updateItem, updateBlockContent, removeItem,
+  linkItemToProduct, unlinkItem,
 } from "../moodboard-actions";
+import { NoteBlock, HeadingBlock, ListBlock, SwatchBlock } from "./Blocks";
+import type { NoteContent, HeadingContent, ListContent, SwatchContent } from "@/lib/moodboard";
 
 interface Product { id: string; name: string; project: string | null }
 
@@ -47,6 +51,7 @@ export function MoodboardCanvas({
   const [zoom, setZoom] = useState(1);
   const [selected, setSelected] = useState<string | null>(null);
   const [uploading, setUploading] = useState(0);
+  const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dropping, setDropping] = useState(false);
 
@@ -166,6 +171,55 @@ export function MoodboardCanvas({
     setItems((prev) => [...prev, ...res.items]);
   }
 
+  // Content saves are debounced per item: typing a note shouldn't be one
+  // write per keystroke, and two blocks edited at once must not share a
+  // timer and lose one of the two.
+  // Holds the timer AND the content it would have written, so an unmount
+  // can finish the write rather than throw it away.
+  const pending = useRef<Map<string, { timer: ReturnType<typeof setTimeout>; content: BlockContent }>>(
+    new Map(),
+  );
+
+  const patchContent = useCallback((itemId: string, content: BlockContent) => {
+    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, content } : i)));
+    const map = pending.current;
+    const existing = map.get(itemId);
+    if (existing) clearTimeout(existing.timer);
+    const timer = setTimeout(() => {
+      map.delete(itemId);
+      void updateBlockContent({ itemId, content });
+    }, 600);
+    map.set(itemId, { timer, content });
+  }, []);
+
+  // Typing a note and immediately closing the tab must not lose the last
+  // sentence, so the unmount flushes what is owed instead of dropping it.
+  useEffect(() => {
+    const map = pending.current;
+    return () => {
+      map.forEach((entry, itemId) => {
+        clearTimeout(entry.timer);
+        void updateBlockContent({ itemId, content: entry.content });
+      });
+      map.clear();
+    };
+  }, []);
+
+  async function insertBlock(kind: BlockKind) {
+    setAdding(false);
+    setError(null);
+    // Drop it into the middle of what's on screen, not at the origin —
+    // a note that appears off-screen reads as a broken button.
+    const rect = surfaceRef.current?.getBoundingClientRect();
+    const at = rect
+      ? { x: (rect.width / 2 - pan.x) / zoom - 110, y: (rect.height / 2 - pan.y) / zoom - 80 }
+      : { x: 0, y: 0 };
+    const res = await addBlock({ boardId, kind, x: at.x, y: at.y, z: topZ(items) });
+    if (!res.success) { setError(res.error); return; }
+    setItems((prev) => [...prev, res.item]);
+    setSelected(res.item.id);
+  }
+
   const selectedItem = items.find((i) => i.id === selected) ?? null;
   const selectedLinks = links.filter((l) => l.item_id === selected);
 
@@ -232,17 +286,45 @@ export function MoodboardCanvas({
                 }}
               >
                 <div
-                  className={`overflow-hidden rounded-lg bg-[var(--sa-window)] shadow-sm ring-offset-2 transition-shadow ${
+                  className={`rounded-lg ring-offset-2 transition-shadow ${
                     selected === item.id ? "ring-2 ring-[var(--sa-accent)]" : ""
                   }`}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={item.image_url}
-                    alt={item.caption ?? "Moodboard image"}
-                    draggable={false}
-                    className="block w-full select-none"
-                  />
+                  {item.kind === "note" ? (
+                    <NoteBlock
+                      item={item}
+                      canEdit={canEdit}
+                      onChange={(c: NoteContent) => patchContent(item.id, c)}
+                    />
+                  ) : item.kind === "heading" ? (
+                    <HeadingBlock
+                      item={item}
+                      canEdit={canEdit}
+                      onChange={(c: HeadingContent) => patchContent(item.id, c)}
+                    />
+                  ) : item.kind === "list" ? (
+                    <ListBlock
+                      item={item}
+                      canEdit={canEdit}
+                      onChange={(c: ListContent) => patchContent(item.id, c)}
+                    />
+                  ) : item.kind === "swatch" ? (
+                    <SwatchBlock
+                      item={item}
+                      canEdit={canEdit}
+                      onChange={(c: SwatchContent) => patchContent(item.id, c)}
+                    />
+                  ) : item.image_url ? (
+                    <div className="overflow-hidden rounded-lg bg-[var(--sa-window)] shadow-sm">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={item.image_url}
+                        alt={item.caption ?? "Moodboard image"}
+                        draggable={false}
+                        className="block w-full select-none"
+                      />
+                    </div>
+                  ) : null}
                 </div>
                 {(item.caption || itemLinks.length > 0) && (
                   <div className="mt-1 flex flex-wrap items-center gap-1">
@@ -271,8 +353,8 @@ export function MoodboardCanvas({
               Drop images anywhere
             </p>
             <p className="mt-1 max-w-xs text-[12.5px] leading-relaxed text-[var(--sa-text-tertiary)]">
-              Build the board out as far as you like, then tag any image as a fabric, a trim, a
-              customization or a photography reference and attach it to a product.
+              Add notes, headings, lists and colour swatches alongside them. Tag any image as a
+              fabric, a trim, a customization or a photography reference and attach it to a product.
             </p>
           </div>
         )}
@@ -316,6 +398,30 @@ export function MoodboardCanvas({
                 <Loader2 size={12} className="animate-spin" /> {uploading} uploading
               </span>
             )}
+            <div className="relative">
+              <button
+                onClick={() => setAdding((a) => !a)}
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--sa-text-secondary)] shadow-sm"
+              >
+                <StickyNote size={13} /> Add
+              </button>
+              {adding && (
+                <div className="absolute right-0 top-full z-10 mt-1 w-56 overflow-hidden rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] shadow-lg">
+                  {BLOCK_KINDS.map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => void insertBlock(b.id)}
+                      className="block w-full px-3 py-2 text-left hover:bg-[var(--sa-hover)]"
+                    >
+                      <span className="block text-[12.5px] font-medium text-[var(--sa-text-primary)]">
+                        {b.label}
+                      </span>
+                      <span className="block text-[11px] text-[var(--sa-text-tertiary)]">{b.hint}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               onClick={() => fileRef.current?.click()}
               className="flex items-center gap-1.5 rounded-lg bg-[var(--sa-accent)] px-3 py-1.5 text-[12.5px] font-medium text-white shadow-sm"
@@ -358,7 +464,7 @@ export function MoodboardCanvas({
           </div>
 
           <div className="flex flex-col gap-3 p-3">
-            <input
+            {item_is_image(selectedItem) && <input
               className="w-full rounded-md border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2.5 py-1.5 text-[12.5px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)]"
               placeholder="Caption"
               defaultValue={selectedItem.caption ?? ""}
@@ -368,7 +474,7 @@ export function MoodboardCanvas({
                 setItems((prev) => prev.map((i) => (i.id === selectedItem.id ? { ...i, caption } : i)));
                 void updateItem({ itemId: selectedItem.id, caption });
               }}
-            />
+            />}
 
             <div>
               <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--sa-text-tertiary)]">
@@ -395,7 +501,7 @@ export function MoodboardCanvas({
               />
             </div>
 
-            <LinkPanel
+            {item_is_image(selectedItem) && <LinkPanel
               itemId={selectedItem.id}
               products={products}
               links={selectedLinks}
@@ -403,7 +509,7 @@ export function MoodboardCanvas({
               onLinked={(link) => setLinks((prev) => [...prev.filter((l) => l.id !== link.id), link])}
               onUnlinked={(id) => setLinks((prev) => prev.filter((l) => l.id !== id))}
               onError={setError}
-            />
+            />}
 
             {canEdit && (
               <button
@@ -422,6 +528,11 @@ export function MoodboardCanvas({
       )}
     </div>
   );
+}
+
+/** Captions and product links belong to images; a sticky note has neither. */
+function item_is_image(item: MoodboardItem): boolean {
+  return (item.kind ?? "image") === "image";
 }
 
 function LinkPanel({
