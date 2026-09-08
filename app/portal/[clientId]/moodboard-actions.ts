@@ -5,6 +5,7 @@ import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { resolvePortalAccess } from "@/app/(app)/clients/member-actions";
 import type { Moodboard, MoodboardItem, MoodboardLink, LinkType, BlockKind, BlockContent } from "@/lib/moodboard";
 import { LINK_TYPES, BLOCK_KINDS, DEFAULT_SIZE, defaultContent } from "@/lib/moodboard";
+import { unfurl } from "@/lib/unfurl";
 
 // ─────────────────────────────────────────────────────────────
 // The portal has no Clerk session, so everything here runs through the
@@ -368,4 +369,60 @@ export async function updateBlockContent(input: {
     })
     .eq("id", input.itemId);
   return { success: true };
+}
+
+
+/**
+ * Paste a link, get a card.
+ *
+ * The fetch happens here rather than in the browser: the board runs on a
+ * page with no session, and letting a client's browser fetch arbitrary
+ * URLs on our behalf is a different problem from letting our server do
+ * it under the guards in lib/unfurl. A link that can't be read still
+ * gets a card with its domain — an honest "we couldn't preview this"
+ * beats a broken image that looks like a bug.
+ */
+export async function addLinkBlock(input: {
+  boardId: string;
+  url: string;
+  x: number;
+  y: number;
+  z: number;
+}): Promise<{ success: true; item: MoodboardItem } | { success: false; error: string }> {
+  const owner = await boardClient(input.boardId);
+  if (!owner) return { success: false, error: "Board not found" };
+  if (!(await assertPortalAccess(owner.clientId))) return { success: false, error: "Not allowed" };
+
+  const result = await unfurl(input.url);
+  if ("error" in result) return { success: false, error: result.error };
+
+  const supabase = getAgencyServiceSupabase();
+  const { data, error } = await supabase
+    .from("moodboard_items")
+    .insert({
+      agency_id: owner.agencyId,
+      board_id: input.boardId,
+      kind: "link",
+      content: {
+        url: result.url,
+        provider: result.provider,
+        title: result.title?.slice(0, 300) ?? null,
+        description: result.description?.slice(0, 500) ?? null,
+        thumbnail: result.thumbnail,
+        authorName: result.authorName?.slice(0, 200) ?? null,
+        // The player HTML is never rendered as markup — only the fact
+        // that it exists is used, to show a play badge.
+        embedHtml: null,
+      },
+      image_url: null,
+      x: input.x, y: input.y,
+      width: DEFAULT_SIZE.link.width, height: null,
+      z: input.z,
+    })
+    .select()
+    .single();
+
+  if (error || !data) return { success: false, error: error?.message ?? "Could not add the link" };
+  revalidatePath(`/portal/${owner.clientId}`);
+  return { success: true, item: numeric(data as MoodboardItem) };
 }

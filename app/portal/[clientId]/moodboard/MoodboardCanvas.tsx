@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Plus, Trash2, Link2, X, ZoomIn, ZoomOut, Maximize2, Loader2, ImagePlus, StickyNote,
+  Plus, Trash2, Link2, X, ZoomIn, ZoomOut, Maximize2, Minimize2, Loader2, ImagePlus, StickyNote,
 } from "lucide-react";
 import { createUploadTicket } from "@/lib/storage-actions";
 import { createClient } from "@supabase/supabase-js";
@@ -23,10 +23,10 @@ import {
   type BlockKind, type BlockContent,
 } from "@/lib/moodboard";
 import {
-  addItems, addBlock, moveItem, updateItem, updateBlockContent, removeItem,
+  addItems, addBlock, addLinkBlock, moveItem, updateItem, updateBlockContent, removeItem,
   linkItemToProduct, unlinkItem,
 } from "../moodboard-actions";
-import { NoteBlock, HeadingBlock, ListBlock, SwatchBlock } from "./Blocks";
+import { NoteBlock, HeadingBlock, ListBlock, SwatchBlock, LinkBlock } from "./Blocks";
 import type { NoteContent, HeadingContent, ListContent, SwatchContent } from "@/lib/moodboard";
 
 interface Product { id: string; name: string; project: string | null }
@@ -54,6 +54,9 @@ export function MoodboardCanvas({
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dropping, setDropping] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [pasting, setPasting] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
 
   const surfaceRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -64,6 +67,19 @@ export function MoodboardCanvas({
     | { mode: "pan"; startX: number; startY: number; originX: number; originY: number }
     | null
   >(null);
+
+  useEffect(() => {
+    if (!fullscreen) return;
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") setFullscreen(false); }
+    window.addEventListener("keydown", onKey);
+    // The page behind must not scroll while the board is over it.
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previous;
+    };
+  }, [fullscreen]);
 
   /** Screen coordinates → board coordinates. The one conversion. */
   const toBoard = useCallback(
@@ -205,6 +221,45 @@ export function MoodboardCanvas({
     };
   }, []);
 
+  const centreOfView = useCallback(() => {
+    const rect = surfaceRef.current?.getBoundingClientRect();
+    return rect
+      ? { x: (rect.width / 2 - pan.x) / zoom - 140, y: (rect.height / 2 - pan.y) / zoom - 100 }
+      : { x: 0, y: 0 };
+  }, [pan, zoom]);
+
+  async function insertLink(url: string, at?: { x: number; y: number }) {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    setError(null);
+    setPasting(true);
+    const res = await addLinkBlock({
+      boardId, url: trimmed, ...(at ?? centreOfView()), z: topZ(items),
+    });
+    setPasting(false);
+    if (!res.success) { setError(res.error); return; }
+    setItems((prev) => [...prev, res.item]);
+    setLinkUrl("");
+  }
+
+  // Pasting a URL straight onto the board is the whole point — nobody
+  // wants to open a dialog to add a pin. Ignored while a field has
+  // focus, so pasting into a note still pastes text.
+  useEffect(() => {
+    if (!canEdit) return;
+    function onPaste(e: ClipboardEvent) {
+      const el = document.activeElement;
+      if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName)) return;
+      const text = e.clipboardData?.getData("text")?.trim();
+      if (!text || !/^https?:\/\//i.test(text)) return;
+      e.preventDefault();
+      void insertLink(text);
+    }
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canEdit, boardId, items, pan, zoom]);
+
   async function insertBlock(kind: BlockKind) {
     setAdding(false);
     setError(null);
@@ -224,7 +279,13 @@ export function MoodboardCanvas({
   const selectedLinks = links.filter((l) => l.item_id === selected);
 
   return (
-    <div className="relative flex h-full min-h-[520px] overflow-hidden rounded-xl border border-[var(--sa-border)] bg-[var(--sa-bg)]">
+    <div
+      className={
+        fullscreen
+          ? "fixed inset-0 z-[60] flex overflow-hidden bg-[var(--sa-bg)]"
+          : "relative flex h-full min-h-[520px] overflow-hidden rounded-xl border border-[var(--sa-border)] bg-[var(--sa-bg)]"
+      }
+    >
       {/* Surface */}
       <div
         ref={surfaceRef}
@@ -246,6 +307,11 @@ export function MoodboardCanvas({
           e.preventDefault();
           setDropping(false);
           const at = toBoard(e.clientX, e.clientY);
+          const dropped = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text");
+          if (e.dataTransfer.files.length === 0 && /^https?:\/\//i.test(dropped.trim())) {
+            void insertLink(dropped.trim(), at);
+            return;
+          }
           void uploadFiles(Array.from(e.dataTransfer.files), at);
         }}
       >
@@ -308,6 +374,8 @@ export function MoodboardCanvas({
                       canEdit={canEdit}
                       onChange={(c: ListContent) => patchContent(item.id, c)}
                     />
+                  ) : item.kind === "link" ? (
+                    <LinkBlock item={item} />
                   ) : item.kind === "swatch" ? (
                     <SwatchBlock
                       item={item}
@@ -353,8 +421,9 @@ export function MoodboardCanvas({
               Drop images anywhere
             </p>
             <p className="mt-1 max-w-xs text-[12.5px] leading-relaxed text-[var(--sa-text-tertiary)]">
-              Add notes, headings, lists and colour swatches alongside them. Tag any image as a
-              fabric, a trim, a customization or a photography reference and attach it to a product.
+              Paste a Pinterest, TikTok, YouTube or RedNote link and it becomes a card. Add notes,
+              headings, lists and colour swatches alongside. Tag any image as a fabric, a trim, a
+              customization or a photography reference and attach it to a product.
             </p>
           </div>
         )}
@@ -385,9 +454,16 @@ export function MoodboardCanvas({
           <button
             aria-label="Reset view"
             onClick={() => { setZoom(1); setPan({ x: 60, y: 60 }); }}
+            className="rounded px-2 py-1.5 text-[11.5px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
+          >
+            Reset
+          </button>
+          <button
+            aria-label={fullscreen ? "Leave full screen" : "Full screen"}
+            onClick={() => setFullscreen((f) => !f)}
             className="rounded p-1.5 text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
           >
-            <Maximize2 size={14} />
+            {fullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
           </button>
         </div>
 
@@ -398,6 +474,17 @@ export function MoodboardCanvas({
                 <Loader2 size={12} className="animate-spin" /> {uploading} uploading
               </span>
             )}
+            <div className="flex items-center gap-1 rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-2 py-1 shadow-sm">
+              <Link2 size={12} className="shrink-0 text-[var(--sa-text-tertiary)]" />
+              <input
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") void insertLink(linkUrl); }}
+                placeholder={pasting ? "Reading…" : "Paste a link"}
+                disabled={pasting}
+                className="w-36 border-0 bg-transparent text-[12px] text-[var(--sa-text-primary)] outline-none placeholder:text-[var(--sa-text-tertiary)]"
+              />
+            </div>
             <div className="relative">
               <button
                 onClick={() => setAdding((a) => !a)}

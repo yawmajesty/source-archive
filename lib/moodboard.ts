@@ -25,14 +25,32 @@ export const LINK_LABEL: Record<string, string> = Object.fromEntries(
   LINK_TYPES.map((t) => [t.id, t.label]),
 );
 
-export type BlockKind = "image" | "note" | "heading" | "list" | "swatch";
+export type BlockKind = "image" | "note" | "heading" | "list" | "swatch" | "link";
 
 export const BLOCK_KINDS: { id: BlockKind; label: string; hint: string }[] = [
   { id: "note",    label: "Sticky note", hint: "A thought, a question, an instruction" },
   { id: "heading", label: "Heading",     hint: "Name a section of the board" },
   { id: "list",    label: "List",        hint: "Bullets, numbers or a checklist" },
   { id: "swatch",  label: "Colour",      hint: "A colour with its hex and CMYK" },
+  { id: "link",    label: "Link",        hint: "Paste from Pinterest, TikTok, YouTube, RedNote…" },
 ];
+
+/**
+ * A pasted link and the preview captured when it was pasted.
+ *
+ * A snapshot, not a live lookup: forty pins on a board would otherwise
+ * mean forty outbound requests every time it opens, and a deleted pin
+ * would blank the card instead of leaving a record of what was there.
+ */
+export interface LinkContent {
+  url: string;
+  provider: string;
+  title: string | null;
+  description: string | null;
+  thumbnail: string | null;
+  authorName: string | null;
+  embedHtml: string | null;
+}
 
 export type ListStyle = "bullet" | "numbered" | "checklist";
 
@@ -52,7 +70,7 @@ export interface ListContent   { title: string; style: ListStyle; items: ListIte
 export interface SwatchContent { name: string; hex: string; cmyk: { c: number; m: number; y: number; k: number } }
 
 export type BlockContent =
-  | NoteContent | HeadingContent | ListContent | SwatchContent | Record<string, never>;
+  | NoteContent | HeadingContent | ListContent | SwatchContent | LinkContent | Record<string, never>;
 
 export interface MoodboardItem {
   id: string;
@@ -172,6 +190,7 @@ export function defaultContent(kind: BlockKind): BlockContent {
     case "heading": return { text: "", level: 1 };
     case "list":    return { title: "", style: "bullet", items: [{ text: "" }] };
     case "swatch":  return { name: "", hex: "#C8963C", cmyk: hexToCmyk("#C8963C") };
+    case "link":    return { url: "", provider: "", title: null, description: null, thumbnail: null, authorName: null, embedHtml: null };
     default:        return {};
   }
 }
@@ -182,4 +201,5 @@ export const DEFAULT_SIZE: Record<BlockKind, { width: number; height: number | n
   heading: { width: 320, height: null },
   list:    { width: 260, height: null },
   swatch:  { width: 170, height: null },
+  link:    { width: 280, height: null },
 };

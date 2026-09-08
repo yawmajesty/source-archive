@@ -9,11 +9,11 @@
 // ─────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Plus, X } from "lucide-react";
+import { Check, Plus, X, Play, ExternalLink, LinkIcon } from "lucide-react";
 import {
   NOTE_COLOURS, hexToCmyk, cmykToHex, isValidHex, normaliseHex, readableOn,
   type MoodboardItem, type NoteContent, type HeadingContent,
-  type ListContent, type ListItem, type SwatchContent, type ListStyle,
+  type ListContent, type ListItem, type SwatchContent, type ListStyle, type LinkContent,
 } from "@/lib/moodboard";
 
 /** Grows a textarea to fit, so a note never hides its own last line. */
@@ -353,5 +353,81 @@ export function SwatchBlock({
         )}
       </div>
     </div>
+  );
+}
+
+
+/**
+ * A pasted link.
+ *
+ * The card is ours — the platform's own embed HTML is never injected.
+ * Rendering third-party markup inside a page a client is signed into is
+ * a script-execution hole with a preview drawn on top of it, and the
+ * thumbnail plus title is what people actually want to see anyway.
+ */
+export function LinkBlock({ item }: { item: MoodboardItem }) {
+  const c = item.content as LinkContent;
+  if (!c?.url) return null;
+
+  const isVideo = /youtube|youtu\.be|tiktok|vimeo/i.test(c.provider ?? "");
+
+  return (
+    <a
+      href={c.url}
+      target="_blank"
+      rel="noopener noreferrer nofollow"
+      onPointerDown={(e) => e.stopPropagation()}
+      className="block overflow-hidden rounded-lg border shadow-sm transition-shadow hover:shadow-md"
+      style={{ borderColor: "var(--sa-border)", background: "var(--sa-window)" }}
+    >
+      {c.thumbnail ? (
+        <div className="relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={c.thumbnail} alt={c.title ?? c.provider} className="block w-full" draggable={false} />
+          {isVideo && (
+            <span className="absolute inset-0 flex items-center justify-center">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60">
+                <Play size={15} color="#fff" fill="#fff" />
+              </span>
+            </span>
+          )}
+        </div>
+      ) : (
+        <div
+          className="flex h-24 items-center justify-center"
+          style={{ background: "var(--sa-hover)" }}
+        >
+          <LinkIcon size={20} style={{ color: "var(--sa-text-tertiary)" }} />
+        </div>
+      )}
+
+      <div className="p-2.5">
+        <div className="flex items-center gap-1">
+          <span
+            className="text-[10px] font-semibold uppercase tracking-wider"
+            style={{ color: "var(--sa-accent)" }}
+          >
+            {c.provider}
+          </span>
+          <ExternalLink size={9} style={{ color: "var(--sa-text-tertiary)" }} />
+        </div>
+        <p
+          className="mt-0.5 line-clamp-2 text-[12.5px] font-medium leading-snug"
+          style={{ color: "var(--sa-text-primary)" }}
+        >
+          {c.title ?? c.url.replace(/^https?:\/\//, "").slice(0, 60)}
+        </p>
+        {c.authorName && (
+          <p className="mt-0.5 truncate text-[11px]" style={{ color: "var(--sa-text-tertiary)" }}>
+            {c.authorName}
+          </p>
+        )}
+        {!c.title && !c.thumbnail && (
+          <p className="mt-1 text-[10.5px] leading-snug" style={{ color: "var(--sa-text-tertiary)" }}>
+            {c.provider} doesn&apos;t allow previews. The link still works.
+          </p>
+        )}
+      </div>
+    </a>
   );
 }
