@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Receipt, Send, Check, ExternalLink, ChevronDown, ChevronRight } from "lucide-react";
 import { lineAmount, money } from "@/lib/invoice-total";
-import { setInvoiceStatus, chaseInvoice, type InvoiceRow } from "./actions";
+import { setInvoiceStatus, chaseInvoice, archiveClient, type InvoiceRow } from "./actions";
 
 const STATUS: Record<string, { label: string; bg: string; fg: string }> = {
   draft: { label: "Draft", bg: "var(--sa-hover)",       fg: "var(--sa-text-secondary)" },
@@ -35,10 +35,12 @@ export function InvoicesClient({ invoices: initial }: { invoices: InvoiceRow[] }
   const shown = useMemo(() => {
     if (filter === "all") return invoices;
     if (filter === "paid") return invoices.filter((i) => i.status === "paid");
-    return invoices.filter((i) => i.status !== "paid");
+    // An inactive client's unpaid invoice isn't chaseable work — it stays
+    // in All, and stops shouting from Outstanding.
+    return invoices.filter((i) => i.status !== "paid" && !i.client_inactive);
   }, [invoices, filter]);
 
-  const outstanding = invoices.filter((i) => i.status === "sent");
+  const outstanding = invoices.filter((i) => i.status === "sent" && !i.client_inactive);
   const owed = outstanding.reduce((s, i) => s + i.total, 0);
 
   async function patch(id: string, status: "draft" | "sent" | "paid") {
@@ -126,17 +128,27 @@ export function InvoicesClient({ invoices: initial }: { invoices: InvoiceRow[] }
                         <ChevronRight size={14} className="shrink-0 text-[var(--sa-text-tertiary)]" />
                       )}
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13.5px] font-medium text-[var(--sa-text-primary)]">
-                          {inv.title || `Invoice · round ${inv.round ?? 1}`}
-                        </span>
-                        <span className="block truncate text-[11.5px] text-[var(--sa-text-tertiary)]">
+                        {/* The brand leads. Every row here is an invoice —
+                            whose it is, is the thing being scanned for. */}
+                        <span className="block truncate text-[15px] font-semibold text-[var(--sa-text-primary)]">
                           {inv.client_name}
+                        </span>
+                        <span className="block truncate text-[12px] text-[var(--sa-text-secondary)]">
+                          {inv.title || `Invoice · round ${inv.round ?? 1}`}
                           {inv.invoice_kind ? ` · ${inv.invoice_kind}` : ""}
                           {inv.status === "sent" ? ` · sent ${inv.ageDays}d ago` : ""}
                           {inv.paid_at ? ` · paid ${new Date(inv.paid_at).toLocaleDateString("en-GB")}` : ""}
                         </span>
                       </span>
-                      {stale && (
+                      {inv.client_inactive && (
+                        <span
+                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                          style={{ background: "var(--sa-hover)", color: "var(--sa-text-tertiary)" }}
+                        >
+                          Inactive
+                        </span>
+                      )}
+                      {stale && !inv.client_inactive && (
                         <span
                           className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
                           style={{ background: "rgba(255,59,48,.12)", color: "var(--sa-danger)" }}
@@ -234,6 +246,23 @@ export function InvoicesClient({ invoices: initial }: { invoices: InvoiceRow[] }
                               Not actually paid
                             </button>
                           )}
+                          <button
+                            disabled={busy === inv.id}
+                            onClick={async () => {
+                              if (!confirm(`Mark ${inv.client_name} inactive? Their invoices drop out of Outstanding and their work stops competing for attention. Nothing is deleted.`)) return;
+                              setBusy(inv.id); setError(null); setNotice(null);
+                              const res = await archiveClient(inv.client_id);
+                              setBusy(null);
+                              if (!res.success) { setError(res.error ?? "Could not update"); return; }
+                              setInvoices((prev) =>
+                                prev.map((x) => (x.client_id === inv.client_id ? { ...x, client_inactive: true } : x)),
+                              );
+                              setNotice(`${inv.client_name} is now inactive. Reactivate them on their client page.`);
+                            }}
+                            className="rounded-md border border-[var(--sa-border)] px-3 py-1.5 text-[12.5px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] disabled:opacity-50"
+                          >
+                            Client is inactive
+                          </button>
                           <div className="flex-1" />
                           <Link
                             href={`/clients/${inv.client_id}`}

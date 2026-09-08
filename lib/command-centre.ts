@@ -55,11 +55,11 @@ export const QUEUE_META: Record<QueueKind, { label: string; stake: string; tone:
   lead:      { label: "New enquiries",         stake: "Someone got in touch and hasn't heard back",  tone: "#1E8E4E", order: 2 },
   followup:  { label: "Follow-ups due",        stake: "You said you'd come back to them",            tone: "#B07A17", order: 3 },
   approval:  { label: "Waiting on the client", stake: "Samples sitting unapproved hold up the run",  tone: "#8E5BC7", order: 4 },
-  shoot:     { label: "Shoots coming up",      stake: "A missing sample moves the whole day",        tone: "#0058B0", order: 5 },
-  marketing: { label: "Marketing overdue",     stake: "A drop loses its build-up if the run slips",  tone: "#B07A17", order: 6 },
-  margin:    { label: "Margin slipping",       stake: "Real cost has crept past what you quoted",    tone: "#B4453C", order: 5 },
+  shoot:     { label: "Shoots coming up",      stake: "A missing sample moves the whole day",        tone: "#0E7C86", order: 5 },
+  marketing: { label: "Marketing overdue",     stake: "A drop loses its build-up if the run slips",  tone: "#C2557A", order: 6 },
+  margin:    { label: "Margin slipping",       stake: "Real cost has crept past what you quoted",    tone: "#8A5A2B", order: 5 },
   stalled:   { label: "Nothing's moved",       stake: "Products drifting quietly is how deadlines go", tone: "#6E6E73", order: 7 },
-  quiet:     { label: "Gone quiet",            stake: "They stopped opening the portal before they said anything", tone: "#6E6E73", order: 8 },
+  quiet:     { label: "Gone quiet",            stake: "They stopped opening the portal before they said anything", tone: "#5B6B8C", order: 8 },
   task:      { label: "Your tasks",            stake: "Due now or in the next few days",             tone: "#6E6E73", order: 9 },
 };
 

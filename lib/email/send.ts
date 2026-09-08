@@ -31,7 +31,9 @@ export type EmailTemplate =
   | "crm_message"
   | "shoot_crew_callsheet"
   | "shoot_brief_shared"
-  | "campaign_item_due";
+  | "campaign_item_due"
+  | "brief_declined"
+  | "brief_accepted";
 
 export interface OutboundEmail {
   agencyId: string;

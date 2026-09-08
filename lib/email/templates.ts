@@ -394,3 +394,58 @@ export function campaignItemDue(input: {
       `\n\nOpen the plan: ${input.url}`,
   };
 }
+
+
+// ── Answering a brief ────────────────────────────────────────
+
+/**
+ * The default wording for turning a brief down.
+ *
+ * Offered as editable text rather than sent as-is: a decline is a
+ * relationship moment, and the difference between a form letter and one
+ * sentence about their actual product is whether they come back. The
+ * helpful links are the part that makes "no" worth reading.
+ */
+export function declineDefaultBody(input: { name: string; productName: string; calculatorUrl?: string }): string {
+  const first = input.name.trim().split(/\s+/)[0] || "there";
+  return (
+    `Hi ${first},\n\n` +
+    `Thanks for sending over ${input.productName} — genuinely good to see what you're working on.\n\n` +
+    `We can't take this one on right now. Our sampling calendar is full and we'd rather say so than ` +
+    `hold you up.\n\n` +
+    `A few things that might help in the meantime:\n` +
+    `— Our free pricing calculator, for working out what to charge: ${input.calculatorUrl ?? "[link]"}\n` +
+    `— A tech pack template you can send to any factory: [link]\n` +
+    `— If you need an introduction to a manufacturer, reply and we'll point you somewhere good.\n\n` +
+    `Do keep us in mind for the next one — we'd like to work together when the timing lands better.\n\n` +
+    `Best,\n`
+  );
+}
+
+export function briefDecision(input: {
+  productName: string;
+  body: string;
+  portalUrl: string;
+  accepted: boolean;
+}): Built {
+  const paragraphs = input.body
+    .split(/\n{2,}/)
+    .map((b) => b.trim())
+    .filter(Boolean)
+    .map((b) => p(esc(b).replace(/\n/g, "<br />")))
+    .join("");
+
+  return {
+    subject: input.accepted
+      ? `${input.productName} — we're on it`
+      : `${input.productName} — thanks for sending this over`,
+    html: shell(
+      paragraphs +
+        (input.accepted
+          ? `<div style="margin-top:16px;">${button(input.portalUrl, "Follow it in your portal")}</div>`
+          : ""),
+      "You're getting this because you sent us a product brief.",
+    ),
+    text: input.body + (input.accepted ? `\n\nFollow it in your portal: ${input.portalUrl}` : ""),
+  };
+}

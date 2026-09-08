@@ -1,5 +1,7 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+
 import { getAgencyContext } from "@/lib/agency-data";
 import { can } from "@/lib/permissions";
 import { getAgencySupabase } from "@/lib/supabase-agency";
@@ -446,4 +448,72 @@ export async function recentHappenings(limit = 8): Promise<Happening[]> {
   }
 
   return out.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
+}
+
+// ── Quick actions ─────────────────────────────────────────────
+// Every queue row can be dealt with without leaving the screen. A
+// dashboard you can only read is a list of chores; one you can act on is
+// a place work actually gets closed.
+
+export async function quickAction(
+  kind: QueueKind,
+  id: string,
+  action: string,
+): Promise<{ success: boolean; error?: string }> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return { success: false, error: "Not a member of any agency" };
+  const supabase = await getAgencySupabase();
+
+  switch (`${kind}:${action}`) {
+    case "lead:contacted":
+      if (!can(ctx.role, ctx.permissions, "client.edit")) return { success: false, error: "No permission" };
+      await supabase.from("leads").update({ status: "contacted" }).eq("id", id);
+      break;
+
+    case "lead:lost":
+      if (!can(ctx.role, ctx.permissions, "client.edit")) return { success: false, error: "No permission" };
+      await supabase.from("leads").update({ status: "lost" }).eq("id", id);
+      break;
+
+    case "followup:done":
+      if (!can(ctx.role, ctx.permissions, "client.edit")) return { success: false, error: "No permission" };
+      await supabase.from("clients")
+        .update({ next_follow_up_at: null, follow_up_note: null }).eq("id", id);
+      break;
+
+    case "followup:snooze": {
+      if (!can(ctx.role, ctx.permissions, "client.edit")) return { success: false, error: "No permission" };
+      const week = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+      await supabase.from("clients").update({ next_follow_up_at: week }).eq("id", id);
+      break;
+    }
+
+    case "invoice:paid":
+      if (!can(ctx.role, ctx.permissions, "cost.view")) return { success: false, error: "No permission" };
+      await supabase.from("sampling_invoices")
+        .update({ status: "paid", paid_at: new Date().toISOString() }).eq("id", id);
+      break;
+
+    case "task:done":
+      await supabase.from("tasks").update({ status: "done" }).eq("id", id);
+      break;
+
+    case "marketing:done":
+      if (!can(ctx.role, ctx.permissions, "client.edit")) return { success: false, error: "No permission" };
+      await supabase.from("campaign_items").update({ status: "done" }).eq("id", id);
+      break;
+
+    case "stalled:complete":
+      // The commonest cause of a stalled product is finished work nobody
+      // moved on, so closing it out is the likeliest right answer.
+      if (!can(ctx.role, ctx.permissions, "stage.change")) return { success: false, error: "No permission" };
+      await supabase.from("products").update({ stage: "shipped" }).eq("id", id);
+      break;
+
+    default:
+      return { success: false, error: "Unknown action" };
+  }
+
+  revalidatePath("/dashboard");
+  return { success: true };
 }

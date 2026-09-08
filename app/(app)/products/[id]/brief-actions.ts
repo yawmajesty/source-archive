@@ -138,3 +138,130 @@ export async function briefsAwaitingReply(): Promise<
     }))
     .sort((a, b) => a.at.localeCompare(b.at));
 }
+
+/**
+ * Accept or decline a brief.
+ *
+ * Declining deletes the product that was auto-created on submission —
+ * but only when nothing has happened to it yet. A garment someone has
+ * already photographed, costed or moved along is not a stray record to
+ * tidy away, so in that case it stays and the caller is told.
+ */
+export async function decideBrief(input: {
+  briefId: string;
+  decision: "accepted" | "declined";
+  body: string;
+}): Promise<
+  { success: true; emailed: string; productRemoved: boolean } | { success: false; error: string }
+> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return { success: false, error: "Not a member of any agency" };
+  if (!can(ctx.role, ctx.permissions, "product.edit")) {
+    return { success: false, error: "You don't have permission to answer briefs" };
+  }
+  if (!input.body.trim()) return { success: false, error: "Write the message first" };
+
+  const supabase = await getAgencySupabase();
+  const { data: row } = await supabase
+    .from("product_briefs").select("*").eq("id", input.briefId).maybeSingle();
+  const brief = row as ProductBrief | null;
+  if (!brief) return { success: false, error: "Brief not found" };
+
+  let productRemoved = false;
+
+  if (input.decision === "declined" && brief.product_id) {
+    const [{ data: events }, { data: updates }, { data: media }] = await Promise.all([
+      supabase.from("product_stage_events").select("id").eq("product_id", brief.product_id).limit(1),
+      supabase.from("updates").select("id").eq("product_id", brief.product_id).limit(1),
+      supabase.from("product_media").select("id").eq("product_id", brief.product_id)
+        .neq("uploaded_by_role", "client").limit(1),
+    ]);
+    const untouched =
+      (events ?? []).length === 0 && (updates ?? []).length === 0 && (media ?? []).length === 0;
+
+    if (untouched) {
+      await supabase.from("products").delete().eq("id", brief.product_id);
+      await supabase.from("product_briefs").update({ product_id: null }).eq("id", input.briefId);
+      productRemoved = true;
+    }
+  }
+
+  await supabase
+    .from("product_briefs")
+    .update({
+      status: input.decision,
+      last_reply_side: "agency",
+      last_reply_at: new Date().toISOString(),
+    })
+    .eq("id", input.briefId);
+
+  // The decision itself goes into the thread, so the record of what was
+  // said lives with the brief and not only in an inbox.
+  await supabase.from("product_brief_replies").insert({
+    agency_id: ctx.agency.id,
+    brief_id: input.briefId,
+    side: "agency",
+    author_name: ctx.agency.name ?? null,
+    body: input.body.trim().slice(0, 5000),
+  });
+
+  let emailed = "skipped";
+  try {
+    const { emails, enabled } = await clientRecipients(brief.client_id);
+    if (enabled && emails.length > 0) {
+      const { briefDecision } = await import("@/lib/email/templates");
+      const built = briefDecision({
+        productName: brief.name,
+        body: input.body,
+        portalUrl: buildPublicUrl(`/portal/${brief.client_id}`),
+        accepted: input.decision === "accepted",
+      });
+      const results = await sendAll(
+        emails.map((to) => ({
+          agencyId: ctx.agency.id,
+          to,
+          subject: built.subject,
+          html: built.html,
+          text: built.text,
+          template: input.decision === "accepted" ? ("brief_accepted" as const) : ("brief_declined" as const),
+          relatedType: "client" as const,
+          relatedId: brief.client_id,
+        })),
+      );
+      emailed = results[0]?.status ?? "sent";
+    }
+  } catch {
+    // A decision that saved but didn't email beats the reverse.
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/clients");
+  return { success: true, emailed, productRemoved };
+}
+
+/** The full brief, for previewing before deciding. */
+export async function getBriefById(briefId: string): Promise<
+  { brief: ProductBrief; media: BriefMedia[]; replies: BriefReply[]; clientName: string } | null
+> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return null;
+
+  const supabase = await getAgencySupabase();
+  const { data: row } = await supabase
+    .from("product_briefs").select("*").eq("id", briefId).maybeSingle();
+  if (!row) return null;
+  const brief = row as ProductBrief;
+
+  const [{ data: media }, { data: replies }, { data: client }] = await Promise.all([
+    supabase.from("product_brief_media").select("*").eq("brief_id", briefId).order("position"),
+    supabase.from("product_brief_replies").select("*").eq("brief_id", briefId).order("created_at"),
+    supabase.from("clients").select("name").eq("id", brief.client_id).maybeSingle(),
+  ]);
+
+  return {
+    brief,
+    media: (media ?? []) as BriefMedia[],
+    replies: (replies ?? []) as BriefReply[],
+    clientName: (client as { name: string } | null)?.name ?? "A client",
+  };
+}

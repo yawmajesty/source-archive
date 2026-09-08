@@ -22,6 +22,7 @@ export interface InvoiceRow {
   line_items: Array<Record<string, unknown>>;
   total: number;
   ageDays: number;
+  client_inactive: boolean;
 }
 
 /**
@@ -42,10 +43,12 @@ export async function listInvoices(): Promise<InvoiceRow[]> {
   const supabase = await getAgencySupabase();
   const [{ data: invoices }, { data: clients }] = await Promise.all([
     supabase.from("sampling_invoices").select("*").order("created_at", { ascending: false }),
-    supabase.from("clients").select("id, name"),
+    supabase.from("clients").select("id, name, status"),
   ]);
 
-  const names = new Map(((clients ?? []) as Array<{ id: string; name: string }>).map((c) => [c.id, c.name]));
+  const clientRows = (clients ?? []) as Array<{ id: string; name: string; status: string | null }>;
+  const names = new Map(clientRows.map((c) => [c.id, c.name]));
+  const inactive = new Set(clientRows.filter((c) => c.status === "inactive").map((c) => c.id));
   const now = Date.now();
 
   return ((invoices ?? []) as Array<Record<string, unknown>>).map((inv) => {
@@ -63,6 +66,7 @@ export async function listInvoices(): Promise<InvoiceRow[]> {
       line_items: items,
       total: sumInvoice(items),
       ageDays: Math.floor((now - new Date(String(inv.created_at)).getTime()) / 86_400_000),
+      client_inactive: inactive.has(String(inv.client_id)),
     };
   });
 }
@@ -142,4 +146,30 @@ export async function chaseInvoice(
 
   revalidatePath("/invoices");
   return { success: true, status: results[0]?.status ?? "sent" };
+}
+
+
+/**
+ * Take a client's invoices out of the chase list.
+ *
+ * Reuses the existing inactive status rather than adding a per-invoice
+ * flag: a debt you have stopped pursuing is a relationship that has
+ * ended, and having two ways to express that would let them disagree.
+ * Nothing is deleted and the invoices stay visible under All.
+ */
+export async function archiveClient(clientId: string): Promise<{ success: boolean; error?: string }> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return { success: false, error: "Not a member of any agency" };
+  if (!can(ctx.role, ctx.permissions, "client.edit")) {
+    return { success: false, error: "You don't have permission to change clients" };
+  }
+
+  const supabase = await getAgencySupabase();
+  const { error } = await supabase.from("clients").update({ status: "inactive" }).eq("id", clientId);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/invoices");
+  revalidatePath("/dashboard");
+  revalidatePath("/clients");
+  return { success: true };
 }
