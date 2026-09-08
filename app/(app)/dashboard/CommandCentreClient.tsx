@@ -3,12 +3,20 @@
 import Link from "next/link";
 import {
   FileText, Inbox, CalendarClock, Clock, Receipt, Camera,
-  Megaphone, PauseCircle, CheckSquare, CheckCircle2,
+  Megaphone, PauseCircle, CheckSquare, CheckCircle2, TrendingDown, EyeOff, Activity,
 } from "lucide-react";
 import {
   QUEUE_META, URGENCY_STYLE, STALL_DAYS,
-  type CommandCentre, type QueueKind,
+  type CommandCentre, type QueueKind, type Happening,
 } from "@/lib/command-centre";
+
+function when(iso: string): string {
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1440) return `${Math.round(mins / 60)}h ago`;
+  return `${Math.round(mins / 1440)}d ago`;
+}
 
 const ICON: Record<QueueKind, React.ElementType> = {
   brief: FileText,
@@ -19,6 +27,8 @@ const ICON: Record<QueueKind, React.ElementType> = {
   shoot: Camera,
   marketing: Megaphone,
   stalled: PauseCircle,
+  margin: TrendingDown,
+  quiet: EyeOff,
   task: CheckSquare,
 };
 
@@ -29,7 +39,12 @@ const ICON: Record<QueueKind, React.ElementType> = {
  * leads with what gets worse when ignored rather than with a list of
  * everything that exists.
  */
-export function CommandCentreClient({ centre }: { centre: CommandCentre }) {
+export function CommandCentreClient({
+  centre, happenings,
+}: {
+  centre: CommandCentre;
+  happenings: Happening[];
+}) {
   const { queues, totals } = centre;
 
   return (
@@ -62,6 +77,34 @@ export function CommandCentreClient({ centre }: { centre: CommandCentre }) {
             <Stat label="Products in flight" value={String(totals.activeProducts)} />
             <Stat label="Active clients" value={String(totals.activeClients)} />
           </div>
+
+          {happenings.length > 0 && (
+            <div className="mb-6">
+              <div className="mb-2 flex items-center gap-1.5">
+                <Activity size={12} className="text-[var(--sa-text-tertiary)]" />
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--sa-text-tertiary)]">
+                  Just happened
+                </p>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {happenings.map((h) => (
+                  <Link
+                    key={h.id}
+                    href={h.href}
+                    className="w-[230px] shrink-0 rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] p-2.5 hover:border-[var(--sa-accent)]"
+                  >
+                    <p className="truncate text-[12.5px] text-[var(--sa-text-primary)]">{h.text}</p>
+                    {h.detail && (
+                      <p className="truncate text-[11px] text-[var(--sa-text-tertiary)]">{h.detail}</p>
+                    )}
+                    <p className="mt-0.5 text-[10.5px] tabular-nums text-[var(--sa-text-tertiary)]">
+                      {when(h.at)}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
 
           {queues.length === 0 ? (
             <div className="flex flex-col items-center py-20 text-center">

@@ -19,6 +19,8 @@ export type QueueKind =
   | "shoot"
   | "marketing"
   | "stalled"
+  | "margin"
+  | "quiet"
   | "task";
 
 export type Urgency = "overdue" | "today" | "soon" | "waiting";
@@ -55,9 +57,23 @@ export const QUEUE_META: Record<QueueKind, { label: string; stake: string; tone:
   approval:  { label: "Waiting on the client", stake: "Samples sitting unapproved hold up the run",  tone: "#8E5BC7", order: 4 },
   shoot:     { label: "Shoots coming up",      stake: "A missing sample moves the whole day",        tone: "#0058B0", order: 5 },
   marketing: { label: "Marketing overdue",     stake: "A drop loses its build-up if the run slips",  tone: "#B07A17", order: 6 },
+  margin:    { label: "Margin slipping",       stake: "Real cost has crept past what you quoted",    tone: "#B4453C", order: 5 },
   stalled:   { label: "Nothing's moved",       stake: "Products drifting quietly is how deadlines go", tone: "#6E6E73", order: 7 },
-  task:      { label: "Your tasks",            stake: "Due now or in the next few days",             tone: "#6E6E73", order: 8 },
+  quiet:     { label: "Gone quiet",            stake: "They stopped opening the portal before they said anything", tone: "#6E6E73", order: 8 },
+  task:      { label: "Your tasks",            stake: "Due now or in the next few days",             tone: "#6E6E73", order: 9 },
 };
+
+/** No portal visit in this long and a client is drifting. */
+export const QUIET_PORTAL_DAYS = 30;
+
+/** Something that just happened, for the strip along the top. */
+export interface Happening {
+  id: string;
+  text: string;
+  detail: string | null;
+  at: string;
+  href: string;
+}
 
 /** How long something has been sitting, in words rather than a date. */
 export function ageOf(iso: string | null, now = Date.now()): string | null {

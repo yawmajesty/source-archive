@@ -1,10 +1,13 @@
 "use server";
 
 import { getAgencyContext } from "@/lib/agency-data";
+import { can } from "@/lib/permissions";
 import { getAgencySupabase } from "@/lib/supabase-agency";
 import { STAGE_LABEL } from "@/lib/stages";
+import { sumInvoice } from "@/lib/invoice-total";
 import {
-  QUEUE_META, ageOf, urgencyFor, sortQueue, sortQueues, STALL_DAYS,
+  QUEUE_META, ageOf, urgencyFor, sortQueue, sortQueues, STALL_DAYS, QUIET_PORTAL_DAYS,
+  type Happening,
   type CommandCentre, type Queue, type QueueItem, type QueueKind,
 } from "@/lib/command-centre";
 
@@ -23,6 +26,14 @@ export async function getCommandCentre(): Promise<CommandCentre> {
   const ctx = await getAgencyContext();
   if (!ctx) return empty;
 
+  // What someone sees is scoped to what they do. A workshop maker has no
+  // business seeing what a client owes, and a member scoped to one brand
+  // shouldn't be reading another's follow-ups — RLS already filters the
+  // rows, this keeps whole queues off the screen rather than showing
+  // empty ones.
+  const seesMoney = can(ctx.role, ctx.permissions, "cost.view");
+  const seesClients = ctx.role !== "maker";
+
   const supabase = await getAgencySupabase();
   const now = Date.now();
   const today = new Date().toISOString().slice(0, 10);
@@ -32,6 +43,7 @@ export async function getCommandCentre(): Promise<CommandCentre> {
   const [
     clients, projects, products, briefs, replies, leads,
     invoices, tasks, shoots, shootProducts, campaignItems, campaigns, stageEvents,
+    visits, costRows, costedProducts,
   ] = await Promise.all([
     supabase.from("clients").select("id, name, status, next_follow_up_at, follow_up_note"),
     supabase.from("projects").select("id, name, client_id"),
@@ -46,6 +58,9 @@ export async function getCommandCentre(): Promise<CommandCentre> {
     supabase.from("campaign_items").select("id, title, due_date, status, campaign_id").lt("due_date", today).not("status", "in", '("done","live")'),
     supabase.from("campaigns").select("id, name, client_id"),
     supabase.from("product_stage_events").select("product_id, created_at").order("created_at", { ascending: false }).limit(1000),
+    supabase.from("portal_visits").select("client_id, created_at").order("created_at", { ascending: false }).limit(2000),
+    supabase.from("costs").select("product_id, amount, project_id").is("deleted_at", null),
+    supabase.from("products").select("id, name, quoted_cost_usd, target_cost_usd, project_id, stage"),
   ]);
 
   const clientRows = (clients.data ?? []) as Array<{
@@ -81,13 +96,13 @@ export async function getCommandCentre(): Promise<CommandCentre> {
 
   // ── Money owed ──
   let owed = 0;
-  for (const inv of (invoices.data ?? []) as Array<{
+  for (const inv of (seesMoney ?  (invoices.data ?? []) as Array<{
     id: string; client_id: string; title: string | null; round: number | null;
     status: string; created_at: string; line_items: unknown;
-  }>) {
+  }> : [])) {
     if (inv.status !== "sent") continue;
     if (!activeIds.has(inv.client_id)) continue;
-    const amount = sumLineItems(inv.line_items);
+    const amount = sumInvoice(inv.line_items);
     owed += amount;
     push({
       id: `inv-${inv.id}`, kind: "invoice",
@@ -96,7 +111,7 @@ export async function getCommandCentre(): Promise<CommandCentre> {
       age: ageOf(inv.created_at, now),
       // Sent and unpaid is overdue the moment it's been a fortnight.
       urgency: now - new Date(inv.created_at).getTime() > 14 * 86_400_000 ? "overdue" : "waiting",
-      href: `/clients/${inv.client_id}`,
+      href: `/invoices#inv-${inv.id}`,
       rank: new Date(inv.created_at).getTime(),
     });
   }
@@ -246,6 +261,64 @@ export async function getCommandCentre(): Promise<CommandCentre> {
     });
   }
 
+  // ── Margin slipping ──
+  // Costs recorded against a product, compared with what was quoted for
+  // it. A garment quietly costing more than it was sold for is the
+  // failure nobody notices until the collection is finished.
+  if (seesMoney) {
+    const spendByProduct = new Map<string, number>();
+    for (const c of (costRows.data ?? []) as Array<{ product_id: string | null; amount: number | null }>) {
+      if (!c.product_id) continue;
+      spendByProduct.set(c.product_id, (spendByProduct.get(c.product_id) ?? 0) + Number(c.amount ?? 0));
+    }
+    for (const p of (costedProducts.data ?? []) as Array<{
+      id: string; name: string | null; quoted_cost_usd: number | null;
+      target_cost_usd: number | null; project_id: string | null; stage: string | null;
+    }>) {
+      if (p.stage === "shipped") continue;
+      const cid = clientOfProject(p.project_id);
+      if (!cid || !activeIds.has(cid)) continue;
+      const budget = Number(p.quoted_cost_usd ?? p.target_cost_usd ?? 0);
+      if (!budget) continue;
+      const spent = spendByProduct.get(p.id) ?? 0;
+      if (spent <= budget) continue;
+      const over = spent - budget;
+      push({
+        id: `margin-${p.id}`, kind: "margin",
+        title: p.name ?? "A product",
+        subtitle: `${clientName.get(cid)} · $${spent.toFixed(0)} spent against $${budget.toFixed(0)} quoted`,
+        age: null,
+        urgency: over > budget * 0.25 ? "overdue" : "today",
+        href: `/products/${p.id}`,
+        rank: -over,
+      });
+    }
+  }
+
+  // ── Clients who have gone quiet ──
+  if (seesClients) {
+    const lastVisit = new Map<string, string>();
+    for (const v of (visits.data ?? []) as Array<{ client_id: string; created_at: string }>) {
+      if (!lastVisit.has(v.client_id)) lastVisit.set(v.client_id, v.created_at);
+    }
+    const quietCutoff = now - QUIET_PORTAL_DAYS * 86_400_000;
+    for (const c of activeClients) {
+      // Onboarding clients haven't been given anything to look at yet.
+      if (c.status === "onboarding") continue;
+      const seen = lastVisit.get(c.id);
+      if (seen && new Date(seen).getTime() > quietCutoff) continue;
+      push({
+        id: `quiet-${c.id}`, kind: "quiet",
+        title: c.name,
+        subtitle: seen ? "Hasn't opened the portal" : "Has never opened the portal",
+        age: seen ? ageOf(seen, now) : null,
+        urgency: "waiting",
+        href: "/crm",
+        rank: seen ? new Date(seen).getTime() : 0,
+      });
+    }
+  }
+
   // ── Tasks ──
   for (const t of (tasks.data ?? []) as Array<{
     id: string; title: string; due_date: string | null; project_id: string | null; product_id: string | null;
@@ -280,7 +353,7 @@ export async function getCommandCentre(): Promise<CommandCentre> {
 
   // The headline number excludes the passive queues — things you're
   // waiting on someone else for shouldn't read as your backlog.
-  const passive = new Set<QueueKind>(["approval", "stalled"]);
+  const passive = new Set<QueueKind>(["approval", "stalled", "quiet"]);
   const needsYou = Array.from(queues.entries())
     .filter(([kind]) => !passive.has(kind))
     .reduce((n, [, items]) => n + items.length, 0);
@@ -297,21 +370,80 @@ export async function getCommandCentre(): Promise<CommandCentre> {
   };
 }
 
+
 /**
- * Invoices store their lines as jsonb and the total is computed, not
- * stored. The real shape is a flat amount_usd per line — not quantity
- * times unit price, which is what an invoice for sampling work looks
- * like. The other keys are kept as fallbacks for older rows.
+ * What just happened, for the strip along the top.
+ *
+ * The rest of this screen is a list of things that are wrong. This is
+ * the other half: a client approved something at 2am and you'd never
+ * know unless you went looking.
  */
-function sumLineItems(raw: unknown): number {
-  if (!Array.isArray(raw)) return 0;
-  return raw.reduce((sum: number, line) => {
-    if (!line || typeof line !== "object") return sum;
-    const l = line as Record<string, unknown>;
-    const flat = Number(l.amount_usd ?? l.amount ?? 0);
-    if (Number.isFinite(flat) && flat !== 0) return sum + flat;
-    const qty = Number(l.qty ?? l.quantity ?? 1) || 0;
-    const price = Number(l.unit_price ?? l.price ?? 0) || 0;
-    return sum + qty * price;
-  }, 0);
+export async function recentHappenings(limit = 8): Promise<Happening[]> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return [];
+
+  const supabase = await getAgencySupabase();
+  const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+
+  const [stages, updates, briefs, visits, clients, products] = await Promise.all([
+    supabase.from("product_stage_events").select("id, product_id, to_stage, created_at")
+      .gte("created_at", since).order("created_at", { ascending: false }).limit(limit),
+    supabase.from("updates").select("id, product_id, created_at, body")
+      .gte("created_at", since).order("created_at", { ascending: false }).limit(limit),
+    supabase.from("product_briefs").select("id, name, product_id, client_id, created_at")
+      .gte("created_at", since).order("created_at", { ascending: false }).limit(limit),
+    supabase.from("portal_visits").select("id, client_id, created_at")
+      .gte("created_at", since).order("created_at", { ascending: false }).limit(60),
+    supabase.from("clients").select("id, name"),
+    supabase.from("products").select("id, name"),
+  ]);
+
+  const clientName = new Map(((clients.data ?? []) as Array<{ id: string; name: string }>).map((c) => [c.id, c.name]));
+  const productName = new Map(
+    ((products.data ?? []) as Array<{ id: string; name: string | null }>).map((p) => [p.id, p.name ?? "A product"]),
+  );
+
+  const out: Happening[] = [];
+
+  for (const e of (stages.data ?? []) as Array<{ id: string; product_id: string; to_stage: string; created_at: string }>) {
+    out.push({
+      id: `h-stage-${e.id}`,
+      text: `${productName.get(e.product_id) ?? "A product"} → ${STAGE_LABEL[e.to_stage] ?? e.to_stage}`,
+      detail: null, at: e.created_at, href: `/products/${e.product_id}`,
+    });
+  }
+
+  for (const u of (updates.data ?? []) as Array<{ id: string; product_id: string; created_at: string; body: string | null }>) {
+    out.push({
+      id: `h-upd-${u.id}`,
+      text: `Update on ${productName.get(u.product_id) ?? "a product"}`,
+      detail: u.body ? u.body.slice(0, 60) : null,
+      at: u.created_at, href: `/products/${u.product_id}`,
+    });
+  }
+
+  for (const b of (briefs.data ?? []) as Array<{ id: string; name: string; product_id: string | null; client_id: string; created_at: string }>) {
+    out.push({
+      id: `h-brief-${b.id}`,
+      text: `New brief: ${b.name}`,
+      detail: clientName.get(b.client_id) ?? null,
+      at: b.created_at,
+      href: b.product_id ? `/products/${b.product_id}` : "/dashboard",
+    });
+  }
+
+  // One entry per client per day: forty page views is not forty events.
+  const seenVisit = new Set<string>();
+  for (const v of (visits.data ?? []) as Array<{ id: string; client_id: string; created_at: string }>) {
+    const key = `${v.client_id}-${v.created_at.slice(0, 10)}`;
+    if (seenVisit.has(key)) continue;
+    seenVisit.add(key);
+    out.push({
+      id: `h-visit-${key}`,
+      text: `${clientName.get(v.client_id) ?? "A client"} opened their portal`,
+      detail: null, at: v.created_at, href: `/clients/${v.client_id}`,
+    });
+  }
+
+  return out.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
 }
