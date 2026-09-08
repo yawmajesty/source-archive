@@ -171,3 +171,132 @@ export async function deleteFabricPhoto(id: string): Promise<{ success: boolean;
   revalidatePath("/fabrics");
   return { success: true };
 }
+
+// ── Fabrics on products ───────────────────────────────────────
+
+export interface FabricProductLink {
+  fabric_id: string;
+  product_id: string;
+  product_name: string;
+  project_name: string | null;
+  client_name: string | null;
+}
+
+/**
+ * Which garments use a fabric.
+ *
+ * The library was write-only: you could catalogue a cloth and never
+ * record that anything was made from it, which is the one question worth
+ * asking of a fabric archive — "what did we use this on?"
+ */
+export async function listFabricProducts(fabricId: string): Promise<FabricProductLink[]> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+
+  const { data: links } = await supabase
+    .from("fabric_products").select("product_id").eq("fabric_id", fabricId);
+  const ids = ((links ?? []) as Array<{ product_id: string }>).map((l) => l.product_id);
+  if (ids.length === 0) return [];
+
+  const { data: products } = await supabase
+    .from("products").select("id, name, project_id").in("id", ids);
+  const rows = (products ?? []) as Array<{ id: string; name: string | null; project_id: string | null }>;
+
+  const projectIds = rows.map((r) => r.project_id).filter(Boolean) as string[];
+  const { data: projects } = projectIds.length
+    ? await supabase.from("projects").select("id, name, client_id").in("id", projectIds)
+    : { data: [] };
+  const projectMap = new Map(
+    ((projects ?? []) as Array<{ id: string; name: string; client_id: string }>).map((p) => [p.id, p]),
+  );
+
+  const clientIds = Array.from(projectMap.values()).map((p) => p.client_id);
+  const { data: clients } = clientIds.length
+    ? await supabase.from("clients").select("id, name").in("id", clientIds)
+    : { data: [] };
+  const clientMap = new Map(((clients ?? []) as Array<{ id: string; name: string }>).map((c) => [c.id, c.name]));
+
+  return rows.map((r) => {
+    const project = r.project_id ? projectMap.get(r.project_id) : undefined;
+    return {
+      fabric_id: fabricId,
+      product_id: r.id,
+      product_name: r.name ?? "Unnamed",
+      project_name: project?.name ?? null,
+      client_name: project ? clientMap.get(project.client_id) ?? null : null,
+    };
+  });
+}
+
+/** Products to choose from, grouped enough to be pickable. */
+export async function listProductsForFabric(): Promise<
+  Array<{ id: string; name: string; project: string | null; client: string | null }>
+> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+
+  const [products, projects, clients] = await Promise.all([
+    supabase.from("products").select("id, name, project_id").order("name").limit(500),
+    supabase.from("projects").select("id, name, client_id"),
+    supabase.from("clients").select("id, name"),
+  ]);
+
+  const projectMap = new Map(
+    ((projects.data ?? []) as Array<{ id: string; name: string; client_id: string }>).map((p) => [p.id, p]),
+  );
+  const clientMap = new Map(
+    ((clients.data ?? []) as Array<{ id: string; name: string }>).map((c) => [c.id, c.name]),
+  );
+
+  return ((products.data ?? []) as Array<{ id: string; name: string | null; project_id: string | null }>).map((p) => {
+    const project = p.project_id ? projectMap.get(p.project_id) : undefined;
+    return {
+      id: p.id,
+      name: p.name ?? "Unnamed",
+      project: project?.name ?? null,
+      client: project ? clientMap.get(project.client_id) ?? null : null,
+    };
+  });
+}
+
+export async function linkFabricToProduct(
+  fabricId: string,
+  productId: string,
+): Promise<{ success: boolean; error?: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  // Composite primary key, so re-adding the same pair is a no-op rather
+  // than a duplicate or an error the user has to read.
+  const { error } = await supabase
+    .from("fabric_products")
+    .upsert({ fabric_id: fabricId, product_id: productId }, { onConflict: "fabric_id,product_id" });
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/fabrics");
+  revalidatePath(`/products/${productId}`);
+  return { success: true };
+}
+
+export async function unlinkFabricFromProduct(
+  fabricId: string,
+  productId: string,
+): Promise<{ success: boolean }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  await supabase.from("fabric_products").delete()
+    .eq("fabric_id", fabricId).eq("product_id", productId);
+  revalidatePath("/fabrics");
+  revalidatePath(`/products/${productId}`);
+  return { success: true };
+}
+
+/** The other direction: what a product is made from. */
+export async function listProductFabrics(productId: string): Promise<Fabric[]> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+  const { data: links } = await supabase
+    .from("fabric_products").select("fabric_id").eq("product_id", productId);
+  const ids = ((links ?? []) as Array<{ fabric_id: string }>).map((l) => l.fabric_id);
+  if (ids.length === 0) return [];
+  const { data } = await supabase.from("fabrics").select("*").in("id", ids).order("name");
+  return (data ?? []) as Fabric[];
+}

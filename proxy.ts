@@ -12,6 +12,7 @@ const isPublicRoute = createRouteMatcher([
   "/for-brands(.*)",
   "/price",            // the free, shareable pricing calculator
   "/api/webhook(.*)",
+  "/api/cron(.*)",    // guarded by CRON_SECRET inside the route
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

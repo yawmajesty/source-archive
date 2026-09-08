@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Camera, Megaphone, Plus, Trash2, Check, ChevronLeft, Save, Wand2, Calendar, X,
+  Camera, Megaphone, Plus, Trash2, Check, ChevronLeft, Save, Wand2, Calendar, CalendarDays, X,
 } from "lucide-react";
 import {
   SHOOT_TYPES, SHOOT_STATUSES, REFERENCE_SLOTS, SLOT_LABEL, BRIEF_FIELDS,
@@ -15,7 +15,7 @@ import {
   addShot, updateShot, deleteShot,
   addReferences, deleteReference, updateReference, setShootProducts,
   importMoodboardReferences, listMoodboardImages, sendCallSheet, shareBriefWithClient,
-  shootReadiness, type Readiness,
+  shootReadiness, planningCalendar, type Readiness, type CalendarEntry,
   saveAsTemplate, applyTemplate,
   createCampaign, updateCampaign, deleteCampaign, getCampaignItems,
   addCampaignItem, updateCampaignItem, deleteCampaignItem,
@@ -47,7 +47,7 @@ export function PlannerClient({
   projects: Project[];
   products: Product[];
 }) {
-  const [tab, setTab] = useState<"shoots" | "marketing">("shoots");
+  const [tab, setTab] = useState<"shoots" | "marketing" | "calendar">("shoots");
   const [shoots, setShoots] = useState(initialShoots);
   const [campaigns, setCampaigns] = useState(initialCampaigns);
   const [openShoot, setOpenShoot] = useState<string | null>(null);
@@ -98,7 +98,7 @@ export function PlannerClient({
         </div>
         <div className="flex-1" />
         <div className="flex gap-1">
-          {(["shoots", "marketing"] as const).map((t) => (
+          {(["shoots", "marketing", "calendar"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -108,7 +108,7 @@ export function PlannerClient({
                   : "text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
               }`}
             >
-              {t === "shoots" ? <Camera size={13} /> : <Megaphone size={13} />} {t}
+              {t === "shoots" ? <Camera size={13} /> : t === "marketing" ? <Megaphone size={13} /> : <CalendarDays size={13} />} {t}
             </button>
           ))}
         </div>
@@ -117,7 +117,9 @@ export function PlannerClient({
       {error && <p className="border-b border-[var(--sa-border)] px-6 py-2 text-[12.5px] text-red-500">{error}</p>}
 
       <div className="flex-1 overflow-y-auto p-6">
-        {tab === "shoots" ? (
+        {tab === "calendar" ? (
+          <CalendarView />
+        ) : tab === "shoots" ? (
           <ShootList
             shoots={shoots}
             clients={clients}
@@ -1446,6 +1448,114 @@ function PlayPicker({
             everything afterwards.
           </p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Everything dated, everywhere, in order.
+ *
+ * A campaign view answers "what's happening on this drop". This answers
+ * the one it can't: whether three brands are dropping the same week, or
+ * a shoot is booked the day before the launch it was meant to feed.
+ */
+function CalendarView() {
+  const [entries, setEntries] = useState<CalendarEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    planningCalendar().then((e) => { setEntries(e); setLoading(false); });
+  }, []);
+
+  const byDay = useMemo(() => {
+    const map = new Map<string, CalendarEntry[]>();
+    for (const e of entries) {
+      const list = map.get(e.date) ?? [];
+      list.push(e);
+      map.set(e.date, list);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [entries]);
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (loading) {
+    return <p className="text-[13px] text-[var(--sa-text-tertiary)]">Loading the calendar…</p>;
+  }
+
+  if (entries.length === 0) {
+    return (
+      <EmptyState
+        icon={<CalendarDays size={22} />}
+        title="Nothing dated in the next four months"
+        body="Shoots with a date, campaigns with a launch day, and anything due on a plan all appear here together."
+      />
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl">
+      <p className="mb-3 text-[12.5px] text-[var(--sa-text-tertiary)]">
+        The next four months, across every client.
+      </p>
+      <div className="flex flex-col gap-3">
+        {byDay.map(([date, items]) => {
+          const d = new Date(`${date}T12:00:00Z`);
+          const isToday = date === today;
+          const past = date < today;
+          // More than two things for one client in a day is worth seeing.
+          const clients = new Set(items.map((i) => i.clientName).filter(Boolean));
+          return (
+            <div key={date} className="flex gap-3">
+              <div className="w-20 shrink-0 pt-0.5 text-right">
+                <p
+                  className={`text-[13px] font-semibold tabular-nums ${
+                    isToday ? "text-[var(--sa-accent)]" : past ? "text-[var(--sa-text-tertiary)]" : "text-[var(--sa-text-primary)]"
+                  }`}
+                >
+                  {d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                </p>
+                <p className="text-[10.5px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">
+                  {isToday ? "Today" : d.toLocaleDateString("en-GB", { weekday: "short" })}
+                </p>
+              </div>
+
+              <div className="min-w-0 flex-1">
+                {clients.size > 1 && (
+                  <p className="mb-1 text-[10.5px] font-medium text-[var(--sa-warning)]">
+                    {clients.size} clients on the same day
+                  </p>
+                )}
+                <div className="flex flex-col gap-1.5">
+                  {items.map((e) => (
+                    <div
+                      key={e.id}
+                      className="flex items-center gap-2 rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] p-2.5"
+                      style={{ opacity: past ? 0.55 : 1 }}
+                    >
+                      <span className="h-8 w-1 shrink-0 rounded-full" style={{ background: e.tone }} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12.5px] font-medium text-[var(--sa-text-primary)]">
+                          {e.title}
+                        </p>
+                        <p className="truncate text-[11px] text-[var(--sa-text-tertiary)]">
+                          {[e.clientName, e.subtitle].filter(Boolean).join(" · ")}
+                        </p>
+                      </div>
+                      <span
+                        className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                        style={{ background: "var(--sa-hover)", color: "var(--sa-text-secondary)" }}
+                      >
+                        {e.kind === "shoot" ? "Shoot" : e.kind === "launch" ? "Drop" : "Due"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

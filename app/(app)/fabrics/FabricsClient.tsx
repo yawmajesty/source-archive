@@ -1,14 +1,18 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Plus, Eye, EyeOff, Search, Upload } from "lucide-react";
+import { Plus, Eye, EyeOff, Search, Upload, X } from "lucide-react";
 import { uploadFile } from "@/lib/storage";
 import {
   FABRIC_CATEGORIES, FABRIC_TIERS, SUSTAINABILITY_TAGS, STOCK_LABEL, priceBandFor,
   categoryByCode, REQUIRED_SHOTS, templateGaps, STOCK_HINT,
   type Fabric, type FabricTier, type PriceUnit, type StockStatus,
 } from "@/lib/fabrics";
-import { saveFabric, setFabricPublished, addFabricPhotos, listFabricPhotos, deleteFabricPhoto, type FabricPhoto } from "./actions";
+import {
+  saveFabric, setFabricPublished, addFabricPhotos, listFabricPhotos, deleteFabricPhoto,
+  listFabricProducts, listProductsForFabric, linkFabricToProduct, unlinkFabricFromProduct,
+  type FabricPhoto, type FabricProductLink,
+} from "./actions";
 
 // ─────────────────────────────────────────────────────────────
 // The population tool. 40 well-documented entries beat 200 stubs, so this is
@@ -38,6 +42,11 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
   const swatchRef = useRef<HTMLInputElement>(null);
   const shotRef = useRef<"texture" | "color" | "other">("other");
   const [photos, setPhotos] = useState<FabricPhoto[]>([]);
+  const [usedOn, setUsedOn] = useState<FabricProductLink[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [allProducts, setAllProducts] = useState<
+    Array<{ id: string; name: string; project: string | null; client: string | null }>
+  >([]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -70,8 +79,29 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
   async function openFabric(f: Fabric) {
     setDraft(f);
     setPhotos([]);
-    const list = await listFabricPhotos(f.id);
+    setUsedOn([]);
+    setPickerOpen(false);
+    const [list, links] = await Promise.all([listFabricPhotos(f.id), listFabricProducts(f.id)]);
     setPhotos(list);
+    setUsedOn(links);
+  }
+
+  async function openPicker() {
+    setPickerOpen(true);
+    if (allProducts.length === 0) setAllProducts(await listProductsForFabric());
+  }
+
+  async function attach(productId: string) {
+    if (!draft?.id) return;
+    const res = await linkFabricToProduct(draft.id, productId);
+    if (!res.success) { setError(res.error ?? "Could not attach"); return; }
+    setUsedOn(await listFabricProducts(draft.id));
+  }
+
+  async function detach(productId: string) {
+    if (!draft?.id) return;
+    setUsedOn((prev) => prev.filter((u) => u.product_id !== productId));
+    await unlinkFabricFromProduct(draft.id, productId);
   }
 
   async function togglePublish(f: Fabric) {
@@ -404,6 +434,79 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
             </div>
           )}
 
+          {draft.id && (
+            <div className="mt-4 border-t border-[var(--sa-border)] pt-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-[12px] font-semibold text-[var(--sa-text-primary)]">Used on</p>
+                <p className="min-w-0 flex-1 text-[11px] text-[var(--sa-text-tertiary)]">
+                  Which garments this cloth is actually in
+                </p>
+                <button
+                  onClick={openPicker}
+                  className="text-[11.5px] font-medium text-[var(--sa-accent)]"
+                >
+                  Add to a product
+                </button>
+              </div>
+
+              {usedOn.length === 0 ? (
+                <p className="mt-1.5 text-[11.5px] text-[var(--sa-text-tertiary)]">
+                  Not on anything yet.
+                </p>
+              ) : (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {usedOn.map((u) => (
+                    <span
+                      key={u.product_id}
+                      className="group flex items-center gap-1.5 rounded-md border border-[var(--sa-border)] px-2 py-1"
+                    >
+                      <span className="text-[12px] text-[var(--sa-text-primary)]">{u.product_name}</span>
+                      {(u.client_name || u.project_name) && (
+                        <span className="text-[10.5px] text-[var(--sa-text-tertiary)]">
+                          {[u.client_name, u.project_name].filter(Boolean).join(" · ")}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => detach(u.product_id)}
+                        aria-label={`Remove from ${u.product_name}`}
+                        className="opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-500"
+                      >
+                        <X size={11} className="text-[var(--sa-text-tertiary)]" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {pickerOpen && (
+                <div className="mt-2 max-h-60 overflow-y-auto rounded-lg border border-[var(--sa-border)]">
+                  {allProducts.length === 0 ? (
+                    <p className="p-3 text-[12px] text-[var(--sa-text-tertiary)]">Loading products…</p>
+                  ) : (
+                    allProducts
+                      .filter((p) => !usedOn.some((u) => u.product_id === p.id))
+                      .map((p, i) => (
+                        <button
+                          key={p.id}
+                          onClick={() => attach(p.id)}
+                          className={`flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-[var(--sa-hover)] ${
+                            i > 0 ? "border-t border-[var(--sa-border)]" : ""
+                          }`}
+                        >
+                          <span className="min-w-0 flex-1 truncate text-[12.5px] text-[var(--sa-text-primary)]">
+                            {p.name}
+                          </span>
+                          <span className="shrink-0 text-[11px] text-[var(--sa-text-tertiary)]">
+                            {[p.client, p.project].filter(Boolean).join(" · ")}
+                          </span>
+                        </button>
+                      ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="mt-4 flex items-center gap-2">
             <button
               onClick={save}
@@ -419,7 +522,14 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
 
       <div className="flex flex-col gap-1.5">
         {filtered.map((f) => (
-          <div key={f.id} className="flex items-center gap-3 rounded-lg border border-[var(--sa-border)] p-2.5">
+          <div
+            key={f.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => openFabric(f)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void openFabric(f); } }}
+            className="flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--sa-border)] p-2.5 hover:border-[var(--sa-accent)] hover:bg-[var(--sa-hover)]"
+          >
             <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md" style={{ background: "var(--sa-hover)" }}>
               {f.swatch_url && <img src={f.swatch_url} alt="" className="h-full w-full object-cover" />}
             </div>
@@ -455,10 +565,10 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
                 </span>
               )}
             </span>
-            <button onClick={() => openFabric(f)} className="text-[12px] text-[var(--sa-text-secondary)]">Edit</button>
+            <span className="text-[12px] text-[var(--sa-text-tertiary)]">Open</span>
             {canPublish && (
               <button
-                onClick={() => togglePublish(f)}
+                onClick={(e) => { e.stopPropagation(); void togglePublish(f); }}
                 className="flex items-center gap-1 text-[11.5px]"
                 style={{ color: f.is_published ? "var(--sa-success)" : "var(--sa-text-tertiary)" }}
                 title={f.is_published ? "Visible to clients" : "Hidden from clients"}

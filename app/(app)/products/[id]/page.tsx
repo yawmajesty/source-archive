@@ -9,6 +9,9 @@ import { ProductDetailClient } from "./ProductDetailClient";
 import { ProductionLogPanel } from "./ProductionLogPanel";
 import { StageSelector } from "./StageSelector";
 import { CostSheetPanel } from "./CostSheetPanel";
+import { ProductFabrics } from "./ProductFabrics";
+import { listProductFabrics, listFabrics } from "@/app/(app)/fabrics/actions";
+import type { Fabric } from "@/lib/fabrics";
 import { listCostSheets, getCostSheetLines } from "./cost-sheet-actions";
 import type { CostSheet, CostSheetLine } from "@/lib/cost-sheet";
 import { can } from "@/lib/permissions";
@@ -47,6 +50,12 @@ export default async function ProductDetailPage({ params }: Props) {
   let logEntries: ProductionLogEntry[] = [];
   try { logEntries = await listProductionLog(id); } catch { logEntries = []; }
 
+  let productFabrics: Fabric[] = [];
+  let fabricLibrary: Fabric[] = [];
+  try {
+    [productFabrics, fabricLibrary] = await Promise.all([listProductFabrics(id), listFabrics()]);
+  } catch { productFabrics = []; fabricLibrary = []; }
+
   // Newest sheet only — older ones stay as history and can be surfaced later.
   let costSheet: CostSheet | null = null;
   let costLines: CostSheetLine[] = [];
@@ -77,6 +86,14 @@ export default async function ProductDetailPage({ params }: Props) {
       }
       productionLog={
         <div className="flex flex-col gap-4">
+        <ProductFabrics
+          productId={id}
+          initial={productFabrics}
+          library={fabricLibrary.map((f) => ({
+            id: f.id, name: f.name, code: f.code, tier: f.tier, category: f.category,
+          }))}
+          canEdit={ctx ? can(ctx.role, ctx.permissions, "fabric.edit") : false}
+        />
         <CostSheetPanel
           productId={id}
           sheet={costSheet}
