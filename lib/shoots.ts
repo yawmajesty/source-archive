@@ -88,20 +88,35 @@ export function anglesFor(type: ShootType) {
   return type === "ecom" ? ECOM_ANGLES : CAMPAIGN_ANGLES;
 }
 
-/** The questions a photographer asks that a brief should already answer. */
-export const BRIEF_FIELDS: { key: string; label: string; hint: string; long?: boolean }[] = [
-  { key: "objective",      label: "What this is for",  hint: "Where these images end up and what they have to do", long: true },
-  { key: "photo_style",    label: "Photo style",       hint: "Colour, contrast, mood. Name a reference if you have one", long: true },
-  { key: "video_style",    label: "Video style",       hint: "Pace, movement, sound. Leave blank if stills only", long: true },
-  { key: "model_style",    label: "Model & casting",   hint: "Look, age range, sizes, how many", long: true },
-  { key: "hair_makeup",    label: "Hair & make-up",    hint: "Be specific — this is where shoots drift", long: true },
-  { key: "styling_notes",  label: "Styling",           hint: "How the garment is worn, and with what", long: true },
-  { key: "lighting_notes", label: "Lighting",          hint: "Hard or soft, direction, colour temperature" },
-  { key: "background",     label: "Background & set",  hint: "Seamless colour, location, texture" },
-  { key: "retouching",     label: "Retouching",        hint: "How far to take it, and what not to touch" },
-  { key: "deliverables",   label: "Deliverables",      hint: "How many finals, crops, formats, and by when", long: true },
-  { key: "usage_rights",   label: "Usage rights",      hint: "Where the images may run, for how long, in which territories", long: true },
+/**
+ * The questions a photographer asks that a brief should already answer.
+ *
+ * Each section carries its own images. Words and pictures describing the
+ * same thing belong together — a paragraph about hair and a folder of
+ * hair references at opposite ends of a page is how a brief gets read as
+ * two unrelated documents.
+ *
+ * `slot` ties a section to the reference images filed under it, which is
+ * why the slot ids must not be renamed once shoots exist.
+ */
+export const BRIEF_FIELDS: {
+  key: string; label: string; hint: string; slot: string; long?: boolean;
+}[] = [
+  { key: "objective",      label: "What this is for",  slot: "general",     hint: "Where these images end up and what they have to do", long: true },
+  { key: "photo_style",    label: "Photo style",       slot: "photo_style", hint: "Colour, contrast, mood. Show what you mean", long: true },
+  { key: "video_style",    label: "Video style",       slot: "video_style", hint: "Pace, movement, sound. Leave blank if stills only", long: true },
+  { key: "model_style",    label: "Model & casting",   slot: "model",       hint: "Look, age range, sizes, how many", long: true },
+  { key: "hair_makeup",    label: "Hair & make-up",    slot: "hair",        hint: "Be specific — this is where shoots drift", long: true },
+  { key: "styling_notes",  label: "Styling",           slot: "styling",     hint: "How the garment is worn, and with what", long: true },
+  { key: "lighting_notes", label: "Lighting",          slot: "lighting",    hint: "Hard or soft, direction, colour temperature" },
+  { key: "background",     label: "Background & set",  slot: "location",    hint: "Seamless colour, location, texture" },
+  { key: "retouching",     label: "Retouching",        slot: "retouch",     hint: "How far to take it, and what not to touch" },
+  { key: "deliverables",   label: "Deliverables",      slot: "general",     hint: "How many finals, crops, formats, and by when", long: true },
+  { key: "usage_rights",   label: "Usage rights",      slot: "general",     hint: "Where the images may run, for how long, in which territories", long: true },
 ];
+
+/** Slots with images but no paragraph of their own. */
+export const EXTRA_SLOTS = ["angle", "makeup", "prop"];
 
 export interface CrewMember { role: string; name: string; contact?: string }
 

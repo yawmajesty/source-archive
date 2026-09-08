@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Camera, Megaphone, Plus } from "lucide-react";
 import { SHOOT_TYPES, type ShootType } from "@/lib/shoots";
+import { ShootDetail, CampaignDetail } from "@/app/(app)/studio-plan/PlannerClient";
 import { createWorkspaceShoot, createWorkspaceCampaign, type WsShoot } from "./actions";
 
 const CARD = "rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)]";
@@ -21,10 +22,49 @@ export function WorkspacePlanner({
   const [shoots, setShoots] = useState(initialShoots);
   const [campaigns, setCampaigns] = useState(initialCampaigns);
   const [error, setError] = useState<string | null>(null);
+  const [openShoot, setOpenShoot] = useState<string | null>(null);
+  const [openCampaign, setOpenCampaign] = useState<string | null>(null);
   const [shootForm, setShootForm] = useState({ title: "", type: "ecom" as ShootType });
   const [campForm, setCampForm] = useState({
     name: "", kind: "collection" as "collection" | "always_on", launchDate: "",
   });
+
+  // The same editors the agency uses. A paying customer getting a thinner
+  // version of the tool than the people selling it is not a product, and
+  // row-level security means one component can serve both.
+  if (openShoot) {
+    return (
+      <ShootDetail
+        shootId={openShoot}
+        onBack={() => setOpenShoot(null)}
+        onDeleted={(id) => { setShoots((s) => s.filter((x) => x.id !== id)); setOpenShoot(null); }}
+        onRenamed={(id, title) => setShoots((s) => s.map((x) => (x.id === id ? { ...x, title } : x)))}
+        templates={[]}
+        products={[]}
+        projects={[]}
+      />
+    );
+  }
+
+  if (openCampaign) {
+    const c = campaigns.find((x) => x.id === openCampaign);
+    if (c) {
+      return (
+        <CampaignDetail
+          campaign={{
+            id: c.id, client_id: "", project_id: null, name: c.name,
+            kind: c.kind, launch_date: c.launch_date,
+            objective: null, audience: null, notes: null,
+          }}
+          onBack={() => setOpenCampaign(null)}
+          onDeleted={(id) => { setCampaigns((p) => p.filter((x) => x.id !== id)); setOpenCampaign(null); }}
+          onPatched={(id, patch) =>
+            setCampaigns((p) => p.map((x) => (x.id === id ? { ...x, ...patch } as Campaign : x)))
+          }
+        />
+      );
+    }
+  }
 
   return (
     <div className="p-6">
@@ -85,14 +125,18 @@ export function WorkspacePlanner({
               <p className="text-[12.5px] text-[var(--sa-text-tertiary)]">No shoots yet.</p>
             )}
             {shoots.map((s) => (
-              <div key={s.id} className="flex items-center gap-2 rounded-lg border border-[var(--sa-border)] px-3 py-2">
+              <button
+                key={s.id}
+                onClick={() => setOpenShoot(s.id)}
+                className="flex items-center gap-2 rounded-lg border border-[var(--sa-border)] px-3 py-2 text-left hover:bg-[var(--sa-hover)]"
+              >
                 <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--sa-text-primary)]">
                   {s.title}
                 </span>
                 <span className="shrink-0 text-[11.5px] text-[var(--sa-text-tertiary)]">
                   {SHOOT_TYPES.find((t) => t.id === s.shoot_type)?.label ?? s.shoot_type}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -158,12 +202,16 @@ export function WorkspacePlanner({
               <p className="text-[12.5px] text-[var(--sa-text-tertiary)]">Nothing planned yet.</p>
             )}
             {campaigns.map((c) => (
-              <div key={c.id} className="flex items-center gap-2 rounded-lg border border-[var(--sa-border)] px-3 py-2">
+              <button
+                key={c.id}
+                onClick={() => setOpenCampaign(c.id)}
+                className="flex items-center gap-2 rounded-lg border border-[var(--sa-border)] px-3 py-2 text-left hover:bg-[var(--sa-hover)]"
+              >
                 <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--sa-text-primary)]">{c.name}</span>
                 <span className="shrink-0 text-[11.5px] text-[var(--sa-text-tertiary)]">
                   {c.kind === "always_on" ? "Always on" : c.launch_date ?? "No date"}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         </div>

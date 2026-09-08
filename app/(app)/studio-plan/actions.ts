@@ -1,21 +1,63 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { auth } from "@clerk/nextjs/server";
 import { getAgencyContext } from "@/lib/agency-data";
+import { canUseShootPlanner } from "@/lib/plan-limits";
 import { getAgencySupabase } from "@/lib/supabase-agency";
 import { can } from "@/lib/permissions";
+import { sendAll, clientRecipients, looksLikeEmail } from "@/lib/email/send";
+import { crewCallSheet, shootBriefShared, campaignItemDue } from "@/lib/email/templates";
+import { buildPublicUrl } from "@/lib/url";
 import {
   anglesFor, LAUNCH_PLAN, ALWAYS_ON_PLAN, phaseDate,
-  type ShootType, type Phase,
+  SHOOT_STATUSES, PHASE_LABEL, PHASE_TONE,
+  type ShootType, type Phase, type CrewMember,
 } from "@/lib/shoots";
 
-async function editor() {
+/**
+ * Who may write to the planner.
+ *
+ * Two kinds of caller reach these actions: agency staff, and brand
+ * workspace members on a plan that includes shoot planning. They share
+ * the tables, and both Supabase bridges attach the same Clerk token, so
+ * row-level security is the actual boundary in both cases — a workspace
+ * member updating someone else's shoot updates nothing, because the
+ * policy doesn't match.
+ *
+ * This check is therefore about intent and about which agency_id to
+ * stamp on new rows, not about isolation. Isolation is the database's
+ * job and it is doing it.
+ */
+const PLATFORM_AGENCY = "ag-source-archive";
+
+async function editor(): Promise<{ agency: { id: string }; currentUserId: string; scope: "agency" | "workspace" }> {
   const ctx = await getAgencyContext();
-  if (!ctx) throw new Error("Not a member of any agency");
-  if (!can(ctx.role, ctx.permissions, "client.edit")) {
-    throw new Error("You don't have permission to plan shoots");
+  if (ctx) {
+    if (!can(ctx.role, ctx.permissions, "client.edit")) {
+      throw new Error("You don't have permission to plan shoots");
+    }
+    return { agency: { id: ctx.agency.id }, currentUserId: ctx.currentUserId, scope: "agency" };
   }
-  return ctx;
+
+  const { userId } = await auth();
+  if (!userId) throw new Error("Not signed in");
+
+  // A brand-side caller. They must belong to a workspace whose plan
+  // carries the planner; RLS then decides which rows they can touch.
+  const supabase = await getAgencySupabase();
+  const { data: memberships } = await supabase
+    .from("workspace_members").select("workspace_id").eq("user_id", userId);
+  const ids = ((memberships ?? []) as Array<{ workspace_id: string }>).map((m) => m.workspace_id);
+  if (ids.length === 0) throw new Error("Not a member of any agency or workspace");
+
+  const { data: subs } = await supabase
+    .from("subscriptions").select("workspace_id, plan").in("workspace_id", ids);
+  const entitled = ((subs ?? []) as Array<{ plan: string | null }>)
+    .some((sub) => canUseShootPlanner(sub.plan));
+  if (!entitled) throw new Error("Shoot planning isn't on your plan");
+
+  return { agency: { id: PLATFORM_AGENCY }, currentUserId: userId, scope: "workspace" };
 }
 
 export interface ShootRow {
@@ -50,8 +92,10 @@ export async function listShoots(): Promise<ShootRow[]> {
 export async function getShoot(
   id: string,
 ): Promise<{ shoot: ShootRow; shots: ShotRow[]; refs: RefRow[]; productIds: string[] } | null> {
-  const ctx = await getAgencyContext();
-  if (!ctx) return null;
+  // No agency check: a brand workspace member has no agency context, and
+  // RLS already returns nothing for a shoot they can't see.
+  const { userId } = await auth();
+  if (!userId) return null;
   const supabase = await getAgencySupabase();
 
   const { data: shoot } = await supabase.from("shoots").select("*").eq("id", id).maybeSingle();
@@ -249,8 +293,8 @@ export interface TemplateRow {
 }
 
 export async function listTemplates(): Promise<TemplateRow[]> {
-  const ctx = await getAgencyContext();
-  if (!ctx) return [];
+  const { userId } = await auth();
+  if (!userId) return [];
   const supabase = await getAgencySupabase();
   const { data } = await supabase.from("shoot_templates").select("*").order("name");
   return (data ?? []) as TemplateRow[];
@@ -363,8 +407,8 @@ export async function listCampaigns(): Promise<CampaignRow[]> {
 }
 
 export async function getCampaignItems(campaignId: string): Promise<CampaignItemRow[]> {
-  const ctx = await getAgencyContext();
-  if (!ctx) return [];
+  const { userId } = await auth();
+  if (!userId) return [];
   const supabase = await getAgencySupabase();
   const { data } = await supabase
     .from("campaign_items").select("*").eq("campaign_id", campaignId)
@@ -512,8 +556,8 @@ export interface Readiness {
 const READY_STAGES = new Set(["review", "approved", "revision", "production", "shipped", "qc"]);
 
 export async function shootReadiness(shootId: string): Promise<Readiness[]> {
-  const ctx = await getAgencyContext();
-  if (!ctx) return [];
+  const { userId } = await auth();
+  if (!userId) return [];
   const supabase = await getAgencySupabase();
 
   const { data: links } = await supabase
@@ -541,8 +585,8 @@ export interface AssetRow {
 }
 
 export async function listAssets(shootId: string): Promise<AssetRow[]> {
-  const ctx = await getAgencyContext();
-  if (!ctx) return [];
+  const { userId } = await auth();
+  if (!userId) return [];
   const supabase = await getAgencySupabase();
   const { data } = await supabase
     .from("shoot_assets").select("*").eq("shoot_id", shootId).order("position");
@@ -706,5 +750,367 @@ export async function setSharedWithClient(
   await supabase.from(kind === "shoot" ? "shoots" : "campaigns")
     .update({ shared_with_client: shared }).eq("id", id);
   revalidatePath("/studio-plan");
+  return { success: true };
+}
+
+// ── Connections ───────────────────────────────────────────────
+
+/**
+ * Pull a client's moodboard images into a shoot as references.
+ *
+ * The client already chose these; making someone retype them into the
+ * brief is how the brief ends up disagreeing with the board. The link
+ * home is kept so the two stay recognisably the same thing.
+ */
+export async function importMoodboardReferences(input: {
+  shootId: string;
+  clientId: string;
+  slot: string;
+  itemIds: string[];
+}): Promise<{ success: true; refs: RefRow[] } | { success: false; error: string }> {
+  let ctx;
+  try { ctx = await editor(); } catch (e) { return { success: false, error: (e as Error).message }; }
+  if (input.itemIds.length === 0) return { success: false, error: "Pick some images first" };
+
+  const supabase = await getAgencySupabase();
+  const { data: items } = await supabase
+    .from("moodboard_items")
+    .select("id, image_url, caption, kind")
+    .in("id", input.itemIds)
+    .eq("kind", "image");
+
+  const rows = ((items ?? []) as Array<{ id: string; image_url: string | null; caption: string | null }>)
+    .filter((i) => i.image_url);
+  if (rows.length === 0) return { success: false, error: "Those aren't images" };
+
+  const { data, error } = await supabase
+    .from("shoot_references")
+    .insert(
+      rows.map((r, n) => ({
+        agency_id: ctx.agency.id,
+        shoot_id: input.shootId,
+        slot: input.slot,
+        image_url: r.image_url as string,
+        note: r.caption,
+        moodboard_item_id: r.id,
+        position: n,
+      })),
+    )
+    .select();
+
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/studio-plan");
+  return { success: true, refs: (data ?? []) as RefRow[] };
+}
+
+/** The client's moodboard images, for the picker. */
+export async function listMoodboardImages(
+  clientId: string,
+): Promise<Array<{ id: string; image_url: string; caption: string | null }>> {
+  const { userId } = await auth();
+  if (!userId) return [];
+  const supabase = await getAgencySupabase();
+  const { data: boards } = await supabase.from("moodboards").select("id").eq("client_id", clientId);
+  const ids = ((boards ?? []) as Array<{ id: string }>).map((b) => b.id);
+  if (ids.length === 0) return [];
+
+  const { data } = await supabase
+    .from("moodboard_items")
+    .select("id, image_url, caption")
+    .in("board_id", ids)
+    .eq("kind", "image")
+    .limit(200);
+  return ((data ?? []) as Array<{ id: string; image_url: string | null; caption: string | null }>)
+    .filter((i) => i.image_url)
+    .map((i) => ({ id: i.id, image_url: i.image_url as string, caption: i.caption }));
+}
+
+// ── Notifications ─────────────────────────────────────────────
+
+/**
+ * Send the call sheet to everyone booked.
+ *
+ * The crew are not users of this system and never will be — a
+ * photographer is not going to make an account to read a call time. The
+ * email is the interface.
+ */
+export async function sendCallSheet(
+  shootId: string,
+): Promise<{ success: true; sent: number } | { success: false; error: string }> {
+  let ctx;
+  try { ctx = await editor(); } catch (e) { return { success: false, error: (e as Error).message }; }
+
+  const detail = await getShoot(shootId);
+  if (!detail) return { success: false, error: "Shoot not found" };
+
+  const crew = ((detail.shoot.crew as CrewMember[]) ?? []).filter(
+    (m) => m.contact && looksLikeEmail(m.contact),
+  );
+  if (crew.length === 0) {
+    return { success: false, error: "Nobody on the crew has an email address yet." };
+  }
+
+  const messages = crew.map((m) => {
+    const built = crewCallSheet({
+      role: m.role,
+      shootTitle: detail.shoot.title,
+      date: detail.shoot.shoot_date,
+      callTime: (detail.shoot.call_time as string) ?? null,
+      location: detail.shoot.location,
+      shotCount: detail.shots.length,
+      notes: (detail.shoot.notes as string) ?? null,
+    });
+    return {
+      agencyId: ctx.agency.id,
+      to: m.contact as string,
+      toName: m.name,
+      subject: built.subject,
+      html: built.html,
+      text: built.text,
+      template: "shoot_crew_callsheet" as const,
+      relatedType: null,
+      relatedId: shootId,
+    };
+  });
+
+  const results = await sendAll(messages);
+  const supabase = await getAgencySupabase();
+  await supabase.from("shoots").update({ crew_notified_at: new Date().toISOString() }).eq("id", shootId);
+
+  revalidatePath("/studio-plan");
+  return { success: true, sent: results.filter((r) => r.status === "sent").length };
+}
+
+/** Tell the client their brief is ready to read, and open it to them. */
+export async function shareBriefWithClient(
+  shootId: string,
+): Promise<{ success: true; status: string } | { success: false; error: string }> {
+  let ctx;
+  try { ctx = await editor(); } catch (e) { return { success: false, error: (e as Error).message }; }
+
+  const supabase = await getAgencySupabase();
+  const { data: shoot } = await supabase
+    .from("shoots").select("id, title, shoot_date, client_id").eq("id", shootId).maybeSingle();
+  const s = shoot as { title: string; shoot_date: string | null; client_id: string | null } | null;
+  if (!s?.client_id) return { success: false, error: "This shoot isn't attached to a client" };
+
+  await supabase.from("shoots").update({ shared_with_client: true }).eq("id", shootId);
+
+  const { emails, enabled } = await clientRecipients(s.client_id);
+  if (!enabled || emails.length === 0) {
+    return { success: true, status: "shared" };
+  }
+
+  const built = shootBriefShared({
+    shootTitle: s.title,
+    date: s.shoot_date,
+    portalUrl: buildPublicUrl(`/portal/${s.client_id}`),
+  });
+
+  const results = await sendAll(
+    emails.map((to) => ({
+      agencyId: ctx.agency.id,
+      to,
+      subject: built.subject,
+      html: built.html,
+      text: built.text,
+      template: "shoot_brief_shared" as const,
+      relatedType: "client" as const,
+      relatedId: s.client_id,
+    })),
+  );
+
+  revalidatePath("/studio-plan");
+  return { success: true, status: results[0]?.status ?? "sent" };
+}
+
+/**
+ * Chase whatever is past its date.
+ *
+ * Grouped by owner so someone with four overdue posts gets one email
+ * rather than four. Four emails about being behind is how a person
+ * starts ignoring the emails.
+ */
+export async function chaseOverdueItems(): Promise<
+  { success: true; sent: number } | { success: false; error: string }
+> {
+  let ctx;
+  try { ctx = await editor(); } catch (e) { return { success: false, error: (e as Error).message }; }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const supabase = await getAgencySupabase();
+  const { data: items } = await supabase
+    .from("campaign_items")
+    .select("id, title, owner, due_date, status, campaign_id")
+    .lt("due_date", today)
+    .not("owner", "is", null)
+    .in("status", ["idea", "briefed", "in_progress", "ready"]);
+
+  const rows = (items ?? []) as Array<{
+    title: string; owner: string | null; due_date: string | null; campaign_id: string;
+  }>;
+  if (rows.length === 0) return { success: false, error: "Nothing is overdue." };
+
+  const { data: campaigns } = await supabase.from("campaigns").select("id, name");
+  const names = new Map(((campaigns ?? []) as Array<{ id: string; name: string }>).map((c) => [c.id, c.name]));
+
+  const byOwner = new Map<string, Array<{ title: string; campaign: string; due: string | null }>>();
+  for (const r of rows) {
+    if (!looksLikeEmail(r.owner)) continue;
+    const key = r.owner.trim().toLowerCase();
+    const list = byOwner.get(key) ?? [];
+    list.push({ title: r.title, campaign: names.get(r.campaign_id) ?? "A campaign", due: r.due_date });
+    byOwner.set(key, list);
+  }
+
+  if (byOwner.size === 0) {
+    return { success: false, error: "Overdue items exist, but no owner has an email address on them." };
+  }
+
+  const messages = Array.from(byOwner.entries()).map(([email, list]) => {
+    const built = campaignItemDue({
+      ownerName: email,
+      items: list,
+      url: buildPublicUrl("/studio-plan"),
+    });
+    return {
+      agencyId: ctx.agency.id,
+      to: email,
+      subject: built.subject,
+      html: built.html,
+      text: built.text,
+      template: "campaign_item_due" as const,
+      relatedType: null,
+      relatedId: null,
+    };
+  });
+
+  const results = await sendAll(messages);
+  return { success: true, sent: results.filter((r) => r.status === "sent").length };
+}
+
+// ── Approvals ─────────────────────────────────────────────────
+
+export interface ApprovalRow {
+  id: string; subject: string; subject_id: string;
+  decision: string; note: string | null;
+  approved_by_name: string | null; created_at: string;
+}
+
+export async function listApprovals(
+  subject: "shoot" | "campaign",
+  subjectId: string,
+): Promise<ApprovalRow[]> {
+  const { userId } = await auth();
+  if (!userId) return [];
+  const supabase = await getAgencySupabase();
+  const { data } = await supabase
+    .from("plan_approvals")
+    .select("*")
+    .eq("subject", subject)
+    .eq("subject_id", subjectId)
+    .order("created_at", { ascending: false });
+  return (data ?? []) as ApprovalRow[];
+}
+
+// ── The calendar ──────────────────────────────────────────────
+
+export interface CalendarEntry {
+  id: string;
+  kind: "shoot" | "launch" | "item";
+  title: string;
+  subtitle: string | null;
+  date: string;
+  clientName: string | null;
+  tone: string;
+}
+
+/**
+ * Everything dated, across every client, on one list.
+ *
+ * The question this answers is the one a single campaign view can't:
+ * three brands dropping in the same week, or a shoot booked the day
+ * before a launch it was meant to feed.
+ */
+export async function planningCalendar(
+  fromISO?: string,
+  days = 120,
+): Promise<CalendarEntry[]> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return [];
+
+  const from = fromISO ?? new Date().toISOString().slice(0, 10);
+  const until = new Date(`${from}T12:00:00Z`);
+  until.setUTCDate(until.getUTCDate() + days);
+  const to = until.toISOString().slice(0, 10);
+
+  const supabase = await getAgencySupabase();
+  const [clients, shoots, campaigns, items] = await Promise.all([
+    supabase.from("clients").select("id, name"),
+    supabase.from("shoots").select("id, title, shoot_date, client_id, status")
+      .gte("shoot_date", from).lte("shoot_date", to),
+    supabase.from("campaigns").select("id, name, launch_date, client_id")
+      .gte("launch_date", from).lte("launch_date", to),
+    supabase.from("campaign_items").select("id, title, due_date, campaign_id, status, phase")
+      .gte("due_date", from).lte("due_date", to),
+  ]);
+
+  const names = new Map(((clients.data ?? []) as Array<{ id: string; name: string }>).map((c) => [c.id, c.name]));
+  const campaignById = new Map(
+    ((campaigns.data ?? []) as Array<{ id: string; name: string; client_id: string | null }>)
+      .map((c) => [c.id, c]),
+  );
+
+  const out: CalendarEntry[] = [];
+
+  for (const s of (shoots.data ?? []) as Array<{
+    id: string; title: string; shoot_date: string; client_id: string | null; status: string;
+  }>) {
+    out.push({
+      id: `shoot-${s.id}`, kind: "shoot", title: s.title,
+      subtitle: SHOOT_STATUSES.find((x) => x.id === s.status)?.label ?? s.status,
+      date: s.shoot_date,
+      clientName: s.client_id ? names.get(s.client_id) ?? null : null,
+      tone: "#0058B0",
+    });
+  }
+
+  for (const c of (campaigns.data ?? []) as Array<{
+    id: string; name: string; launch_date: string; client_id: string | null;
+  }>) {
+    out.push({
+      id: `launch-${c.id}`, kind: "launch", title: c.name, subtitle: "Drops",
+      date: c.launch_date,
+      clientName: c.client_id ? names.get(c.client_id) ?? null : null,
+      tone: "#1E8E4E",
+    });
+  }
+
+  for (const i of (items.data ?? []) as Array<{
+    id: string; title: string; due_date: string; campaign_id: string; status: string; phase: string;
+  }>) {
+    // Anything already out the door is history, not a plan.
+    if (i.status === "done" || i.status === "live") continue;
+    const parent = campaignById.get(i.campaign_id);
+    out.push({
+      id: `item-${i.id}`, kind: "item", title: i.title,
+      subtitle: parent?.name ?? PHASE_LABEL[i.phase] ?? null,
+      date: i.due_date,
+      clientName: parent?.client_id ? names.get(parent.client_id) ?? null : null,
+      tone: PHASE_TONE[i.phase] ?? "#6E6E73",
+    });
+  }
+
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Label a reference image with what it's showing. */
+export async function updateReference(
+  id: string,
+  note: string,
+): Promise<{ success: boolean }> {
+  try { await editor(); } catch { return { success: false }; }
+  const supabase = await getAgencySupabase();
+  await supabase.from("shoot_references").update({ note: note.slice(0, 500) || null }).eq("id", id);
   return { success: true };
 }

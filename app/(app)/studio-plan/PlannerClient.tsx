@@ -6,14 +6,16 @@ import {
 } from "lucide-react";
 import {
   SHOOT_TYPES, SHOOT_STATUSES, REFERENCE_SLOTS, SLOT_LABEL, BRIEF_FIELDS,
-  CREW_ROLES, PHASES, CHANNELS, CHANNEL_LABEL,
+  CREW_ROLES, PHASES, CHANNELS, CHANNEL_LABEL, EXTRA_SLOTS,
   ITEM_STATUSES, anglesFor,
   type ShootType, type Phase, type CrewMember,
 } from "@/lib/shoots";
 import {
   createShoot, updateShoot, deleteShoot, getShoot,
   addShot, updateShot, deleteShot,
-  addReferences, deleteReference, setShootProducts,
+  addReferences, deleteReference, updateReference, setShootProducts,
+  importMoodboardReferences, listMoodboardImages, sendCallSheet, shareBriefWithClient,
+  shootReadiness, type Readiness,
   saveAsTemplate, applyTemplate,
   createCampaign, updateCampaign, deleteCampaign, getCampaignItems,
   addCampaignItem, updateCampaignItem, deleteCampaignItem,
@@ -21,6 +23,7 @@ import {
   type CampaignRow, type CampaignItemRow,
 } from "./actions";
 import { playsFor, EFFORT_LABEL, EFFORT_TONE, type Play } from "@/lib/campaign-plays";
+import { STAGE_LABEL } from "@/lib/stages";
 import { createUploadTicket } from "@/lib/storage-actions";
 import { createClient as createSupabase } from "@supabase/supabase-js";
 
@@ -296,7 +299,7 @@ function ShootList({
   );
 }
 
-function ShootDetail({
+export function ShootDetail({
   shootId, onBack, onDeleted, onRenamed, templates, products, projects,
 }: {
   shootId: string;
@@ -311,8 +314,10 @@ function ShootDetail({
   const [shots, setShots] = useState<ShotRow[]>([]);
   const [refs, setRefs] = useState<RefRow[]>([]);
   const [chosen, setChosen] = useState<string[]>([]);
-  const [slot, setSlot] = useState("photo_style");
-  const [uploading, setUploading] = useState(false);
+  const [uploadingSlot, setUploadingSlot] = useState<string | null>(null);
+  const [moodboardFor, setMoodboardFor] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<Readiness[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [templateName, setTemplateName] = useState("");
@@ -322,6 +327,7 @@ function ShootDetail({
       if (!d) { setError("Shoot not found"); return; }
       setShoot(d.shoot); setShots(d.shots); setRefs(d.refs); setChosen(d.productIds);
     });
+    shootReadiness(shootId).then(setReadiness);
   }, [shootId]);
 
   const inCollection = useMemo(() => {
@@ -336,9 +342,9 @@ function ShootDetail({
     if (typeof p.title === "string") onRenamed(shoot.id, p.title);
   }
 
-  async function uploadRefs(files: File[]) {
+  async function uploadRefs(files: File[], slot: string) {
     if (files.length === 0 || !shoot) return;
-    setUploading(true); setError(null);
+    setUploadingSlot(slot); setError(null);
     const supabase = createSupabase(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -355,7 +361,7 @@ function ShootDetail({
       const { data } = supabase.storage.from("shoot-media").getPublicUrl(ticket.path);
       done.push({ image_url: data.publicUrl, storage_path: ticket.path });
     }
-    setUploading(false);
+    setUploadingSlot(null);
     if (done.length === 0) return;
     const res = await addReferences({ shootId: shoot.id, slot, items: done });
     if (!res.success) { setError(res.error); return; }
@@ -385,6 +391,38 @@ function ShootDetail({
         </select>
         <button
           onClick={async () => {
+            setError(null); setNotice(null);
+            const res = await sendCallSheet(shoot.id);
+            if (!res.success) { setError(res.error); return; }
+            setNotice(
+              res.sent > 0
+                ? `Call sheet sent to ${res.sent} ${res.sent === 1 ? "person" : "people"}.`
+                : "Recorded, but not delivered — email isn't switched on yet.",
+            );
+          }}
+          className="rounded-md border border-[var(--sa-border)] px-2.5 py-1.5 text-[12.5px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
+        >
+          Send call sheet
+        </button>
+        {shoot.client_id ? (
+          <button
+            onClick={async () => {
+              setError(null); setNotice(null);
+              const res = await shareBriefWithClient(shoot.id);
+              if (!res.success) { setError(res.error); return; }
+              setNotice(
+                res.status === "skipped"
+                  ? "Shared. The email is recorded but not delivered — email isn't switched on yet."
+                  : "Shared with the client.",
+              );
+            }}
+            className="rounded-md border border-[var(--sa-border)] px-2.5 py-1.5 text-[12.5px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
+          >
+            Share with client
+          </button>
+        ) : null}
+        <button
+          onClick={async () => {
             if (!confirm("Delete this shoot and its brief?")) return;
             await deleteShoot(shoot.id);
             onDeleted(shoot.id);
@@ -395,7 +433,15 @@ function ShootDetail({
         </button>
       </div>
 
-      {error && <p className="border-b border-[var(--sa-border)] px-6 py-2 text-[12.5px] text-red-500">{error}</p>}
+      {(error || notice) && (
+        <p
+          className={`border-b border-[var(--sa-border)] px-6 py-2 text-[12.5px] ${
+            error ? "text-red-500" : "text-[var(--sa-success)]"
+          }`}
+        >
+          {error ?? notice}
+        </p>
+      )}
 
       <div className="flex-1 overflow-y-auto p-6">
         <div className="mx-auto flex max-w-5xl flex-col gap-4">
@@ -471,24 +517,66 @@ function ShootDetail({
             </button>
           </div>
 
-          {/* The brief */}
-          <div className={`${CARD} p-4`}>
-            <p className="mb-3 text-[13px] font-semibold text-[var(--sa-text-primary)]">The brief</p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {BRIEF_FIELDS.map((f) => (
-                <label key={f.key} className={f.long ? "sm:col-span-2" : ""}>
-                  <span className={LABEL}>{f.label}</span>
-                  <span className="mb-1 block text-[10.5px] text-[var(--sa-text-tertiary)]">{f.hint}</span>
-                  <textarea
-                    className={`${INPUT} resize-y`}
-                    rows={f.long ? 3 : 2}
-                    defaultValue={(shoot[f.key] as string) ?? ""}
-                    onBlur={(e) => patch({ [f.key]: e.target.value || null })}
-                  />
-                </label>
-              ))}
-            </div>
+          {/* The brief — words and pictures for each section together */}
+          <div className="flex flex-col gap-3">
+            <p className="text-[13px] font-semibold text-[var(--sa-text-primary)]">The brief</p>
+            {BRIEF_FIELDS.map((f) => (
+              <BriefSection
+                key={f.key}
+                field={f}
+                value={(shoot[f.key] as string) ?? ""}
+                refs={refs.filter((r) => r.slot === f.slot)}
+                uploading={uploadingSlot === f.slot}
+                onText={(v) => patch({ [f.key]: v || null })}
+                onUpload={(files) => uploadRefs(files, f.slot)}
+                onCaption={(id, note) => {
+                  setRefs((p) => p.map((r) => (r.id === id ? { ...r, note } : r)));
+                  void updateReference(id, note);
+                }}
+                onRemove={async (id) => { setRefs((p) => p.filter((r) => r.id !== id)); await deleteReference(id); }}
+                onFromMoodboard={shoot.client_id ? () => setMoodboardFor(f.slot) : undefined}
+              />
+            ))}
+
+            {EXTRA_SLOTS.map((slotId) => {
+              const spec = REFERENCE_SLOTS.find((r) => r.id === slotId);
+              if (!spec) return null;
+              return (
+                <BriefSection
+                  key={slotId}
+                  field={{ key: slotId, label: spec.label, hint: spec.hint, slot: slotId }}
+                  value={null}
+                  refs={refs.filter((r) => r.slot === slotId)}
+                  uploading={uploadingSlot === slotId}
+                  onText={() => {}}
+                  onUpload={(files) => uploadRefs(files, slotId)}
+                  onCaption={(id, note) => {
+                    setRefs((p) => p.map((r) => (r.id === id ? { ...r, note } : r)));
+                    void updateReference(id, note);
+                  }}
+                  onRemove={async (id) => { setRefs((p) => p.filter((r) => r.id !== id)); await deleteReference(id); }}
+                  onFromMoodboard={shoot.client_id ? () => setMoodboardFor(slotId) : undefined}
+                />
+              );
+            })}
           </div>
+
+          {moodboardFor && shoot.client_id && (
+            <MoodboardPicker
+              clientId={shoot.client_id as string}
+              slot={moodboardFor}
+              onClose={() => setMoodboardFor(null)}
+              onImport={async (ids) => {
+                const res = await importMoodboardReferences({
+                  shootId: shoot.id, clientId: shoot.client_id as string,
+                  slot: moodboardFor, itemIds: ids,
+                });
+                if (!res.success) { setError(res.error); return; }
+                setRefs((p) => [...p, ...res.refs]);
+                setMoodboardFor(null);
+              }}
+            />
+          )}
 
           {/* Crew */}
           <CrewPanel crew={(shoot.crew as CrewMember[]) ?? []} onChange={(crew) => patch({ crew })} />
@@ -499,6 +587,19 @@ function ShootDetail({
             <p className="mt-0.5 text-[11.5px] text-[var(--sa-text-tertiary)]">
               {shoot.project_id ? "Products in this collection." : "Every product for this client."}
             </p>
+            {readiness.some((r) => !r.ready) && (
+              <div className="mt-2 rounded-lg p-2.5" style={{ background: "rgba(255,149,0,0.10)" }}>
+                <p className="text-[12px] font-medium" style={{ color: "var(--sa-warning)" }}>
+                  {readiness.filter((r) => !r.ready).length} sample
+                  {readiness.filter((r) => !r.ready).length === 1 ? "" : "s"} may not be ready
+                </p>
+                <p className="mt-0.5 text-[11.5px] text-[var(--sa-text-secondary)]">
+                  {readiness.filter((r) => !r.ready).map((r) => `${r.name} (${STAGE_LABEL[r.stage ?? ""] ?? "no stage"})`).join(", ")}
+                  . A sample that doesn&apos;t arrive is the commonest reason a shoot moves.
+                </p>
+              </div>
+            )}
+
             <div className="mt-2 flex flex-wrap gap-1.5">
               {inCollection.length === 0 && (
                 <p className="text-[12px] text-[var(--sa-text-tertiary)]">No products to choose from yet.</p>
@@ -613,57 +714,174 @@ function ShootDetail({
             </div>
           </div>
 
-          {/* References */}
-          <div className={`${CARD} p-4`}>
-            <p className="text-[13px] font-semibold text-[var(--sa-text-primary)]">Reference images</p>
-            <p className="mt-0.5 text-[11.5px] text-[var(--sa-text-tertiary)]">
-              Filed by what they're an example of. &ldquo;Show me the lighting you mean&rdquo; and &ldquo;show
-              me the hair you mean&rdquo; are different conversations.
-            </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-            <div className="mt-2.5 flex flex-wrap items-center gap-2">
-              <select className={`${INPUT} w-auto`} value={slot} onChange={(e) => setSlot(e.target.value)}>
-                {REFERENCE_SLOTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-              </select>
-              <label className="cursor-pointer rounded-md bg-[var(--sa-accent)] px-3 py-1.5 text-[12.5px] font-medium text-white">
-                {uploading ? "Uploading…" : "Add images"}
-                <input
-                  type="file" accept="image/*" multiple className="hidden"
-                  onChange={(e) => { void uploadRefs(Array.from(e.target.files ?? [])); e.target.value = ""; }}
+/**
+ * One part of the brief: the paragraph and the pictures for it, together.
+ *
+ * Every image gets a caption box underneath. An unlabelled reference is
+ * ambiguous by default — a photographer can't tell whether you pinned it
+ * for the hair, the light or the colour, and will pick wrong.
+ */
+function BriefSection({
+  field, value, refs, uploading, onText, onUpload, onCaption, onRemove, onFromMoodboard,
+}: {
+  field: { key: string; label: string; hint: string; slot: string; long?: boolean };
+  value: string | null;
+  refs: RefRow[];
+  uploading: boolean;
+  onText: (v: string) => void;
+  onUpload: (files: File[]) => void;
+  onCaption: (id: string, note: string) => void;
+  onRemove: (id: string) => void;
+  onFromMoodboard?: () => void;
+}) {
+  return (
+    <div className={`${CARD} p-4`}>
+      <div className="flex flex-wrap items-baseline gap-2">
+        <p className="text-[12.5px] font-semibold text-[var(--sa-text-primary)]">{field.label}</p>
+        <p className="min-w-0 flex-1 text-[11px] text-[var(--sa-text-tertiary)]">{field.hint}</p>
+        {onFromMoodboard && (
+          <button
+            onClick={onFromMoodboard}
+            className="shrink-0 text-[11.5px] font-medium text-[var(--sa-accent)]"
+          >
+            From moodboard
+          </button>
+        )}
+        <label className="shrink-0 cursor-pointer text-[11.5px] font-medium text-[var(--sa-accent)]">
+          {uploading ? "Uploading…" : "Add photos"}
+          <input
+            type="file" accept="image/*" multiple className="hidden"
+            onChange={(e) => { onUpload(Array.from(e.target.files ?? [])); e.target.value = ""; }}
+          />
+        </label>
+      </div>
+
+      {value !== null && (
+        <textarea
+          className={`${INPUT} mt-2 resize-y`}
+          rows={field.long ? 3 : 2}
+          placeholder="Write it out"
+          defaultValue={value}
+          onBlur={(e) => onText(e.target.value)}
+        />
+      )}
+
+      {refs.length > 0 && (
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          {refs.map((r) => (
+            <div key={r.id} className="group w-[124px]">
+              <div className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={r.image_url}
+                  alt={r.note ?? field.label}
+                  className="h-[124px] w-[124px] rounded-lg object-cover"
                 />
-              </label>
-              <span className="text-[11.5px] text-[var(--sa-text-tertiary)]">
-                {REFERENCE_SLOTS.find((s) => s.id === slot)?.hint}
-              </span>
-            </div>
-
-            {bySlot.map((group) => (
-              <div key={group.id} className="mt-4">
-                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--sa-text-tertiary)]">
-                  {group.label}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {group.images.map((r) => (
-                    <div key={r.id} className="group relative">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={r.image_url}
-                        alt={SLOT_LABEL[r.slot] ?? "Reference"}
-                        className="h-28 w-28 rounded-lg object-cover"
-                      />
-                      <button
-                        onClick={async () => { setRefs((p) => p.filter((x) => x.id !== r.id)); await deleteReference(r.id); }}
-                        aria-label="Remove reference"
-                        className="absolute right-1 top-1 rounded bg-black/60 p-1 opacity-0 transition-opacity group-hover:opacity-100"
-                      >
-                        <Trash2 size={11} color="#fff" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                <button
+                  onClick={() => onRemove(r.id)}
+                  aria-label="Remove"
+                  className="absolute right-1 top-1 rounded bg-black/60 p-1 opacity-0 transition-opacity group-hover:opacity-100"
+                >
+                  <Trash2 size={10} color="#fff" />
+                </button>
               </div>
-            ))}
-          </div>
+              <input
+                className="mt-1 w-full border-0 bg-transparent p-0 text-[11px] leading-snug text-[var(--sa-text-secondary)] outline-none placeholder:text-[var(--sa-text-tertiary)]"
+                placeholder="What's this showing?"
+                defaultValue={r.note ?? ""}
+                onBlur={(e) => onCaption(r.id, e.target.value)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Pick images the client already put on their moodboard. */
+function MoodboardPicker({
+  clientId, slot, onClose, onImport,
+}: {
+  clientId: string;
+  slot: string;
+  onClose: () => void;
+  onImport: (ids: string[]) => Promise<void>;
+}) {
+  const [images, setImages] = useState<Array<{ id: string; image_url: string; caption: string | null }>>([]);
+  const [chosen, setChosen] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    listMoodboardImages(clientId).then((i) => { setImages(i); setLoading(false); });
+  }, [clientId]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={onClose} role="presentation">
+      <div
+        className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-[var(--sa-window)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 border-b border-[var(--sa-border)] px-4 py-3">
+          <p className="flex-1 text-[14px] font-semibold text-[var(--sa-text-primary)]">
+            From the moodboard → {SLOT_LABEL[slot] ?? slot}
+          </p>
+          <button onClick={onClose} aria-label="Close" className="text-[var(--sa-text-tertiary)]">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3">
+          {loading ? (
+            <p className="text-[12.5px] text-[var(--sa-text-tertiary)]">Loading…</p>
+          ) : images.length === 0 ? (
+            <p className="text-[12.5px] text-[var(--sa-text-tertiary)]">
+              Nothing on their moodboard yet.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {images.map((i) => {
+                const on = chosen.includes(i.id);
+                return (
+                  <button
+                    key={i.id}
+                    onClick={() => setChosen(on ? chosen.filter((x) => x !== i.id) : [...chosen, i.id])}
+                    className={`relative h-[104px] w-[104px] overflow-hidden rounded-lg ${
+                      on ? "ring-2 ring-[var(--sa-accent)] ring-offset-2" : ""
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={i.image_url} alt={i.caption ?? "Moodboard image"} className="h-full w-full object-cover" />
+                    {on && (
+                      <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--sa-accent)]">
+                        <Check size={10} color="#fff" />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 border-t border-[var(--sa-border)] px-4 py-3">
+          <button
+            disabled={chosen.length === 0 || busy}
+            onClick={async () => { setBusy(true); await onImport(chosen); setBusy(false); }}
+            className="rounded-md bg-[var(--sa-accent)] px-3.5 py-2 text-[13px] font-medium text-white disabled:opacity-40"
+          >
+            {busy ? "Adding…" : `Add ${chosen.length || ""}`.trim()}
+          </button>
+          <span className="text-[11.5px] text-[var(--sa-text-tertiary)]">
+            Their captions come across with them.
+          </span>
         </div>
       </div>
     </div>
@@ -893,7 +1111,7 @@ function CampaignList({
   );
 }
 
-function CampaignDetail({
+export function CampaignDetail({
   campaign, onBack, onDeleted, onPatched,
 }: {
   campaign: CampaignRow;

@@ -294,3 +294,103 @@ export function crmMessage(input: { subject: string; body: string }): Built {
     text: input.body,
   };
 }
+
+
+// ── Planner notifications ────────────────────────────────────
+
+export function crewCallSheet(input: {
+  role: string;
+  shootTitle: string;
+  date: string | null;
+  callTime: string | null;
+  location: string | null;
+  shotCount: number;
+  notes: string | null;
+}): Built {
+  const when = input.date
+    ? new Date(`${input.date}T12:00:00Z`).toLocaleDateString("en-GB", {
+        weekday: "long", day: "numeric", month: "long",
+      })
+    : "Date to confirm";
+
+  return {
+    subject: `Call sheet — ${input.shootTitle}${input.date ? ` · ${when}` : ""}`,
+    html: shell(
+      h1(esc(input.shootTitle)) +
+        p(`You're booked as <strong style="color:${INK};">${esc(input.role)}</strong>.`) +
+        detailRows([
+          ["When", `${when}${input.callTime ? `, call ${input.callTime}` : ""}`],
+          ["Where", input.location],
+          ["Shot list", `${input.shotCount} shot${input.shotCount === 1 ? "" : "s"}`],
+          ["Notes", input.notes],
+        ]) +
+        p("Reply to this email if anything doesn't work."),
+      "You're getting this because you're booked on this shoot.",
+    ),
+    text:
+      `${input.shootTitle}\n\nYou're booked as ${input.role}.\n\n` +
+      textRows([
+        ["When", `${when}${input.callTime ? `, call ${input.callTime}` : ""}`],
+        ["Where", input.location],
+        ["Shot list", `${input.shotCount} shots`],
+        ["Notes", input.notes],
+      ]) +
+      `\n\nReply to this email if anything doesn't work.`,
+  };
+}
+
+export function shootBriefShared(input: {
+  shootTitle: string;
+  date: string | null;
+  portalUrl: string;
+}): Built {
+  return {
+    subject: `${input.shootTitle} — the shoot brief`,
+    html: shell(
+      h1("Your shoot brief is ready to look over") +
+        p(`We've written up <strong style="color:${INK};">${esc(input.shootTitle)}</strong> — the shot list, the references, the styling and hair. Have a read and tell us what you'd change before we book it.`) +
+        detailRows([["Planned for", input.date]]) +
+        `<div style="margin-top:16px;">${button(input.portalUrl, "Read the brief")}</div>`,
+      "You're getting this because you're working with Source Archive.",
+    ),
+    text:
+      `Your shoot brief is ready to look over.\n\n` +
+      `We've written up ${input.shootTitle} — the shot list, the references, the styling and hair. ` +
+      `Have a read and tell us what you'd change before we book it.\n\n` +
+      `Read the brief: ${input.portalUrl}`,
+  };
+}
+
+export function campaignItemDue(input: {
+  ownerName: string;
+  items: Array<{ title: string; campaign: string; due: string | null }>;
+  url: string;
+}): Built {
+  const rows = input.items
+    .map(
+      (i) =>
+        `<div style="margin-bottom:9px;">
+           <div style="font-size:14px;color:${INK};">${esc(i.title)}</div>
+           <div style="font-size:12px;color:${MUTED};">${esc(i.campaign)}${i.due ? ` · due ${esc(i.due)}` : ""}</div>
+         </div>`,
+    )
+    .join("");
+
+  return {
+    subject:
+      input.items.length === 1
+        ? `Due: ${input.items[0].title}`
+        : `${input.items.length} things due on your campaigns`,
+    html: shell(
+      h1("Waiting on you") +
+        p("These are past their date and haven't gone out yet.") +
+        `<div style="border-top:1px solid ${RULE};margin-top:16px;padding-top:14px;">${rows}</div>` +
+        `<div style="margin-top:16px;">${button(input.url, "Open the plan")}</div>`,
+      "You're getting this because you're named on these items.",
+    ),
+    text:
+      `Waiting on you — these are past their date and haven't gone out yet.\n\n` +
+      input.items.map((i) => `- ${i.title} (${i.campaign})${i.due ? ` — due ${i.due}` : ""}`).join("\n") +
+      `\n\nOpen the plan: ${input.url}`,
+  };
+}
