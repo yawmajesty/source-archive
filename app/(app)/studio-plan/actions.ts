@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { auth } from "@clerk/nextjs/server";
 import { getAgencyContext } from "@/lib/agency-data";
@@ -730,7 +731,10 @@ export async function pushBudgetToCosts(
     return { success: true };
   }
 
-  const { data: created, error } = await supabase.from("costs").insert(payload).select("id").single();
+  // costs.id has no database default either.
+  const costId = `cost-${Date.now()}-${randomBytes(4).toString("hex")}`;
+  const { data: created, error } = await supabase
+    .from("costs").insert({ id: costId, ...payload }).select("id").single();
   if (error || !created) return { success: false, error: error?.message ?? "Could not record the cost" };
 
   await supabase.from(table).update({ cost_id: (created as { id: string }).id }).eq("id", id);

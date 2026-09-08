@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Clock, CheckCircle2, Upload, FileText, Download, ChevronUp, ChevronDown, Send, Sun, Moon, Plus, Trash2, X, CreditCard, Play, ChevronLeft } from "lucide-react";
 import { uploadFile } from "@/lib/storage";
 import { MoodboardCanvas } from "./moodboard/MoodboardCanvas";
+import { ProductBriefTool } from "./brief/ProductBriefTool";
 import { getOrCreateBoard, listLinkableProducts } from "./moodboard-actions";
 import type { MoodboardItem, MoodboardLink } from "@/lib/moodboard";
 import { mediaKindFor, type ProductMediaItem } from "@/lib/product-media";
@@ -67,7 +68,7 @@ function usePortalTheme() {
 }
 
 // ── Types ────────────────────────────────────────────────────
-type Tab = "overview" | "sampling" | "projects" | "moodboard" | "files" | "contracts" | "references";
+type Tab = "overview" | "sampling" | "projects" | "moodboard" | "newproduct" | "files" | "contracts" | "references";
 
 interface Props {
   client: Client;
@@ -196,6 +197,7 @@ function PortalNavBar({ client, tab, setTab, dark, onToggleTheme }: {
     { id: "files",       label: "Files" },
     { id: "contracts",   label: "Contracts" },
     { id: "moodboard",   label: "Moodboard" },
+    { id: "newproduct",  label: "Brief a product" },
     { id: "references",  label: "References" },
   ];
   return (
@@ -1982,6 +1984,7 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
     files: "Files",
     contracts: "Contracts",
     moodboard: "Moodboard",
+    newproduct: "Brief a product",
     references: "References",
   };
 
@@ -2181,6 +2184,12 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
 
         {!selectedProduct && route === "moodboard" && (
           <MoodboardTab clientId={client.id} />
+        )}
+        {!selectedProduct && route === "newproduct" && (
+          <ProductBriefTool
+            clientId={client.id}
+            collections={projects.map((p) => ({ id: p.id, name: p.name }))}
+          />
         )}
         {!selectedProduct && route === "references" && <ReferencesTab client={client} projects={projects} />}
       </PortalShell>
