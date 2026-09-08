@@ -5,6 +5,10 @@ import { getAgencySupabase } from "@/lib/supabase-agency";
 import { getAgencyContext } from "@/lib/agency-data";
 import { can } from "@/lib/permissions";
 import { PRODUCT_STAGES } from "@/lib/stages";
+import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
+import { sendAll, clientRecipients } from "@/lib/email/send";
+import { stageUpdateClient } from "@/lib/email/templates";
+import { buildPublicUrl } from "@/lib/url";
 
 export interface StageEvent {
   id: string;
@@ -54,7 +58,7 @@ export async function changeProductStage(
   const supabase = await getAgencySupabase();
   const { data: product } = await supabase
     .from("products")
-    .select("id, stage, agency_id")
+    .select("id, name, stage, agency_id, project_id")
     .eq("id", productId)
     .maybeSingle();
   if (!product) return { success: false, error: "Product not found" };
@@ -83,5 +87,77 @@ export async function changeProductStage(
 
   revalidatePath(`/products/${productId}`);
   revalidatePath("/workshop");
+
+  // Tell the client. Deliberately after every write and every
+  // revalidate: the move is what matters, and notifyClientOfStage
+  // swallows its own failures so a mail outage can never undo it or
+  // surface to the person who pressed the button.
+  await notifyClientOfStage({
+    agencyId: (product as { agency_id: string }).agency_id,
+    productId,
+    productName: (product as { name: string | null }).name ?? "Your product",
+    projectId: (product as { project_id: string | null }).project_id,
+    toStage,
+    note: note?.trim() || null,
+  });
+
   return { success: true, from, to: toStage };
+}
+
+/**
+ * Email the client that their garment has moved.
+ *
+ * Uses the service-role client to resolve the recipients: the person who
+ * moved the stage may be a workshop maker who cannot see the clients
+ * table at all, and RLS would hand back nothing.
+ */
+async function notifyClientOfStage(input: {
+  agencyId: string;
+  productId: string;
+  productName: string;
+  projectId: string | null;
+  toStage: string;
+  note: string | null;
+}): Promise<void> {
+  try {
+    if (!input.projectId) return;
+
+    const service = getAgencyServiceSupabase();
+    const { data: project } = await service
+      .from("projects")
+      .select("client_id")
+      .eq("id", input.projectId)
+      .maybeSingle();
+
+    const clientId = (project as { client_id: string | null } | null)?.client_id;
+    if (!clientId) return;
+
+    const { emails, clientName, enabled } = await clientRecipients(clientId);
+    // A client who asked to be left alone, or one with no address on file.
+    if (!enabled || emails.length === 0) return;
+
+    const built = stageUpdateClient({
+      productName: input.productName,
+      clientName,
+      toStage: input.toStage,
+      note: input.note,
+      portalUrl: buildPublicUrl(`/portal/${clientId}`),
+    });
+
+    await sendAll(
+      emails.map((to) => ({
+        agencyId: input.agencyId,
+        to,
+        subject: built.subject,
+        html: built.html,
+        text: built.text,
+        template: "stage_update_client" as const,
+        relatedType: "product" as const,
+        relatedId: input.productId,
+      })),
+    );
+  } catch (err) {
+    // Never let a notification failure look like a failed stage change.
+    console.error("[stage] client notification failed:", err);
+  }
 }

@@ -1,6 +1,9 @@
 "use server";
 
 import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
+import { sendAll, agencyNotificationRecipients } from "@/lib/email/send";
+import { techpackReceivedClient, techpackReceivedAdmin } from "@/lib/email/templates";
+import { buildPublicUrl } from "@/lib/url";
 
 // Public techpack form — no Clerk auth. Every submission lands in the
 // Source Archive agency for now; per-agency public techpack forms are
@@ -54,9 +57,45 @@ export interface TechpackPayload {
 
 export async function submitTechpack(payload: TechpackPayload): Promise<void> {
   const supabase = getAgencyServiceSupabase();
-  await supabase.from("techpack_submissions").insert({
+  const { data: row } = await supabase.from("techpack_submissions").insert({
     agency_id: OWNER_AGENCY_ID,
     ...payload,
     status: "new",
+  }).select("id").maybeSingle();
+
+  const garment = payload.collection_name || payload.product_category || null;
+  const admins = await agencyNotificationRecipients(OWNER_AGENCY_ID);
+  const confirmation = techpackReceivedClient({ contactName: payload.contact_name, garment });
+  const alert = techpackReceivedAdmin({
+    contactName: payload.contact_name,
+    contactEmail: payload.contact_email,
+    garment,
+    url: buildPublicUrl("/techpacks"),
   });
+  const relatedId = (row as { id: string } | null)?.id ?? null;
+
+  await sendAll([
+    {
+      agencyId: OWNER_AGENCY_ID,
+      to: payload.contact_email,
+      toName: payload.contact_name,
+      subject: confirmation.subject,
+      html: confirmation.html,
+      text: confirmation.text,
+      template: "techpack_received_client" as const,
+      relatedType: null,
+      relatedId,
+    },
+    ...admins.map((to) => ({
+      agencyId: OWNER_AGENCY_ID,
+      to,
+      replyTo: payload.contact_email,
+      subject: alert.subject,
+      html: alert.html,
+      text: alert.text,
+      template: "techpack_received_admin" as const,
+      relatedType: null,
+      relatedId,
+    })),
+  ]);
 }
