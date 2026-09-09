@@ -4,9 +4,26 @@ import { useMemo, useRef, useState } from "react";
 import { Plus, Eye, EyeOff, Search, Upload, X } from "lucide-react";
 import { uploadFile } from "@/lib/storage";
 import {
-  FABRIC_CATEGORIES, FABRIC_TIERS, SUSTAINABILITY_TAGS, STOCK_LABEL, priceBandFor,
-  categoryByCode, REQUIRED_SHOTS, templateGaps, STOCK_HINT,
-  type Fabric, type FabricTier, type PriceUnit, type StockStatus,
+  FABRIC_CATEGORIES,
+  FABRIC_TIERS,
+  SUSTAINABILITY_TAGS,
+  STOCK_LABEL,
+  priceBandFor,
+  categoryByCode,
+  REQUIRED_SHOTS,
+  templateGaps,
+  STOCK_HINT,
+  type Fabric,
+  type FabricTier,
+  type PriceUnit,
+  type StockStatus,
+  COMMON_WIDTHS,
+  END_USES,
+  consumptionAtWidth,
+  fabricCostPerGarment,
+  weightWarningFor,
+  widthLabel,
+  ALL_END_USES,
 } from "@/lib/fabrics";
 import {
   saveFabric, setFabricPublished, addFabricPhotos, listFabricPhotos, deleteFabricPhoto,
@@ -37,6 +54,7 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
   const [draft, setDraft] = useState<(Partial<Fabric> & { name: string; category: string }) | null>(null);
   const [q, setQ] = useState("");
   const [stockFilter, setStockFilter] = useState<StockStatus | "all">("all");
+  const [useFilter, setUseFilter] = useState<string>("all");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const swatchRef = useRef<HTMLInputElement>(null);
@@ -50,13 +68,25 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const byStock = stockFilter === "all" ? rows : rows.filter((f) => f.stock_status === stockFilter);
-    if (!needle) return byStock;
-    return byStock.filter((f) =>
-      [f.code, f.name, f.category, f.category_code, f.composition, f.mill, f.tier]
+    let out = stockFilter === "all" ? rows : rows.filter((f) => f.stock_status === stockFilter);
+    // "What have we got that would work for an overshirt" is the question
+    // a fabric archive exists to answer.
+    if (useFilter !== "all") out = out.filter((f) => (f.suitable_for ?? []).includes(useFilter));
+    if (!needle) return out;
+    return out.filter((f) =>
+      [f.code, f.name, f.category, f.category_code, f.composition, f.mill, f.tier,
+       ...(f.suitable_for ?? [])]
         .filter(Boolean).join(" ").toLowerCase().includes(needle),
     );
-  }, [rows, q, stockFilter]);
+  }, [rows, q, stockFilter, useFilter]);
+
+  // Only offer end uses something is actually tagged with — a dropdown of
+  // forty options where thirty-six return nothing is worse than no filter.
+  const usesInLibrary = useMemo(() => {
+    const seen = new Set<string>();
+    for (const f of rows) for (const u of f.suitable_for ?? []) seen.add(u);
+    return ALL_END_USES.filter((u) => seen.has(u));
+  }, [rows]);
 
   const deadstockCount = rows.filter((f) => f.stock_status === "deadstock").length;
 
@@ -181,6 +211,32 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
       </div>
 
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 pb-10 pt-4 md:px-6">
+      {usesInLibrary.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11.5px] text-[var(--sa-text-tertiary)]">Good for</span>
+          <select
+            className="rounded-md border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[12px] text-[var(--sa-text-primary)] outline-none"
+            value={useFilter}
+            onChange={(e) => setUseFilter(e.target.value)}
+          >
+            <option value="all">Anything</option>
+            {usesInLibrary.map((u) => (
+              <option key={u} value={u}>
+                {u} ({rows.filter((f) => (f.suitable_for ?? []).includes(u)).length})
+              </option>
+            ))}
+          </select>
+          {useFilter !== "all" && (
+            <button
+              onClick={() => setUseFilter("all")}
+              className="text-[11.5px] text-[var(--sa-accent)]"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+
       {rows.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           {(["all", "in_stock", "made_to_order", "deadstock", "discontinued"] as const).map((k) => {
@@ -280,6 +336,38 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
             </div>
             {field("composition", "Composition", "text", "100% organic cotton")}
             {field("gsm", "GSM", "number", "380")}
+
+            <div>
+              <span className={lbl}>Width (cm)</span>
+              <input
+                className={inp}
+                type="number"
+                list="common-widths"
+                placeholder="150"
+                value={draft.width_cm ?? ""}
+                onChange={(e) =>
+                  setDraft({ ...draft, width_cm: e.target.value === "" ? null : Number(e.target.value) })
+                }
+              />
+              <datalist id="common-widths">
+                {COMMON_WIDTHS.map((w) => <option key={w} value={w} />)}
+              </datalist>
+              <p className="mt-0.5 text-[10.5px] text-[var(--sa-text-tertiary)]">
+                Consumption means nothing without it
+              </p>
+            </div>
+            <div>
+              <span className={lbl}>Usable width (cm)</span>
+              <input
+                className={inp}
+                type="number"
+                placeholder="Off the selvedge"
+                value={draft.usable_width_cm ?? ""}
+                onChange={(e) =>
+                  setDraft({ ...draft, usable_width_cm: e.target.value === "" ? null : Number(e.target.value) })
+                }
+              />
+            </div>
 
             {field("hand_feel", "Hand feel", "text", "Dense, brushed back, soft")}
             {field("stretch", "Stretch", "text", "None / 2-way / 4-way")}
@@ -434,6 +522,87 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
             </div>
           )}
 
+          {/* What it's good for */}
+          <div className="mt-4 border-t border-[var(--sa-border)] pt-3">
+            <p className="text-[12px] font-semibold text-[var(--sa-text-primary)]">Good for</p>
+            <p className="mt-0.5 text-[11px] text-[var(--sa-text-tertiary)]">
+              What you&apos;d actually make from it. This is how the library gets searched.
+            </p>
+
+            <div className="mt-2 flex flex-col gap-2">
+              {END_USES.map((group) => (
+                <div key={group.group} className="flex flex-wrap items-center gap-1.5">
+                  <span className="w-[74px] shrink-0 text-[10.5px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">
+                    {group.group}
+                  </span>
+                  {group.items.map((use) => {
+                    const on = (draft.suitable_for ?? []).includes(use);
+                    return (
+                      <button
+                        key={use}
+                        onClick={() =>
+                          setDraft({
+                            ...draft,
+                            suitable_for: on
+                              ? (draft.suitable_for ?? []).filter((u) => u !== use)
+                              : [...(draft.suitable_for ?? []), use],
+                          })
+                        }
+                        className="rounded-md border px-2 py-1 text-[11.5px]"
+                        style={
+                          on
+                            ? { borderColor: "transparent", background: "var(--sa-selected)", color: "var(--sa-accent)", fontWeight: 500 }
+                            : { borderColor: "var(--sa-border)", color: "var(--sa-text-secondary)" }
+                        }
+                      >
+                        {use}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+
+            {weightWarningFor(draft.gsm ?? null, draft.suitable_for ?? []) && (
+              <p className="mt-2 text-[11.5px]" style={{ color: "var(--sa-warning)" }}>
+                {weightWarningFor(draft.gsm ?? null, draft.suitable_for ?? [])} Worth a second look —
+                not a rule.
+              </p>
+            )}
+
+            <input
+              className={`${inp} mt-2`}
+              placeholder="Anything a tag can't say — creases badly, needs a lining, avoid for fitted"
+              value={draft.use_notes ?? ""}
+              onChange={(e) => setDraft({ ...draft, use_notes: e.target.value })}
+            />
+          </div>
+
+          {/* What it costs per garment at different widths */}
+          {draft.width_cm && draft.consumption_per_unit ? (
+            <div className="mt-4 rounded-lg p-3" style={{ background: "var(--sa-hover)" }}>
+              <p className="text-[12px] font-semibold text-[var(--sa-text-primary)]">
+                {draft.consumption_per_unit}m per garment at {draft.width_cm}cm
+              </p>
+              <p className="mt-0.5 text-[11px] text-[var(--sa-text-tertiary)]">
+                Roughly what the same garment would take off a different roll. A plain lay — a nap,
+                a stripe or a big repeat all cost more than this.
+              </p>
+              <div className="mt-1.5 flex flex-wrap gap-3">
+                {COMMON_WIDTHS.filter((w) => w !== draft.width_cm).map((w) => {
+                  const c = consumptionAtWidth(draft.consumption_per_unit, draft.width_cm, w);
+                  const cost = fabricCostPerGarment(draft.price_per_unit_usd ?? null, c);
+                  return (
+                    <span key={w} className="text-[11.5px] tabular-nums text-[var(--sa-text-secondary)]">
+                      <b className="font-medium text-[var(--sa-text-primary)]">{w}cm</b> {c}m
+                      {cost != null ? ` · $${cost}` : ""}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
           {draft.id && (
             <div className="mt-4 border-t border-[var(--sa-border)] pt-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -544,10 +713,27 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
               </p>
               <p className="truncate text-[11.5px] text-[var(--sa-text-tertiary)]">
                 {[f.tier === "premium" ? "Premium" : "Standard", f.category, f.composition,
-                  f.gsm ? `${f.gsm} gsm` : null, STOCK_LABEL[f.stock_status]]
+                  f.gsm ? `${f.gsm} gsm` : null, widthLabel(f), STOCK_LABEL[f.stock_status]]
                   .filter(Boolean).join(" · ")}
               </p>
             </div>
+            {(f.suitable_for ?? []).length > 0 && (
+              <span className="hidden shrink-0 gap-1 lg:flex">
+                {(f.suitable_for ?? []).slice(0, 3).map((u) => (
+                  <span
+                    key={u}
+                    className="rounded bg-[var(--sa-hover)] px-1.5 py-0.5 text-[10.5px] text-[var(--sa-text-secondary)]"
+                  >
+                    {u}
+                  </span>
+                ))}
+                {(f.suitable_for ?? []).length > 3 && (
+                  <span className="text-[10.5px] text-[var(--sa-text-tertiary)]">
+                    +{(f.suitable_for ?? []).length - 3}
+                  </span>
+                )}
+              </span>
+            )}
             {f.stock_status === "deadstock" && (
               <span
                 className="rounded px-1.5 py-0.5 text-[10.5px] font-semibold"

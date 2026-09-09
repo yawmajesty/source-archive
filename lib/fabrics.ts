@@ -89,6 +89,14 @@ export interface Fabric {
   category_code: string | null;
   composition: string | null;
   gsm: number | null;
+  /** Full width off the roll, in centimetres. */
+  width_cm: number | null;
+  /** Cuttable width once the selvedge is off. Null means nobody's measured it. */
+  usable_width_cm: number | null;
+  /** What this cloth actually suits. */
+  suitable_for: string[];
+  /** The caveat that doesn't fit in a tag. */
+  use_notes: string | null;
   mill: string | null;
   hand_feel: string | null;
   stretch: string | null;
@@ -153,8 +161,106 @@ export function templateGaps(f: Partial<Fabric>, shots: string[]): string[] {
   if (!f.name?.trim()) gaps.push("Name");
   if (!f.composition?.trim()) gaps.push("Composition");
   if (f.gsm == null) gaps.push("Weight (GSM)");
+  // Consumption recorded without a width is a number nobody can reuse.
+  if (f.width_cm == null) gaps.push("Width");
   if (!f.category_code) gaps.push("Fabric type");
   if (!shots.includes("texture")) gaps.push("Texture close-up photo");
   if (!shots.includes("color")) gaps.push("Colour photo");
   return gaps;
+}
+
+
+// ── Width and consumption ────────────────────────────────────
+//
+// The two only mean something together. A garment taking 1.4m of 150cm
+// goods needs closer to 1.9m at 110cm, because the marker gets laid out
+// differently — so "1.4 metres" on its own is not a fact anyone can act
+// on without knowing what it was measured against.
+
+/** Common roll widths, for the picker. Mills cluster around these. */
+export const COMMON_WIDTHS = [90, 110, 114, 140, 145, 150, 160, 180, 200];
+
+/**
+ * Roughly what the same garment costs in metres at a different width.
+ *
+ * Straight inverse proportion, which is right for a plain lay and
+ * optimistic for anything else: a one-way nap, a stripe to match or a
+ * large repeat all cost more than the arithmetic says. It is a
+ * conversion for comparing quotes, never a substitute for a marker.
+ */
+export function consumptionAtWidth(
+  consumption: number | null | undefined,
+  fromWidthCm: number | null | undefined,
+  toWidthCm: number | null | undefined,
+): number | null {
+  if (!consumption || !fromWidthCm || !toWidthCm) return null;
+  if (fromWidthCm <= 0 || toWidthCm <= 0) return null;
+  return Number(((consumption * fromWidthCm) / toWidthCm).toFixed(3));
+}
+
+/** What one garment costs in fabric, given width-aware consumption. */
+export function fabricCostPerGarment(
+  pricePerUnit: number | null | undefined,
+  consumption: number | null | undefined,
+): number | null {
+  if (pricePerUnit == null || consumption == null) return null;
+  return Number((pricePerUnit * consumption).toFixed(2));
+}
+
+export function widthLabel(f: Pick<Fabric, "width_cm" | "usable_width_cm">): string | null {
+  if (f.width_cm == null) return null;
+  const usable = f.usable_width_cm != null && f.usable_width_cm !== f.width_cm
+    ? ` (${f.usable_width_cm} usable)`
+    : "";
+  return `${f.width_cm}cm${usable}`;
+}
+
+
+/**
+ * End uses, grouped the way a designer thinks about a roll.
+ *
+ * Deliberately about the garment rather than the department: someone
+ * standing in front of a fabric asks "could I make an overshirt out of
+ * this", not "which category does this belong to".
+ */
+export const END_USES: { group: string; items: string[] }[] = [
+  { group: "Tops",      items: ["T-shirts", "Shirts", "Overshirts", "Blouses", "Vests"] },
+  { group: "Sweats",    items: ["Hoodies", "Crewnecks", "Sweatpants", "Zip-throughs"] },
+  { group: "Outerwear", items: ["Jackets", "Coats", "Parkas", "Gilets", "Shells"] },
+  { group: "Bottoms",   items: ["Trousers", "Shorts", "Jeans", "Skirts", "Cargos"] },
+  { group: "Dresses",   items: ["Dresses", "Jumpsuits", "Sets"] },
+  { group: "Knit",      items: ["Knitwear", "Cardigans", "Base layers"] },
+  { group: "Technical", items: ["Activewear", "Swimwear", "Workwear", "Waterproofs"] },
+  { group: "Inside",    items: ["Linings", "Pocketing", "Interlining", "Binding"] },
+  { group: "Other",     items: ["Bags", "Headwear", "Accessories", "Homeware"] },
+];
+
+export const ALL_END_USES: string[] = END_USES.flatMap((g) => g.items);
+
+/** Fabrics that would work for a given garment. */
+export function fabricsFor(fabrics: Fabric[], endUse: string): Fabric[] {
+  return fabrics.filter((f) => (f.suitable_for ?? []).includes(endUse));
+}
+
+/**
+ * A gentle nudge, not a rule.
+ *
+ * Weight rules out some uses fairly reliably — nobody makes a parka from
+ * 120gsm jersey — so flagging an obvious mismatch is worth doing. It
+ * warns rather than blocks, because the exceptions are where the
+ * interesting garments come from.
+ */
+export function weightWarningFor(gsm: number | null, uses: string[]): string | null {
+  if (!gsm || uses.length === 0) return null;
+
+  const heavyOnly = ["Coats", "Parkas", "Jeans", "Workwear"];
+  const lightOnly = ["Blouses", "Linings", "Pocketing", "Base layers"];
+
+  if (gsm < 180 && uses.some((u) => heavyOnly.includes(u))) {
+    return `${gsm}gsm is light for ${uses.filter((u) => heavyOnly.includes(u)).join(", ").toLowerCase()}.`;
+  }
+  if (gsm > 320 && uses.some((u) => lightOnly.includes(u))) {
+    return `${gsm}gsm is heavy for ${uses.filter((u) => lightOnly.includes(u)).join(", ").toLowerCase()}.`;
+  }
+  return null;
 }

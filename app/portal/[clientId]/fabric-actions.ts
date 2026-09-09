@@ -24,6 +24,10 @@ export interface PortalFabric {
   moq: number | null;
   moq_unit: string;
   lead_time_days: number | null;
+  width_cm: number | null;
+  usable_width_cm: number | null;
+  suitable_for: string[];
+  use_notes: string | null;
   stock_status: string;
   sustainability: string[];
   swatch_url: string | null;
@@ -50,7 +54,8 @@ export async function listPortalFabrics(clientId: string): Promise<{
   const { data } = await supabase
     .from("fabrics")
     .select(
-      "id, name, code, tier, category, composition, gsm, price_per_unit_usd, price_unit, " +
+      "id, name, code, tier, category, composition, gsm, width_cm, usable_width_cm, " +
+      "suitable_for, use_notes, price_per_unit_usd, price_unit, " +
       "moq, moq_unit, lead_time_days, stock_status, sustainability, swatch_url, hand_feel",
     )
     .eq("agency_id", c.agency_id)
