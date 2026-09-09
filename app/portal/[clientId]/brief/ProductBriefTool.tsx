@@ -43,11 +43,19 @@ export function ProductBriefTool({
   const [openId, setOpenId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ projectId: collections[0]?.id ?? "", name: "" });
   const [error, setError] = useState<string | null>(null);
 
+  // Every one of these used to be a bare .then(). A server action that
+  // failed left the page on "Loading…" for ever with nothing on screen
+  // to say why — which is exactly what "the form doesn't work" looks
+  // like from the outside.
   useEffect(() => {
-    listBriefs(clientId).then((b) => { setBriefs(b); setLoading(false); });
+    listBriefs(clientId)
+      .then((b) => setBriefs(b))
+      .catch(() => setError("Couldn't load your briefs. Reload the page and try again."))
+      .finally(() => setLoading(false));
   }, [clientId]);
 
   if (openId) {
@@ -113,22 +121,32 @@ export function ProductBriefTool({
           </label>
           <div className="mt-3 flex gap-2">
             <button
-              disabled={!form.name.trim() || !form.projectId}
+              disabled={creating || !form.name.trim() || !form.projectId}
               onClick={async () => {
+                // Without this guard a double-click makes two briefs, and
+                // it did: two identical rows a second apart.
+                if (creating) return;
+                setCreating(true);
                 setError(null);
-                const res = await createBrief({
-                  clientId, projectId: form.projectId, name: form.name,
-                });
-                if (!res.success) { setError(res.error); return; }
-                setBriefs((p) => [res.brief, ...p]);
-                setOpenId(res.brief.id);
-                setStarting(false);
-                setForm({ projectId: collections[0]?.id ?? "", name: "" });
+                try {
+                  const res = await createBrief({
+                    clientId, projectId: form.projectId, name: form.name,
+                  });
+                  if (!res.success) { setError(res.error); return; }
+                  setBriefs((p) => [res.brief, ...p]);
+                  setOpenId(res.brief.id);
+                  setStarting(false);
+                  setForm({ projectId: collections[0]?.id ?? "", name: "" });
+                } catch {
+                  setError("Couldn't start the brief. Check your connection and try again.");
+                } finally {
+                  setCreating(false);
+                }
               }}
               className="rounded-md px-3.5 py-2 text-[13px] font-medium text-white disabled:opacity-40"
               style={{ background: "var(--portal-accent, #0058B0)" }}
             >
-              Start the brief
+              {creating ? "Starting…" : "Start the brief"}
             </button>
             <button
               onClick={() => setStarting(false)}
@@ -208,19 +226,36 @@ function BriefEditor({
   const [replyBody, setReplyBody] = useState("");
   const [replying, setReplying] = useState(false);
 
+  const [loadFailed, setLoadFailed] = useState(false);
+
   useEffect(() => {
-    getBrief(briefId).then((d) => {
-      if (!d) { setError("Couldn't open this brief"); return; }
-      setBrief(d.brief);
-      setMedia(d.media);
-    });
-    listBriefReplies(briefId).then(setReplies);
+    getBrief(briefId)
+      .then((d) => {
+        if (!d) {
+          setError("Couldn't open this brief — reload the page and try again.");
+          setLoadFailed(true);
+          return;
+        }
+        setBrief(d.brief);
+        setMedia(d.media);
+      })
+      .catch(() => {
+        setError("Couldn't open this brief — reload the page and try again.");
+        setLoadFailed(true);
+      });
+    // Replies are a nice-to-have; a failure here must not take the
+    // editor down with it.
+    listBriefReplies(briefId).then(setReplies).catch(() => setReplies([]));
   }, [briefId]);
 
   function patch(p: Partial<ProductBrief>) {
     if (!brief) return;
     setBrief({ ...brief, ...p });
-    void updateBrief(brief.id, p);
+    updateBrief(brief.id, p)
+      .then((res) => {
+        if (!res.success) setError(res.error ?? "That didn't save — try again.");
+      })
+      .catch(() => setError("That didn't save. Check your connection."));
   }
 
   async function upload(files: File[], slot: string) {
@@ -235,13 +270,17 @@ function BriefEditor({
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       if (!f.type.startsWith("image/")) continue;
-      const ticket = await createUploadTicket("brief-media", `${brief.id}/${Date.now()}-${i}-${f.name}`);
-      if (ticket.error || !ticket.path || !ticket.token) { setError(ticket.error ?? "Upload refused"); continue; }
-      const { error: upErr } = await supabase.storage
-        .from("brief-media").uploadToSignedUrl(ticket.path, ticket.token, f);
-      if (upErr) { setError(upErr.message); continue; }
-      const { data } = supabase.storage.from("brief-media").getPublicUrl(ticket.path);
-      done.push({ image_url: data.publicUrl, storage_path: ticket.path });
+      try {
+        const ticket = await createUploadTicket("brief-media", `${brief.id}/${Date.now()}-${i}-${f.name}`);
+        if (ticket.error || !ticket.path || !ticket.token) { setError(ticket.error ?? "That photo was refused."); continue; }
+        const { error: upErr } = await supabase.storage
+          .from("brief-media").uploadToSignedUrl(ticket.path, ticket.token, f);
+        if (upErr) { setError(`${f.name}: ${upErr.message}`); continue; }
+        const { data } = supabase.storage.from("brief-media").getPublicUrl(ticket.path);
+        done.push({ image_url: data.publicUrl, storage_path: ticket.path });
+      } catch {
+        setError(`Couldn't upload ${f.name}.`);
+      }
     }
     setUploadingSlot(null);
     if (done.length === 0) return;
@@ -251,7 +290,20 @@ function BriefEditor({
   }
 
   if (!brief) {
-    return <p className="p-6 text-[13px]" style={{ color: "var(--portal-text-tertiary)" }}>{error ?? "Loading…"}</p>;
+    return (
+      <div className="mx-auto max-w-3xl p-6">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1 text-[12.5px]"
+          style={{ color: "var(--portal-text-secondary)" }}
+        >
+          <ChevronLeft size={14} /> All briefs
+        </button>
+        <p className="mt-3 text-[13px]" style={{ color: loadFailed ? "#B4453C" : "var(--portal-text-tertiary)" }}>
+          {error ?? "Loading…"}
+        </p>
+      </div>
+    );
   }
 
   const done = brief.status !== "draft";
@@ -565,10 +617,15 @@ function BriefEditor({
                 onClick={async () => {
                   setSending(true);
                   setError(null);
-                  const res = await submitBrief(brief.id, who);
-                  setSending(false);
-                  if (!res.success) { setError(res.error); return; }
-                  onSubmitted(brief.id);
+                  try {
+                    const res = await submitBrief(brief.id, who);
+                    if (!res.success) { setError(res.error); return; }
+                    onSubmitted(brief.id);
+                  } catch {
+                    setError("Couldn't send it. Check your connection and try again.");
+                  } finally {
+                    setSending(false);
+                  }
                 }}
                 className="flex items-center gap-1.5 rounded-md px-3.5 py-2 text-[13px] font-medium text-white disabled:opacity-40"
                 style={{ background: "var(--portal-accent, #0058B0)" }}
