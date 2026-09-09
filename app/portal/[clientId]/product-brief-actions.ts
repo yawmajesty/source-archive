@@ -108,6 +108,9 @@ export async function updateBrief(
     patch as Record<string, unknown>;
   void id; void agency_id; void client_id; void project_id; void product_id; void status;
 
+  // Every key in the patch may have been one of the stripped ones.
+  if (Object.keys(safe).length === 0) return { success: true };
+
   const supabase = getAgencyServiceSupabase();
   const { error } = await supabase.from("product_briefs").update(safe).eq("id", briefId);
   if (error) return { success: false, error: error.message };
@@ -218,7 +221,10 @@ export async function submitBrief(
       stage: "brief",
       order_qty: brief.target_quantity,
       client_unit_price_usd: brief.target_price,
-      colorways: brief.colourways,
+      // products.colorways is text[]; the brief asks for them as free
+      // text, one per line. Handing the raw string to Postgres fails with
+      // "malformed array literal" and takes the whole submission with it.
+      colorways: splitColourways(brief.colourways),
       images,
       notes: [
         brief.description,
@@ -234,7 +240,13 @@ export async function submitBrief(
     .single();
 
   if (error || !created) {
-    return { success: false, error: error?.message ?? "Could not create the product" };
+    console.error("[product-brief] product insert failed:", error);
+    return {
+      success: false,
+      error: error?.message
+        ? `Couldn't add it to your collection: ${error.message}`
+        : "Couldn't add it to your collection.",
+    };
   }
 
   await supabase
@@ -390,4 +402,20 @@ export async function replyAsClient(input: {
 
   revalidatePath(`/portal/${owner.clientId}`);
   return { success: true, reply: data as BriefReply };
+}
+
+
+/**
+ * "Ecru\nBlack, Navy" → ["Ecru", "Black", "Navy"].
+ *
+ * The brief asks for colours the way a person writes them — a line each,
+ * or commas, or both. The products table wants an array.
+ */
+function splitColourways(raw: string | null): string[] {
+  if (!raw) return [];
+  return raw
+    .split(/[\n,]/)
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .slice(0, 40);
 }

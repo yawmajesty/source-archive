@@ -267,12 +267,18 @@ function BriefEditor({
         <ChevronLeft size={14} /> All briefs
       </button>
 
+      {/* Uncommitted until blur, like every other field here. Writing on
+          each keystroke sent one request per character and made the field
+          feel frozen on a slow connection. */}
       <input
         className="mt-3 w-full border-0 bg-transparent p-0 text-[22px] font-semibold tracking-tight outline-none"
         style={{ color: "var(--portal-text-primary)" }}
-        value={brief.name}
+        defaultValue={brief.name}
         readOnly={done}
-        onChange={(e) => patch({ name: e.target.value })}
+        onBlur={(e) => {
+          const name = e.target.value.trim();
+          if (name && name !== brief.name) patch({ name });
+        }}
       />
 
       {done ? (
