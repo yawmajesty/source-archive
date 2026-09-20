@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
+import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 
 // The webhook is called by Stripe with no Clerk auth, so RLS would block
@@ -108,9 +109,13 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
       return;
     }
     const fxRate = 1; // Base currency is USD, so Stripe's USD amount stores 1:1.
-    await supabase.from("costs").insert({
+    // Random suffix on the id: Date.now() alone collides if two payments
+    // land in the same millisecond, and a collision here loses the record
+    // of money that has actually arrived.
+    const costId = `cost-${Date.now()}-${randomBytes(4).toString("hex")}`;
+    const { error: costError } = await supabase.from("costs").insert({
       agency_id: agencyId,
-      id: "cost-" + Date.now(),
+      id: costId,
       client_id: clientId,
       project_id: null,
       product_id: null,
@@ -127,6 +132,15 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
       paid_by: "Client (Stripe)",
       date_paid: paidAt.slice(0, 10),
     });
+
+    // The invoice is already marked paid above, so a failure here loses
+    // only the P&L line — but losing it silently means the books quietly
+    // disagree with the bank. Stripe retries on a non-2xx, and the whole
+    // handler is idempotent, so failing loudly is safe.
+    if (costError) {
+      console.error("[stripe webhook] could not record the payment as a cost:", costError.message);
+      throw new Error(`Payment recorded but not reconciled: ${costError.message}`);
+    }
   }
 
   revalidatePath(`/portal/${clientId}`);
