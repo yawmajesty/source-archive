@@ -26,6 +26,7 @@ import { playsFor, EFFORT_LABEL, EFFORT_TONE, type Play } from "@/lib/campaign-p
 import { STAGE_LABEL } from "@/lib/stages";
 import { createUploadTicket } from "@/lib/storage-actions";
 import { createClient as createSupabase } from "@supabase/supabase-js";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 
 interface Named { id: string; name: string }
 interface Project extends Named { client_id: string }
@@ -860,7 +861,7 @@ function MoodboardPicker({
                     }`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={i.image_url} alt={i.caption ?? "Moodboard image"} className="h-full w-full object-cover" />
+                    <img loading="lazy" decoding="async" src={sizedImage(i.image_url, 300)} alt={i.caption ?? "Moodboard image"} className="h-full w-full object-cover" />
                     {on && (
                       <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--sa-accent)]">
                         <Check size={10} color="#fff" />

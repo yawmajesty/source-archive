@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { Download } from "lucide-react";
 import { PRODUCT_STAGES } from "@/lib/stages";
 import type { PortalProduct, PortalProject } from "../page";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 
 // ─────────────────────────────────────────────────────────────
 // Four views of the same collection. One dataset, four mental modes:
@@ -177,7 +178,7 @@ export function GalleryView({ projects, onSelect }: {
         <button key={p.id} onClick={() => onSelect(p)} className="mac-card mac-card-hover overflow-hidden text-left">
           <div className="aspect-[4/5] w-full overflow-hidden" style={{ background: "var(--fill)" }}>
             {p.images?.[0] ? (
-              <img src={p.images[0]} alt={p.name} className="h-full w-full object-cover" />
+              <img loading="lazy" decoding="async" src={sizedImage(p.images[0], 400)} alt={p.name} className="h-full w-full object-cover" />
             ) : (
               <div className="flex h-full items-center justify-center text-[11px]" style={{ color: "var(--label-3)" }}>
                 No photo
@@ -257,7 +258,7 @@ export function TableView({ projects, onSelect, exportName = "collection" }: {
                   <td className={td}>
                     <span className="flex items-center gap-2">
                       {p.images?.[0] && (
-                        <img src={p.images[0]} alt="" className="h-7 w-7 shrink-0 rounded-[5px] object-cover" />
+                        <img loading="lazy" decoding="async" src={sizedImage(p.images[0], 32)} alt="" className="h-7 w-7 shrink-0 rounded-[5px] object-cover" />
                       )}
                       <span className="min-w-0">
                         <span className="block truncate font-medium" style={{ color: "var(--label)" }}>{p.name}</span>
@@ -318,7 +319,7 @@ export function KanbanView({ projects, onSelect }: {
               {inStage.map((p) => (
                 <button key={p.id} onClick={() => onSelect(p)} className="mac-card mac-card-hover p-2 text-left">
                   <div className="flex items-center gap-2">
-                    {p.images?.[0] && <img src={p.images[0]} alt="" className="h-8 w-8 shrink-0 rounded-[5px] object-cover" />}
+                    {p.images?.[0] && <img loading="lazy" decoding="async" src={sizedImage(p.images[0], 40)} alt="" className="h-8 w-8 shrink-0 rounded-[5px] object-cover" />}
                     <div className="min-w-0">
                       <p className="truncate text-[12px] font-medium" style={{ color: "var(--label)" }}>{p.name}</p>
                       <p className="truncate text-[11px]" style={{ color: "var(--label-3)" }}>

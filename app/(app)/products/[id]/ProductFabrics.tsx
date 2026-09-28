@@ -5,6 +5,7 @@ import { Layers, Plus, X } from "lucide-react";
 import type { Fabric } from "@/lib/fabrics";
 import { STOCK_LABEL } from "@/lib/fabrics";
 import { linkFabricToProduct, unlinkFabricFromProduct, listProductFabrics } from "@/app/(app)/fabrics/actions";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 
 /**
  * What a garment is made from.
@@ -63,7 +64,7 @@ export function ProductFabrics({
               >
                 {f.swatch_url && (
                   /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={f.swatch_url} alt="" className="h-full w-full object-cover" />
+                  <img loading="lazy" decoding="async" src={sizedImage(f.swatch_url, 80)} alt="" className="h-full w-full object-cover" />
                 )}
               </div>
               <div className="min-w-0 flex-1">

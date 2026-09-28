@@ -8,6 +8,7 @@ import { StageBadge } from "@/components/brand/StageBadge";
 import { changeProductStage } from "../../actions";
 import type { Role, WorkspaceMode } from "@/lib/mode-policy";
 import { cn } from "@/lib/utils";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 
 // A pipeline-oriented kanban with drag-and-drop. Guardrails fire when
 // moving into 'approved_for_production' — we don't block, we warn.
@@ -136,7 +137,7 @@ export function KanbanBoard({
                         </div>
                         {p.cover_image_url && (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={p.cover_image_url} alt="" className="w-full aspect-[4/3] object-cover rounded mb-1.5" />
+                          <img loading="lazy" decoding="async" src={sizedImage(p.cover_image_url, 280)} alt="" className="w-full aspect-[4/3] object-cover rounded mb-1.5" />
                         )}
                         <div className="flex items-center justify-between gap-2 text-[10px] text-[var(--sa-text-tertiary)]">
                           <span className="truncate">{p.target_quantity ? `${p.target_quantity.toLocaleString()} units` : "Qty TBD"}</span>

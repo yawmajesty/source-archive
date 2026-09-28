@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { updateLeadStatus, convertLeadToClient, createLead, deleteLead, acknowledgeLead } from "./actions";
 import { buildPublicUrl } from "@/lib/url";
 import type { Lead } from "@/lib/data";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 
 interface Props { leads: Lead[] }
 
@@ -303,7 +304,7 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
                           const { isImage, isPdf, name } = fileMeta(url);
                           return isImage ? (
                             <a key={idx} href={url} target="_blank" rel="noreferrer" className="block">
-                              <img src={url} alt={name} className="h-14 w-14 rounded-md object-cover border border-[var(--sa-border)] hover:opacity-90" />
+                              <img loading="lazy" decoding="async" src={sizedImage(url, 64)} alt={name} className="h-14 w-14 rounded-md object-cover border border-[var(--sa-border)] hover:opacity-90" />
                             </a>
                           ) : (
                             <a key={idx} href={url} target="_blank" rel="noreferrer"
@@ -332,7 +333,7 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
                 const { isImage, isPdf, name } = fileMeta(url);
                 return isImage ? (
                   <a key={i} href={url} target="_blank" rel="noreferrer" className="block group">
-                    <img src={url} alt={name} className="h-20 w-20 rounded-lg object-cover border border-[var(--sa-border)] group-hover:opacity-90" />
+                    <img loading="lazy" decoding="async" src={sizedImage(url, 96)} alt={name} className="h-20 w-20 rounded-lg object-cover border border-[var(--sa-border)] group-hover:opacity-90" />
                   </a>
                 ) : (
                   <a key={i} href={url} target="_blank" rel="noreferrer"

@@ -7,6 +7,7 @@ import { submitBrief } from "./actions";
 import { uploadFile } from "@/lib/storage";
 import type { BriefProduct } from "@/lib/mock-data";
 import type { AgencySettings } from "@/lib/data";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 
 const CATEGORIES = ["Tops", "Bottoms", "Outerwear", "Dresses & Skirts", "Knitwear", "Activewear", "Accessories", "Footwear", "Homeware", "Beauty", "Other"];
 const INDUSTRIES = ["Womenswear", "Menswear", "Unisex / Genderless", "Kids & Baby", "Accessories", "Homeware & Lifestyle", "Beauty & Wellness", "Sportswear", "Other"];
@@ -108,7 +109,7 @@ function FileUploadZone({ urls, onChange, label }: {
           {urls.map((url) => (
             <div key={url} className="relative group">
               {isImageUrl(url) ? (
-                <img src={url} alt="" className="h-16 w-16 rounded-lg object-cover border border-[#E5E5EA]" />
+                <img loading="lazy" decoding="async" src={sizedImage(url, 80)} alt="" className="h-16 w-16 rounded-lg object-cover border border-[#E5E5EA]" />
               ) : (
                 <div className="h-16 w-16 rounded-lg border border-[#E5E5EA] bg-[#F5F5F7] flex flex-col items-center justify-center gap-1 px-1">
                   <FileText size={20} className="text-[#6E6E73] shrink-0" />
@@ -355,7 +356,7 @@ export function BriefForm({ agencySettings }: { agencySettings: AgencySettings }
       <header className="flex items-center gap-2.5 px-8 py-5 border-b border-black/[0.08] bg-white sticky top-0 z-10">
         {agencySettings.icon_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={agencySettings.icon_url} alt="" style={{ height: 28, width: 28, objectFit: "contain" }} />
+          <img loading="lazy" decoding="async" src={sizedImage(agencySettings.icon_url, 48, { resize: "contain" })} alt="" style={{ height: 28, width: 28, objectFit: "contain" }} />
         ) : (
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#1A1A2E] text-white text-[13px] font-bold">
             {(agencySettings.site_title || "S")[0].toUpperCase()}
@@ -363,7 +364,7 @@ export function BriefForm({ agencySettings }: { agencySettings: AgencySettings }
         )}
         {agencySettings.wordmark_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={agencySettings.wordmark_url} alt={agencySettings.site_title} style={{ height: 22, maxWidth: 180, objectFit: "contain" }} />
+          <img loading="lazy" decoding="async" src={sizedImage(agencySettings.wordmark_url, 200, { resize: "contain" })} alt={agencySettings.site_title} style={{ height: 22, maxWidth: 180, objectFit: "contain" }} />
         ) : (
           <span className="text-[15px] font-semibold text-[#1D1D1F]">{agencySettings.site_title || "Source[Archive]"}</span>
         )}
@@ -578,7 +579,7 @@ export function BriefForm({ agencySettings }: { agencySettings: AgencySettings }
                           <div className="flex gap-1.5 mt-2 flex-wrap">
                             {p.moodboard_files!.map((url) => (
                               isImageUrl(url)
-                                ? <img key={url} src={url} alt="" className="h-10 w-10 rounded-md object-cover border border-[#E5E5EA]" />
+                                ? <img loading="lazy" decoding="async" key={url} src={sizedImage(url, 48)} alt="" className="h-10 w-10 rounded-md object-cover border border-[#E5E5EA]" />
                                 : <div key={url} className="h-10 w-10 rounded-md border border-[#E5E5EA] bg-[#F5F5F7] flex items-center justify-center"><FileText size={14} className="text-[#6E6E73]" /></div>
                             ))}
                           </div>
@@ -611,7 +612,7 @@ export function BriefForm({ agencySettings }: { agencySettings: AgencySettings }
                           <div className="flex flex-wrap gap-1.5">
                             {refs.moodboard_files.map((url) => (
                               isImageUrl(url)
-                                ? <img key={url} src={url} alt="" className="h-12 w-12 rounded-lg object-cover border border-[#E5E5EA]" />
+                                ? <img loading="lazy" decoding="async" key={url} src={sizedImage(url, 56)} alt="" className="h-12 w-12 rounded-lg object-cover border border-[#E5E5EA]" />
                                 : <div key={url} className="h-12 w-12 rounded-lg border border-[#E5E5EA] bg-[#F5F5F7] flex items-center justify-center"><FileText size={16} className="text-[#6E6E73]" /></div>
                             ))}
                           </div>

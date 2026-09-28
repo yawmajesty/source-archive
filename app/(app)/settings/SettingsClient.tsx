@@ -7,6 +7,7 @@ import { buildPublicUrl } from "@/lib/url";
 import { uploadFile } from "@/lib/storage";
 import type { ClerkUserProfile } from "./page";
 import type { AgencySettings } from "@/lib/data";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 
 interface Props {
   currentUser: { id: string; email: string; role: string };
@@ -133,7 +134,7 @@ function AssetUpload({
         >
           {url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={url} alt="" className="max-w-full max-h-full object-contain" />
+            <img loading="lazy" decoding="async" src={sizedImage(url, 200, { resize: "contain" })} alt="" className="max-w-full max-h-full object-contain" />
           ) : (
             <span className="text-[10px] text-[var(--sa-text-tertiary)]">Empty</span>
           )}

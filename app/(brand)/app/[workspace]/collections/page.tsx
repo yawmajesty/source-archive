@@ -4,6 +4,7 @@ import { Plus, FolderOpen } from "lucide-react";
 import { getWorkspaceContext } from "@/lib/brand-data";
 import { listCollections } from "@/lib/brand-catalog";
 import { CreateCollectionButton } from "./CreateCollectionButton";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 
 export default async function CollectionsPage({
   params,
@@ -65,7 +66,7 @@ export default async function CollectionsPage({
               <div className="aspect-[4/3] bg-[var(--sa-bg)] overflow-hidden">
                 {c.cover_image_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={c.cover_image_url} alt={c.name} className="w-full h-full object-cover" />
+                  <img loading="lazy" decoding="async" src={sizedImage(c.cover_image_url, 400)} alt={c.name} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-[var(--sa-text-tertiary)] text-[11px] uppercase tracking-wider">
                     No cover

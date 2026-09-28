@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { getPublicOrigin } from "@/lib/url";
 import type { Factory, Product, Project, Rfq } from "@/lib/mock-data";
 import { createRfq, closeRfq, getRfqDetail, assignQuotedProduct, createFactory, deleteFactory } from "./actions";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 
 interface Props {
   factories: Factory[];
@@ -413,7 +414,7 @@ function RfqDetailPanel({ rfq, projects, products, onClose }: { rfq: Rfq; projec
                                     <div className="flex items-start gap-2.5">
                                       {p.image_url && (
                                         <a href={p.image_url} target="_blank" rel="noreferrer" className="shrink-0">
-                                          <img src={p.image_url} alt={p.name} className="h-12 w-12 rounded-lg object-cover border border-[var(--sa-border)]" />
+                                          <img loading="lazy" decoding="async" src={sizedImage(p.image_url, 56)} alt={p.name} className="h-12 w-12 rounded-lg object-cover border border-[var(--sa-border)]" />
                                         </a>
                                       )}
                                       <div className="min-w-0">
@@ -466,7 +467,7 @@ function RfqDetailPanel({ rfq, projects, products, onClose }: { rfq: Rfq; projec
                         <div className="px-4 py-3 border-t border-[var(--sa-border)] flex gap-2 flex-wrap">
                           {sub.images.map((url: string) => (
                             <a key={url} href={url} target="_blank" rel="noreferrer">
-                              <img src={url} alt="" className="h-12 w-12 rounded-lg object-cover border border-[var(--sa-border)]" />
+                              <img loading="lazy" decoding="async" src={sizedImage(url, 56)} alt="" className="h-12 w-12 rounded-lg object-cover border border-[var(--sa-border)]" />
                             </a>
                           ))}
                         </div>

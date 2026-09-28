@@ -20,6 +20,7 @@ import { createTask } from "../../tasks/actions";
 import { uploadFile } from "@/lib/storage";
 import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem, PriceTier, ProductionVariant, ProductionSize, ProductPriceHistoryEntry } from "@/lib/mock-data";
 import { autoTagProduct, updateAutoTags, updateProductFields, deleteProductRow, createSampleForProduct, updateProductImages, updateProductDocuments, recordAgencyProductMedia } from "./actions";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 
 const STAGES: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
 const CURRENCIES = ["USD", "GBP", "EUR", "CNY"];
@@ -321,7 +322,7 @@ function MediaSection({ productId, initialImages }: { productId: string; initial
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
           {images.map((url) => (
             <div key={url} className="group relative aspect-square rounded-xl overflow-hidden border border-[var(--sa-border)] bg-[var(--sa-bg)]">
-              <img src={url} alt="" className="h-full w-full object-cover" />
+              <img loading="lazy" decoding="async" src={sizedImage(url, 300)} alt="" className="h-full w-full object-cover" />
               <button
                 onClick={() => removeImage(url)}
                 className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-white hover:bg-red-500 transition-colors opacity-0 group-hover:opacity-100"
@@ -1413,7 +1414,7 @@ function AddSampleModal({
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   {images.map((url, i) => (
                     <div key={i} className="group relative aspect-square rounded-lg overflow-hidden border border-[var(--sa-border)]">
-                      <img src={url} alt="" className="h-full w-full object-cover" />
+                      <img loading="lazy" decoding="async" src={sizedImage(url, 300)} alt="" className="h-full w-full object-cover" />
                       <button onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
                         className="absolute top-1 right-1 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white">
                         <X size={10} />

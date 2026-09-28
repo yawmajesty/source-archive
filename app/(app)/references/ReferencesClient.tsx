@@ -8,6 +8,7 @@ import { uploadFile } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { createReferenceSample, updateReferenceSample, listProductsForClient } from "./actions";
 import type { ReferenceSample, Factory, Client } from "@/lib/data";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 
 interface Props {
   samples: ReferenceSample[];
@@ -307,7 +308,7 @@ function ReferenceDetail({
             <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Client photos</p>
             <div className="grid grid-cols-3 gap-1.5">
               {sample.client_images.map((url) => (
-                <img key={url} src={url} alt="" className="aspect-square rounded-lg object-cover w-full" />
+                <img loading="lazy" decoding="async" key={url} src={sizedImage(url, 240)} alt="" className="aspect-square rounded-lg object-cover w-full" />
               ))}
             </div>
           </div>
@@ -404,7 +405,7 @@ function ReferenceDetail({
             <div className="grid grid-cols-3 gap-1.5">
               {agencyImages.map((url) => (
                 <div key={url} className="group relative aspect-square">
-                  <img src={url} alt="" className="w-full h-full object-cover rounded-lg" />
+                  <img loading="lazy" decoding="async" src={sizedImage(url, 300)} alt="" className="w-full h-full object-cover rounded-lg" />
                   <button
                     onClick={() => {
                       const updated = agencyImages.filter((u) => u !== url);

@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Plus, Eye, EyeOff, Search, Upload, X } from "lucide-react";
 import { uploadFile } from "@/lib/storage";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 import {
   FABRIC_CATEGORIES,
   FABRIC_TIERS,
@@ -480,7 +481,7 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
                     <div className="flex flex-wrap gap-2">
                       {shots.map((ph) => (
                         <div key={ph.id} className="group relative h-20 w-20 overflow-hidden rounded-lg border border-[var(--sa-border)]">
-                          <img src={ph.url} alt={slot.label} className="h-full w-full object-cover" />
+                          <img loading="lazy" decoding="async" src={sizedImage(ph.url, 300)} alt={slot.label} className="h-full w-full object-cover" />
                           <button
                             onClick={() => removePhoto(ph.id)}
                             className="absolute right-1 top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[11px] text-white group-hover:flex"
@@ -507,7 +508,7 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
                   <div className="flex flex-wrap gap-2">
                     {photos.filter((p) => p.shot !== "texture" && p.shot !== "color").map((ph) => (
                       <div key={ph.id} className="group relative h-16 w-16 overflow-hidden rounded-lg border border-[var(--sa-border)]">
-                        <img src={ph.url} alt="" className="h-full w-full object-cover" />
+                        <img loading="lazy" decoding="async" src={sizedImage(ph.url, 200)} alt="" className="h-full w-full object-cover" />
                         <button
                           onClick={() => removePhoto(ph.id)}
                           className="absolute right-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[11px] text-white group-hover:flex"
@@ -700,7 +701,7 @@ export function FabricsClient({ fabrics, canPublish }: { fabrics: Fabric[]; canP
             className="flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--sa-border)] p-2.5 hover:border-[var(--sa-accent)] hover:bg-[var(--sa-hover)]"
           >
             <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md" style={{ background: "var(--sa-hover)" }}>
-              {f.swatch_url && <img src={f.swatch_url} alt="" className="h-full w-full object-cover" />}
+              {f.swatch_url && <img loading="lazy" decoding="async" src={sizedImage(f.swatch_url, 120)} alt="" className="h-full w-full object-cover" />}
             </div>
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-2 truncate text-[13px] font-medium text-[var(--sa-text-primary)]">

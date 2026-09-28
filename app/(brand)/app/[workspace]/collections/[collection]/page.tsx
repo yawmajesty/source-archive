@@ -10,6 +10,7 @@ import { StageBadge } from "@/components/brand/StageBadge";
 import { CategoryChip } from "@/components/brand/CategoryChip";
 import { CommentThread } from "@/components/brand/CommentThread";
 import { ActivityFeed } from "@/components/brand/ActivityFeed";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 
 export default async function CollectionGalleryPage({
   params,
@@ -91,7 +92,7 @@ export default async function CollectionGalleryPage({
             <div className="aspect-square bg-[var(--sa-bg)] overflow-hidden">
               {p.cover_image_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={p.cover_image_url} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                <img loading="lazy" decoding="async" src={sizedImage(p.cover_image_url, 400)} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-[10px] uppercase tracking-widest text-[var(--sa-text-tertiary)]">
                   Sketch pending

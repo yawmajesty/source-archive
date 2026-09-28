@@ -8,6 +8,7 @@ import {
   AlertTriangle, Check, Loader2, Pencil, ScanLine, DollarSign,
 } from "lucide-react";
 import { uploadFile } from "@/lib/storage";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 import {
   analyzeReceipt, createExpense, updateExpense, deleteExpense,
   createCostingProduct, updateCostingProduct, deleteCostingProduct,
@@ -286,7 +287,7 @@ function ExpensesTab({ expenses: initial, rates }: { expenses: Expense[]; rates:
               <label className="text-[10px] font-semibold uppercase tracking-wide text-[var(--sa-text-tertiary)] block mb-2">Receipt / Screenshot</label>
               {imagePreview ? (
                 <div className="relative">
-                  <img src={imagePreview} alt="receipt" className="w-full max-h-48 object-contain rounded-xl border border-[var(--sa-border)]" />
+                  <img loading="lazy" decoding="async" src={sizedImage(imagePreview, 400, { resize: "contain" })} alt="receipt" className="w-full max-h-48 object-contain rounded-xl border border-[var(--sa-border)]" />
                   <button onClick={() => { setImageFile(null); setImagePreview(null); setAiResult(null); }}
                     className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white">
                     <X size={12} />
@@ -385,7 +386,7 @@ function ExpensesTab({ expenses: initial, rates }: { expenses: Expense[]; rates:
                 <Trash2 size={14} />
               </button>
             </div>
-            {selected.image_url && <img src={selected.image_url} alt="receipt" className="w-full max-h-56 object-contain rounded-xl border border-[var(--sa-border)]" />}
+            {selected.image_url && <img loading="lazy" decoding="async" src={sizedImage(selected.image_url, 500, { resize: "contain" })} alt="receipt" className="w-full max-h-56 object-contain rounded-xl border border-[var(--sa-border)]" />}
             <div className="flex items-center justify-between rounded-xl px-4 py-3" style={{ background: "var(--sa-window)", border: "1px solid var(--sa-border)" }}>
               <span className="text-[13px] text-[var(--sa-text-secondary)]">Amount</span>
               <span className="text-[20px] font-bold font-mono text-[var(--sa-text-primary)]">{selected.currency} {selected.amount.toFixed(2)}</span>

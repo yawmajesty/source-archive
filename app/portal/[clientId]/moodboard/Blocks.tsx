@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, Plus, X, Play, ExternalLink, LinkIcon } from "lucide-react";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 import {
   NOTE_COLOURS, hexToCmyk, cmykToHex, isValidHex, normaliseHex, readableOn,
   type MoodboardItem, type NoteContent, type HeadingContent,
@@ -383,7 +384,7 @@ export function LinkBlock({ item }: { item: MoodboardItem }) {
       {c.thumbnail ? (
         <div className="relative">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={c.thumbnail} alt={c.title ?? c.provider} className="block w-full" draggable={false} />
+          <img loading="lazy" decoding="async" src={sizedImage(c.thumbnail, 300)} alt={c.title ?? c.provider} className="block w-full" draggable={false} />
           {isVideo && (
             <span className="absolute inset-0 flex items-center justify-center">
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60">

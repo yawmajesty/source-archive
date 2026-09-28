@@ -40,7 +40,7 @@ export async function uploadFile(
     .from(bucket)
     .uploadToSignedUrl(key, ticket.token, file, {
       contentType: file.type || undefined,
-      cacheControl: "3600",
+      cacheControl: "31536000, immutable",
     });
 
   if (error) {

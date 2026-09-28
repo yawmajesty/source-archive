@@ -47,6 +47,7 @@ import {
 import { Sun as SunIcon, Moon as MoonIcon, Search } from "lucide-react";
 import type { Stage } from "@/lib/mock-data";
 import type { PortalProject, PortalProduct } from "./page";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 
 function usePortalTheme() {
   const [dark, setDark] = useState(false);
@@ -143,7 +144,7 @@ function AgencyBrand({ settings, compact }: { settings: AgencySettings; compact?
     <div className="flex items-center gap-2">
       {settings.icon_url ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={settings.icon_url} alt="" style={{ height: iconSize, width: iconSize, objectFit: "contain" }} />
+        <img loading="lazy" decoding="async" src={sizedImage(settings.icon_url, 48, { resize: "contain" })} alt="" style={{ height: iconSize, width: iconSize, objectFit: "contain" }} />
       ) : (
         <div
           className="flex items-center justify-center rounded-lg text-white text-[13px] font-bold"
@@ -154,7 +155,7 @@ function AgencyBrand({ settings, compact }: { settings: AgencySettings; compact?
       )}
       {settings.wordmark_url ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={settings.wordmark_url} alt={title} style={{ height: iconSize - 6, maxWidth: 160, objectFit: "contain" }} />
+        <img loading="lazy" decoding="async" src={sizedImage(settings.wordmark_url, 180, { resize: "contain" })} alt={title} style={{ height: iconSize - 6, maxWidth: 160, objectFit: "contain" }} />
       ) : (
         <span className="text-[15px] font-semibold" style={{ color: "var(--portal-text-primary)" }}>{title}</span>
       )}
@@ -656,7 +657,7 @@ function ProductDetailView({ product, files, client, agencyLabel, onClose }: {
                           {item.kind === "video" ? (
                             <video src={item.url} className="h-full w-full object-cover" muted playsInline preload="metadata" />
                           ) : (
-                            <img src={item.url} alt="" className="h-full w-full object-cover" />
+                            <img loading="lazy" decoding="async" src={sizedImage(item.url, 80)} alt="" className="h-full w-full object-cover" />
                           )}
                           {item.uploaded_by_role === "client" && (
                             <span className="absolute bottom-0 left-0 right-0 h-1" style={{ background: "rgba(37,99,235,0.9)" }} />
@@ -967,7 +968,7 @@ function ProductCard({ product, onClick }: { product: PortalProduct; onClick: ()
     >
       <div className="w-full aspect-[4/5] overflow-hidden" style={{ background: "var(--portal-surface-raised)" }}>
         {previewImg ? (
-          <img src={previewImg} alt={product.name} className="h-full w-full object-cover" />
+          <img loading="lazy" decoding="async" src={sizedImage(previewImg, 600)} alt={product.name} className="h-full w-full object-cover" />
         ) : (
           <div className="h-full flex items-center justify-center">
             <svg width="32" height="32" viewBox="0 0 32 32" fill="none" opacity={0.25}>
@@ -1405,7 +1406,7 @@ function SamplingInvoice({
                       >
                         <span className="text-[11px] text-right" style={{ color: "var(--portal-text-muted)" }}>{i + 1}</span>
                         {li.image_url ? (
-                          <img src={li.image_url} alt={li.name} className="h-14 w-14 rounded-md object-cover border" style={{ borderColor: "var(--portal-border-subtle)" }} />
+                          <img loading="lazy" decoding="async" src={sizedImage(li.image_url, 64)} alt={li.name} className="h-14 w-14 rounded-md object-cover border" style={{ borderColor: "var(--portal-border-subtle)" }} />
                         ) : (
                           <div className="h-14 w-14 rounded-md border border-dashed flex items-center justify-center text-[10px]" style={{ borderColor: "var(--portal-border-subtle)", color: "var(--portal-text-muted)" }}>—</div>
                         )}
@@ -1792,7 +1793,7 @@ function ReferencesTab({ client, projects }: { client: Client; projects: PortalP
                   <div className="grid grid-cols-4 gap-2 mb-2">
                     {clientImages.map((url) => (
                       <div key={url} className="group relative aspect-square rounded-xl overflow-hidden" style={{ border: "1px solid var(--portal-border)" }}>
-                        <img src={url} alt="" className="h-full w-full object-cover" />
+                        <img loading="lazy" decoding="async" src={sizedImage(url, 300)} alt="" className="h-full w-full object-cover" />
                         <button
                           onClick={() => setClientImages((prev) => prev.filter((u) => u !== url))}
                           className="absolute top-1 right-1 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full text-white text-[10px]"
@@ -1870,7 +1871,7 @@ function ReferencesTab({ client, projects }: { client: Client; projects: PortalP
                 {s.client_images?.length > 0 && (
                   <div className="px-5 pb-4 grid grid-cols-4 gap-2">
                     {(s.client_images as string[]).map((url: string) => (
-                      <img key={url} src={url} alt="" className="aspect-square rounded-xl object-cover w-full" style={{ border: "1px solid var(--portal-border)" }} />
+                      <img loading="lazy" decoding="async" key={url} src={sizedImage(url, 300)} alt="" className="aspect-square rounded-xl object-cover w-full" style={{ border: "1px solid var(--portal-border)" }} />
                     ))}
                   </div>
                 )}

@@ -6,6 +6,7 @@ import { Plus, Trash2, CheckCircle, AlertCircle, ImagePlus, X, Loader2 } from "l
 import { submitQuote } from "./actions";
 import { uploadFile } from "@/lib/storage";
 import type { Rfq, RfqInvite, RfqSubmission, RfqQuotedProduct } from "@/lib/data";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 
 const inputCls = "w-full rounded-lg border border-[#D1D1D6] bg-white px-3 py-2 text-[14px] text-[#1D1D1F] placeholder:text-[#AEAEB2] outline-none focus:border-[#1A1A2E] transition-colors";
 
@@ -48,7 +49,7 @@ function ProductImageUpload({ imageUrl, onUpload }: {
   if (imageUrl) {
     return (
       <div className="relative w-full">
-        <img src={imageUrl} alt="Product" className="w-full h-40 object-cover rounded-lg border border-[#E5E5EA]" />
+        <img loading="lazy" decoding="async" src={sizedImage(imageUrl, 400)} alt="Product" className="w-full h-40 object-cover rounded-lg border border-[#E5E5EA]" />
         <button
           type="button"
           onClick={() => onUpload("")}

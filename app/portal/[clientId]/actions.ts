@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { randomUUID } from "crypto";
 import { getStripe } from "@/lib/stripe";
 import { getPublicOrigin } from "@/lib/url";
@@ -261,6 +262,9 @@ export async function createInvoiceCheckout(invoiceId: string): Promise<
   if (invoice.status === "paid") return { error: "This invoice is already paid" };
   if (invoice.status === "draft") return { error: "Invoice is still in draft — send it before taking payment" };
 
+  // Two reads rather than one join: there is no foreign key between
+  // sampling_invoices and clients, so PostgREST cannot embed the client.
+  // Adding that constraint would collapse this into a single round trip.
   const { data: clientRow } = await supabase
     .from("clients")
     .select("name, contact_email")
@@ -290,7 +294,10 @@ export async function createInvoiceCheckout(invoiceId: string): Promise<
   try {
     session = await stripe.checkout.sessions.create({
       mode: "payment",
-      payment_method_types: ["card"],
+      // Deliberately not pinned to ["card"]: naming the types opts the
+      // session out of dynamic payment methods, and Apple Pay, Google Pay
+      // and Link only appear through those. The set now comes from the
+      // Stripe Dashboard, so it can change without a deploy.
       line_items: [
         {
           quantity: 1,
@@ -318,10 +325,16 @@ export async function createInvoiceCheckout(invoiceId: string): Promise<
     return { error: `Stripe error: ${e?.message ?? String(e)}` };
   }
 
-  await supabase
-    .from("sampling_invoices")
-    .update({ stripe_session_id: session.id })
-    .eq("id", invoice.id);
+  // Bookkeeping only — the webhook matches on metadata.invoice_id, not on
+  // this. Running it after the response means the customer reaches Stripe a
+  // full round trip sooner.
+  const sessionId = session.id;
+  after(async () => {
+    await getAgencyServiceSupabase()
+      .from("sampling_invoices")
+      .update({ stripe_session_id: sessionId })
+      .eq("id", invoiceId);
+  });
 
   return { url: session.url ?? "" };
 }

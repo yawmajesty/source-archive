@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, Plus, X, ChevronRight, ChevronLeft, Upload, Link } from "lucide-react";
 import { submitTechpack } from "./actions";
 import { uploadFile } from "@/lib/storage";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 
 // ── Constants ────────────────────────────────────────
 
@@ -130,7 +131,7 @@ function FileUploadList({
             <div key={i} className="group relative">
               {isImage(url) ? (
                 <div className="relative w-20 h-20 rounded-xl overflow-hidden border border-[#D1D1D6] bg-[#F5F5F7]">
-                  <img src={url} alt="" className="w-full h-full object-cover" />
+                  <img loading="lazy" decoding="async" src={sizedImage(url, 200)} alt="" className="w-full h-full object-cover" />
                   <button type="button" onClick={() => remove(i)}
                     className="absolute top-1 right-1 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white text-[10px]"
                   >✕</button>

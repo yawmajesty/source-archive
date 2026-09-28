@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Package, TrendingUp, TrendingDown, Receipt } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Product, Stage, PriceTier } from "@/lib/mock-data";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 
 const STAGE_ORDER: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
 
@@ -343,7 +344,7 @@ function ProductTile({ product, onClick }: { product: Product; onClick: () => vo
     >
       <div className="w-full aspect-[4/5] bg-[var(--sa-hover)] overflow-hidden">
         {previewImg ? (
-          <img src={previewImg} alt={product.name} className="h-full w-full object-cover" />
+          <img loading="lazy" decoding="async" src={sizedImage(previewImg, 400)} alt={product.name} className="h-full w-full object-cover" />
         ) : (
           <div className="h-full flex items-center justify-center text-[var(--sa-text-tertiary)]">
             <Package size={28} strokeWidth={1.5} />
