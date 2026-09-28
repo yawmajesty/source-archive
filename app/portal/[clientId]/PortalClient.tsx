@@ -42,6 +42,7 @@ import {
   upcomingItems,
   type PortalRoute,
   MobileTabBar,
+  TopbarMenu,
 } from "./shell/Rails";
 import { Sun as SunIcon, Moon as MoonIcon, Search } from "lucide-react";
 import type { Stage } from "@/lib/mock-data";
@@ -1992,16 +1993,27 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
     references: "References",
   };
 
+  const goTo = (r: PortalRoute) => {
+    setRoute(r);
+    setSelectedProduct(null);
+    if (r !== "projects") setSelectedProjectId(null);
+  };
+
   const topbar = (
     <>
+      {/* On a phone the menu takes the logo's place — it's where people
+          already look, and unlike the tab bar it can't be hidden by a
+          stylesheet mistake. */}
+      <TopbarMenu route={route} setRoute={goTo} attentionCount={attention.length} />
+
       <div className="flex items-center gap-2.5">
         <div
-          className="flex h-[22px] w-[22px] items-center justify-center rounded-[6px] text-[11px] font-bold text-white select-none"
+          className="hidden h-[22px] w-[22px] items-center justify-center rounded-[6px] text-[11px] font-bold text-white select-none md:flex"
           style={{ background: "var(--accent)" }}
         >
           {client.logo_initial}
         </div>
-        <span className="text-[13px] font-semibold tight" style={{ color: "var(--label)" }}>{client.name}</span>
+        <span className="truncate text-[13px] font-semibold tight" style={{ color: "var(--label)" }}>{client.name}</span>
       </div>
 
       {/* breadcrumb */}

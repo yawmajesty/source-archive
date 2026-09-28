@@ -589,6 +589,12 @@
 }
 
 /* <720: bottom tab bar, rails become sheets */
+/* Declared BEFORE the mobile query on purpose. It used to sit after it
+   with the same specificity, so the later rule won the cascade and the
+   bottom tab bar was hidden at every width — including the one it exists
+   for. The portal had no navigation at all on a phone. */
+.portal-tabbar { display: none; grid-column: 1 / -1; grid-row: 3; }
+
 @media (max-width: 719px) {
   .portal-app,
   .portal-app[data-right="closed"],
@@ -607,7 +613,6 @@
   }
   .portal-tabbar { display: flex; }
 }
-.portal-tabbar { display: none; grid-column: 1 / -1; grid-row: 3; }
 
 /* Current-stage marker on a product card. Deliberately gentle: a slow breath
    that reads as "in progress", not a notification demanding attention.

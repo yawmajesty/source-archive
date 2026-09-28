@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import {
   LayoutGrid, CheckCircle2, FolderOpen, FileText, Receipt,
-  Paperclip, Sparkles, Clock, AlertCircle, Images, PackagePlus, MoreHorizontal, X,
+  Paperclip, Sparkles, Clock, AlertCircle, Images, PackagePlus, MoreHorizontal, X, Menu,
 } from "lucide-react";
 import { RailSection } from "./PortalShell";
 import type { PortalProject, PortalProduct } from "../page";
@@ -246,11 +246,11 @@ export function RightRailOverview({
 // four a client actually opens get a tab, and the rest live one tap
 // deeper where they can be read properly.
 
-const PRIMARY: { route: PortalRoute; label: string; icon: typeof LayoutGrid }[] = [
-  { route: "overview",  label: "Home",     icon: LayoutGrid },
-  { route: "approvals", label: "Approve",  icon: CheckCircle2 },
-  { route: "projects",  label: "Products", icon: FolderOpen },
-  { route: "sampling",  label: "Invoices", icon: Receipt },
+const PRIMARY: { route: PortalRoute; label: string; short: string; icon: typeof LayoutGrid }[] = [
+  { route: "overview",  label: "Overview",    short: "Home",     icon: LayoutGrid },
+  { route: "approvals", label: "Approvals",   short: "Approve",  icon: CheckCircle2 },
+  { route: "projects",  label: "Collections", short: "Products", icon: FolderOpen },
+  { route: "sampling",  label: "Invoices",    short: "Invoices", icon: Receipt },
 ];
 
 const SECONDARY: { route: PortalRoute; label: string; icon: typeof LayoutGrid }[] = [
@@ -329,7 +329,7 @@ export function MobileTabBar({
             aria-current={active ? "page" : undefined}
           >
             <Icon size={19} strokeWidth={active ? 2 : 1.6} />
-            <span className="text-[10px] leading-none">{item.label}</span>
+            <span className="text-[10px] leading-none">{item.short}</span>
             {item.route === "approvals" && attentionCount > 0 && (
               <span
                 className="absolute right-[22%] top-1 flex h-[15px] min-w-[15px] items-center justify-center rounded-full px-1 text-[9px] font-semibold text-white"
@@ -351,6 +351,95 @@ export function MobileTabBar({
         <MoreHorizontal size={19} strokeWidth={inMore ? 2 : 1.6} />
         <span className="text-[10px] leading-none">More</span>
       </button>
+    </>
+  );
+}
+
+
+/**
+ * The menu in the top bar, for narrow screens.
+ *
+ * A second, independent way to every section. The bottom tab bar is the
+ * nicer pattern, but it depends on a media query firing and a grid row
+ * existing — and when that quietly failed, the portal had no navigation
+ * at all and no clue that any was missing. A button where the logo sits
+ * is somewhere people already look, and it cannot be hidden by a
+ * stylesheet mistake.
+ */
+export function TopbarMenu({
+  route, setRoute, attentionCount,
+}: {
+  route: PortalRoute;
+  setRoute: (r: PortalRoute) => void;
+  attentionCount: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const all = [...PRIMARY, ...SECONDARY];
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        aria-label="Menu"
+        className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[6.5px] md:hidden"
+        style={{ color: "var(--label)" }}
+      >
+        <Menu size={18} strokeWidth={1.8} />
+        {attentionCount > 0 && (
+          <span
+            className="absolute ml-4 mt-[-12px] h-[7px] w-[7px] rounded-full"
+            style={{ background: "var(--danger, #FF3B30)" }}
+          />
+        )}
+      </button>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-[60]"
+          style={{ background: "rgba(0,0,0,.4)" }}
+          onClick={() => setOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="absolute inset-y-0 left-0 w-[78%] max-w-[300px] overflow-y-auto pb-8"
+            style={{ background: "var(--content)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center px-4 py-3.5">
+              <p className="flex-1 text-[15px] font-semibold" style={{ color: "var(--label)" }}>
+                Menu
+              </p>
+              <button onClick={() => setOpen(false)} aria-label="Close">
+                <X size={18} style={{ color: "var(--label-3)" }} />
+              </button>
+            </div>
+
+            {all.map((item) => {
+              const Icon = item.icon;
+              const active = route === item.route;
+              return (
+                <button
+                  key={item.route}
+                  onClick={() => { setRoute(item.route); setOpen(false); }}
+                  className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
+                  style={{ color: active ? "var(--accent)" : "var(--label)" }}
+                >
+                  <Icon size={19} strokeWidth={active ? 2 : 1.6} />
+                  <span className="flex-1 text-[15px]">{item.label}</span>
+                  {item.route === "approvals" && attentionCount > 0 && (
+                    <span
+                      className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold text-white"
+                      style={{ background: "var(--danger, #FF3B30)" }}
+                    >
+                      {attentionCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </>
   );
 }
