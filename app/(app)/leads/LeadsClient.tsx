@@ -3,9 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Check, Plus, Trash2, Copy, CheckCheck, ExternalLink, Send } from "lucide-react";
+import { ArrowRight, Check, CheckCheck, Copy, ExternalLink, HelpCircle, Plus, Send, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { updateLeadStatus, convertLeadToClient, createLead, deleteLead, acknowledgeLead } from "./actions";
+import { updateLeadStatus, convertLeadToClient, createLead, deleteLead, acknowledgeLead, requestMoreInfo } from "./actions";
 import { buildPublicUrl } from "@/lib/url";
 import type { Lead } from "@/lib/data";
 import { imageUrl as sizedImage } from "@/lib/image-url";
@@ -172,6 +172,7 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
   const [convertedClientId, setConvertedClientId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [acking, setAcking] = useState(false);
+  const [asking, setAsking] = useState(false);
   const [ackNote, setAckNote] = useState<{ ok: boolean; text: string } | null>(null);
 
   function setStatus(status: string) {
@@ -397,6 +398,24 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
                 {ackNote.text}
               </p>
             )}
+
+            <button
+              disabled={asking}
+              onClick={async () => {
+                setAsking(true); setAckNote(null);
+                const res = await requestMoreInfo(lead.id);
+                setAsking(false);
+                if (!res.success) { setAckNote({ ok: false, text: res.error }); return; }
+                setAckNote({ ok: true, text: `Asked ${res.to} for more detail` });
+              }}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-[var(--sa-border)] px-3 py-2 text-[12.5px] font-medium text-[var(--sa-text-primary)] transition-colors hover:bg-[var(--sa-hover)] disabled:opacity-50"
+            >
+              <HelpCircle size={12} /> {asking ? "Sending…" : "Ask for more detail"}
+            </button>
+            <p className="mt-1 text-[10.5px] leading-snug text-[var(--sa-text-tertiary)]">
+              For a brief too thin to act on. Asks what they&apos;re trying to do, what products they
+              want made, and any specs — politely, and says rough notes are fine. Marks them contacted.
+            </p>
 
             <p className="mt-3 text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Update status</p>
             <div className="flex flex-wrap gap-1.5">

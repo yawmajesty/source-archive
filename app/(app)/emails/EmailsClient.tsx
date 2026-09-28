@@ -12,6 +12,14 @@ const TEMPLATE_LABEL: Record<string, string> = {
   techpack_received_client: "Tech pack — confirmation to them",
   techpack_received_admin: "Tech pack — alert to you",
   stage_update_client: "Stage update to client",
+  lead_acknowledged: "Lead — thank-you",
+  lead_more_info: "Lead — asked for more detail",
+  brief_accepted: "Brief accepted",
+  brief_declined: "Brief declined",
+  crm_message: "Written from the CRM",
+  shoot_crew_callsheet: "Shoot — call sheet",
+  shoot_brief_shared: "Shoot — brief shared",
+  campaign_item_due: "Campaign item due",
 };
 
 const STATUS: Record<string, { label: string; bg: string; fg: string }> = {

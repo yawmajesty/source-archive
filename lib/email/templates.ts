@@ -38,6 +38,15 @@ const h1 = (t: string) =>
   `<h1 style="margin:0 0 12px;font-size:19px;font-weight:600;letter-spacing:-0.01em;color:${INK};">${esc(t)}</h1>`;
 const p = (t: string) =>
   `<p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:${MUTED};">${t}</p>`;
+const bullets = (items: string[]) =>
+  items
+    .map(
+      (t) =>
+        `<div style="margin:0 0 9px;padding-left:16px;position:relative;font-size:14px;line-height:1.6;color:${MUTED};">` +
+        `<span style="position:absolute;left:0;color:${MUTED};">&bull;</span>${t}</div>`,
+    )
+    .join("");
+
 const button = (href: string, label: string) =>
   `<a href="${esc(href)}" style="display:inline-block;margin-top:6px;background:${ACCENT};color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:500;padding:10px 18px;border-radius:6px;">${esc(label)}</a>`;
 
@@ -494,5 +503,83 @@ export function enquiryAcknowledged(input: {
       `We'll come back to you either way: what the next steps look like, or an honest no if it isn't ` +
       `something we can take on right now.\n\n` +
       `If anything changes in the meantime, or you think of something you forgot to mention, just reply to this email.`,
+  };
+}
+
+/**
+ * Ask for enough to make a call worth having.
+ *
+ * Sent when a brief arrives too thin to act on. The point is not to put
+ * anyone off — it is that a call with someone who hasn't decided what they
+ * are making wastes both sides' time, and the polite version of that is to
+ * say what we need and why, rather than to book the call and discover it
+ * there.
+ *
+ * Deliberately names the three things and says rough notes are fine. "Tell
+ * us more" gets nothing back; a list gets answered.
+ */
+export function moreInfoNeeded(input: {
+  contactName: string;
+  companyName?: string | null;
+  isBrief: boolean;
+}): Built {
+  // Plenty of enquiries arrive with no name on them. "Thanks, there" is
+  // worse than not using a name at all, so drop the greeting instead.
+  const first = input.contactName.trim().split(/\s+/)[0];
+  const greeting = first ? `Thanks, ${first}` : "Thanks for getting in touch";
+  const what = input.isBrief ? "your brief" : "your enquiry";
+  const forCompany = input.companyName ? ` for ${esc(input.companyName)}` : "";
+  const forCompanyText = input.companyName ? ` for ${input.companyName}` : "";
+
+  const asks: [string, string][] = [
+    [
+      "What you're trying to do",
+      "the idea behind the brand or the collection, and where you've got to with it so far",
+    ],
+    [
+      "What products you're looking to make",
+      "the actual garments or items, and roughly how many of each",
+    ],
+    [
+      "Any specs you already have",
+      "fabrics, colours, sizing, finishes, reference pieces you like, a target price — whatever exists",
+    ],
+  ];
+
+  return {
+    subject: "A few more details before we set up a call",
+    html: shell(
+      h1(greeting) +
+        p(`We've got ${esc(what)}${forCompany}.`) +
+        p(
+          "Before we put a call in, it would help to understand a bit more about what you're planning. " +
+            "What we've got so far doesn't quite give us enough to work with, and we've found these " +
+            "conversations are far more useful when we've had a chance to think properly about your " +
+            "project beforehand — otherwise we spend the call gathering information rather than giving " +
+            "you anything worth having.",
+        ) +
+        p("If you could reply with:") +
+        bullets(asks.map(([label, detail]) => `<strong style="color:${INK};font-weight:600;">${esc(label)}</strong> — ${esc(detail)}`)) +
+        p(
+          "It really doesn't need to be polished. Rough notes are genuinely fine — we just need enough " +
+            "to come back to you with something useful.",
+        ) +
+        p("Once we've got that, we'll get a call in the diary."),
+      "You're getting this because you contacted Source Archive.",
+    ),
+    text:
+      `${greeting}.\n\n` +
+      `We've got ${what}${forCompanyText}.\n\n` +
+      `Before we put a call in, it would help to understand a bit more about what you're planning. ` +
+      `What we've got so far doesn't quite give us enough to work with, and we've found these ` +
+      `conversations are far more useful when we've had a chance to think properly about your project ` +
+      `beforehand — otherwise we spend the call gathering information rather than giving you anything ` +
+      `worth having.\n\n` +
+      `If you could reply with:\n\n` +
+      asks.map(([label, detail]) => `  - ${label} - ${detail}`).join("\n") +
+      `\n\n` +
+      `It really doesn't need to be polished. Rough notes are genuinely fine - we just need enough to ` +
+      `come back to you with something useful.\n\n` +
+      `Once we've got that, we'll get a call in the diary.`,
   };
 }

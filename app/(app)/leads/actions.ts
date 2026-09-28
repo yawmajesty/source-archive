@@ -5,7 +5,7 @@ import { getAgencySupabase } from "@/lib/supabase-agency";
 import { getAgencyContext } from "@/lib/agency-data";
 import { can } from "@/lib/permissions";
 import { sendAll, looksLikeEmail } from "@/lib/email/send";
-import { enquiryAcknowledged, replyWindowFor } from "@/lib/email/templates";
+import { enquiryAcknowledged, moreInfoNeeded, replyWindowFor } from "@/lib/email/templates";
 import type { BriefProduct } from "@/lib/mock-data";
 
 async function ctxOrThrow() {
@@ -187,4 +187,72 @@ export async function acknowledgeLead(
   revalidatePath("/leads");
   revalidatePath("/dashboard");
   return { success: true, status: result.status, to: lead.contact_email as string };
+}
+
+/**
+ * Ask a thin lead for enough to make a call worth having.
+ *
+ * Separate from the thank-you rather than a variant of it: they answer
+ * different situations, and one that tried to do both would end up saying
+ * "thanks, now do some homework", which reads badly.
+ *
+ * Moves the lead to contacted for the same reason the acknowledgement
+ * does — a reply that leaves it sitting in "new" gets sent twice.
+ */
+export async function requestMoreInfo(
+  leadId: string,
+): Promise<{ success: true; to: string } | { success: false; error: string }> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return { success: false, error: "Not a member of any agency" };
+  if (!can(ctx.role, ctx.permissions, "client.edit")) {
+    return { success: false, error: "You don't have permission to contact leads" };
+  }
+
+  const supabase = await getAgencySupabase();
+  const { data } = await supabase
+    .from("leads")
+    .select("id, company_name, contact_name, contact_email, source, status")
+    .eq("id", leadId)
+    .maybeSingle();
+
+  const lead = data as {
+    id: string; company_name: string | null; contact_name: string | null;
+    contact_email: string | null; source: string | null; status: string;
+  } | null;
+  if (!lead) return { success: false, error: "Lead not found" };
+  if (!looksLikeEmail(lead.contact_email)) {
+    return { success: false, error: "No usable email address on this lead" };
+  }
+
+  const built = moreInfoNeeded({
+    contactName: lead.contact_name ?? "",
+    companyName: lead.company_name,
+    isBrief: lead.source === "brief_form",
+  });
+
+  const [result] = await sendAll([
+    {
+      agencyId: ctx.agency.id,
+      to: lead.contact_email,
+      toName: lead.contact_name,
+      subject: built.subject,
+      html: built.html,
+      text: built.text,
+      template: "lead_more_info" as const,
+      relatedType: "lead" as const,
+      relatedId: lead.id,
+    },
+  ]);
+
+  if (result.status === "failed") {
+    return { success: false, error: result.error ?? "Could not send" };
+  }
+
+  if (lead.status === "new") {
+    await supabase.from("leads").update({ status: "contacted" }).eq("id", leadId);
+  }
+
+  revalidatePath("/leads");
+  revalidatePath("/dashboard");
+  return { success: true, to: lead.contact_email as string };
 }
