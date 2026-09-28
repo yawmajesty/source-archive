@@ -3,6 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { getAgencySupabase } from "@/lib/supabase-agency";
 import { getAgencyContext } from "@/lib/agency-data";
+import { can } from "@/lib/permissions";
+import { sendAll, looksLikeEmail } from "@/lib/email/send";
+import { enquiryAcknowledged, replyWindowFor } from "@/lib/email/templates";
 import type { BriefProduct } from "@/lib/mock-data";
 
 async function ctxOrThrow() {
@@ -113,4 +116,75 @@ export async function convertLeadToClient(leadId: string): Promise<{ clientId: s
   revalidatePath("/clients");
 
   return { clientId };
+}
+
+/**
+ * Send the "we've got it, here's when we'll reply" note.
+ *
+ * The one email that should never be late. Someone who fills in a brief
+ * and hears nothing for two days assumes it went nowhere, and by the
+ * time a real reply arrives they have already asked someone else.
+ *
+ * Marks the lead contacted in the same step, because an acknowledgement
+ * that doesn't move the lead out of "new" just means it gets sent twice.
+ */
+export async function acknowledgeLead(
+  leadId: string,
+): Promise<{ success: true; status: string; to: string } | { success: false; error: string }> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return { success: false, error: "Not a member of any agency" };
+  if (!can(ctx.role, ctx.permissions, "client.edit")) {
+    return { success: false, error: "You don't have permission to contact leads" };
+  }
+
+  const supabase = await getAgencySupabase();
+  const { data } = await supabase
+    .from("leads")
+    .select("id, company_name, contact_name, contact_email, source, status")
+    .eq("id", leadId)
+    .maybeSingle();
+
+  const lead = data as {
+    id: string; company_name: string | null; contact_name: string | null;
+    contact_email: string | null; source: string | null; status: string;
+  } | null;
+  if (!lead) return { success: false, error: "Lead not found" };
+  if (!looksLikeEmail(lead.contact_email)) {
+    return { success: false, error: "No usable email address on this lead" };
+  }
+
+  const built = enquiryAcknowledged({
+    contactName: lead.contact_name ?? "",
+    companyName: lead.company_name,
+    isBrief: lead.source === "brief_form",
+    window: replyWindowFor(),
+  });
+
+  const [result] = await sendAll([
+    {
+      agencyId: ctx.agency.id,
+      to: lead.contact_email,
+      toName: lead.contact_name,
+      subject: built.subject,
+      html: built.html,
+      text: built.text,
+      template: "lead_acknowledged" as const,
+      relatedType: "lead" as const,
+      relatedId: lead.id,
+    },
+  ]);
+
+  if (result.status === "failed") {
+    return { success: false, error: result.error ?? "Could not send" };
+  }
+
+  // Only advance a lead that's still untouched — re-acknowledging a
+  // qualified one shouldn't drag it backwards down the pipeline.
+  if (lead.status === "new") {
+    await supabase.from("leads").update({ status: "contacted" }).eq("id", leadId);
+  }
+
+  revalidatePath("/leads");
+  revalidatePath("/dashboard");
+  return { success: true, status: result.status, to: lead.contact_email as string };
 }

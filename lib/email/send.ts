@@ -33,7 +33,8 @@ export type EmailTemplate =
   | "shoot_brief_shared"
   | "campaign_item_due"
   | "brief_declined"
-  | "brief_accepted";
+  | "brief_accepted"
+  | "lead_acknowledged";
 
 export interface OutboundEmail {
   agencyId: string;

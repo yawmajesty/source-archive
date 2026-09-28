@@ -449,3 +449,50 @@ export function briefDecision(input: {
     text: input.body + (input.accepted ? `\n\nFollow it in your portal: ${input.portalUrl}` : ""),
   };
 }
+
+
+// ── Acknowledging an enquiry ─────────────────────────────────
+
+/**
+ * When we'll realistically come back to them.
+ *
+ * The Friday problem is real: a brief arriving Friday afternoon gets
+ * looked at Monday, and saying "24–48 hours" on a Friday is a promise
+ * that breaks itself over the weekend. Working it out from the actual
+ * day is more honest than one fixed sentence, and it costs nothing.
+ */
+export function replyWindowFor(date = new Date()): string {
+  const day = date.getUTCDay(); // 0 Sun … 6 Sat
+  if (day === 5) return "early next week — anything arriving on a Friday tends to get looked at properly on Monday";
+  if (day === 6 || day === 0) return "early next week";
+  if (day === 4) return "within 24 to 48 hours, so by early next week at the latest";
+  return "within 24 to 48 hours";
+}
+
+export function enquiryAcknowledged(input: {
+  contactName: string;
+  companyName?: string | null;
+  isBrief: boolean;
+  window: string;
+}): Built {
+  const first = input.contactName.trim().split(/\s+/)[0] || "there";
+  const what = input.isBrief ? "your brief" : "your enquiry";
+
+  return {
+    subject: input.isBrief ? "Thanks for your brief" : "Thanks for getting in touch",
+    html: shell(
+      h1(`Thanks, ${esc(first)}`) +
+        p(`We've got ${esc(what)}${input.companyName ? ` for ${esc(input.companyName)}` : ""} — thank you for sending it over.`) +
+        p(`We read these properly rather than skimming them, so give us ${esc(input.window)}. We'll come back to you either way: what the next steps look like, or an honest no if it isn't something we can take on right now.`) +
+        p("If anything changes in the meantime, or you think of something you forgot to mention, just reply to this email."),
+      "You're getting this because you contacted Source Archive.",
+    ),
+    text:
+      `Thanks, ${first}.\n\n` +
+      `We've got ${what}${input.companyName ? ` for ${input.companyName}` : ""} — thank you for sending it over.\n\n` +
+      `We read these properly rather than skimming them, so give us ${input.window}. ` +
+      `We'll come back to you either way: what the next steps look like, or an honest no if it isn't ` +
+      `something we can take on right now.\n\n` +
+      `If anything changes in the meantime, or you think of something you forgot to mention, just reply to this email.`,
+  };
+}

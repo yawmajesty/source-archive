@@ -3,9 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Check, Plus, Trash2, Copy, CheckCheck, ExternalLink } from "lucide-react";
+import { ArrowRight, Check, Plus, Trash2, Copy, CheckCheck, ExternalLink, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { updateLeadStatus, convertLeadToClient, createLead, deleteLead } from "./actions";
+import { updateLeadStatus, convertLeadToClient, createLead, deleteLead, acknowledgeLead } from "./actions";
 import { buildPublicUrl } from "@/lib/url";
 import type { Lead } from "@/lib/data";
 
@@ -170,6 +170,8 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
   const [converting, setConverting] = useState(false);
   const [convertedClientId, setConvertedClientId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [acking, setAcking] = useState(false);
+  const [ackNote, setAckNote] = useState<{ ok: boolean; text: string } | null>(null);
 
   function setStatus(status: string) {
     startTransition(async () => {
@@ -366,7 +368,36 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
 
         {!isConverted && (
           <div className="pt-2 border-t border-[var(--sa-border)]">
-            <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Update status</p>
+            <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">
+              First reply
+            </p>
+            <button
+              disabled={acking}
+              onClick={async () => {
+                setAcking(true); setAckNote(null);
+                const res = await acknowledgeLead(lead.id);
+                setAcking(false);
+                if (!res.success) { setAckNote({ ok: false, text: res.error }); return; }
+                setAckNote({ ok: true, text: `Sent to ${res.to}` });
+              }}
+              className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[var(--sa-accent)] px-3 py-2 text-[12.5px] font-medium text-white disabled:opacity-50"
+            >
+              <Send size={12} /> {acking ? "Sending…" : "Send the thank-you"}
+            </button>
+            <p className="mt-1 text-[10.5px] leading-snug text-[var(--sa-text-tertiary)]">
+              Confirms we&apos;ve got it and says when we&apos;ll come back — 24–48 hours, or early
+              next week if it&apos;s late in the week. Marks them contacted.
+            </p>
+            {ackNote && (
+              <p
+                className="mt-1 text-[11px]"
+                style={{ color: ackNote.ok ? "var(--sa-success)" : "var(--sa-danger)" }}
+              >
+                {ackNote.text}
+              </p>
+            )}
+
+            <p className="mt-3 text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Update status</p>
             <div className="flex flex-wrap gap-1.5">
               {(Object.keys(STATUS_CFG) as string[]).filter((s) => s !== "converted").map((s) => (
                 <button

@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   FileText, Inbox, CalendarClock, Clock, Receipt, Camera, Megaphone,
   PauseCircle, CheckSquare, CheckCircle2, TrendingDown, EyeOff, Activity,
-  Check, Clock3, X, ArrowUpRight, Package, MessageSquare, Eye,
+  Check, Clock3, X, ArrowUpRight, Package, MessageSquare, Eye, Send,
 } from "lucide-react";
 import {
   QUEUE_META, URGENCY_STYLE, STALL_DAYS,
@@ -30,7 +30,11 @@ const ICON: Record<QueueKind, React.ElementType> = {
 
 /** What each row can have done to it without leaving the page. */
 const ACTIONS: Partial<Record<QueueKind, Array<{ action: string; label: string; icon: React.ElementType }>>> = {
-  lead:      [{ action: "contacted", label: "Replied", icon: Check }, { action: "lost", label: "Not for us", icon: X }],
+  lead:      [
+    { action: "thanks", label: "Thank them", icon: Send },
+    { action: "contacted", label: "Replied", icon: Check },
+    { action: "lost", label: "Not for us", icon: X },
+  ],
   followup:  [{ action: "done", label: "Done", icon: Check }, { action: "snooze", label: "Next week", icon: Clock3 }],
   invoice:   [{ action: "paid", label: "Paid", icon: Check }],
   task:      [{ action: "done", label: "Done", icon: Check }],
