@@ -97,6 +97,7 @@ function NavItem({ icon, label, active, badge, onClick }: {
 
 export function LeftRail({
   route, setRoute, projects, attentionCount, agencySettings, onSelectProject, selectedProjectId,
+  header,
 }: {
   route: PortalRoute;
   setRoute: (r: PortalRoute) => void;
@@ -105,11 +106,19 @@ export function LeftRail({
   agencySettings: AgencySettings;
   onSelectProject: (id: string) => void;
   selectedProjectId: string | null;
+  /**
+   * Context shown above the nav — the open product and its siblings.
+   * A slot rather than a replacement: the rail used to be swapped out
+   * entirely when a product was open, which took Invoices, Files and
+   * everything else off the screen with no way back to them.
+   */
+  header?: React.ReactNode;
 }) {
   const ICON = { size: 15, strokeWidth: 1.6 } as const;
 
   return (
     <div className="flex h-full flex-col">
+      {header}
       <div className="mac-nav-group">Workspace</div>
       <NavItem icon={<LayoutGrid {...ICON} />} label="Overview" active={route === "overview"} onClick={() => setRoute("overview")} />
       <NavItem icon={<CheckCircle2 {...ICON} />} label="Approvals" active={route === "approvals"} badge={attentionCount || undefined} onClick={() => setRoute("approvals")} />

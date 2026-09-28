@@ -2034,34 +2034,53 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
     ? (projects.find((p) => p.products.some((x) => x.id === selectedProduct.id))?.products ?? [])
     : [];
 
-  const left = selectedProduct ? (
-    <div className="flex h-full flex-col">
+  // The product context sits ABOVE the nav rather than replacing it.
+  // Swapping the whole rail out stranded people: opening a product hid
+  // Invoices, Files, Moodboard and everything else, and the only way out
+  // was a button labelled "Back to collection".
+  const productContext = selectedProduct ? (
+    <>
       <button className="mac-nav-item w-full" onClick={() => setSelectedProduct(null)}>
         <ChevronLeft size={15} strokeWidth={1.6} />
-        <span className="rail-label flex-1 text-left">Back to collection</span>
+        <span className="rail-label flex-1 text-left">Back</span>
       </button>
-      <div className="mac-nav-group">In this collection</div>
-      {siblings.map((sib) => (
-        <button
-          key={sib.id}
-          className="mac-nav-item w-full"
-          data-active={sib.id === selectedProduct.id}
-          onClick={() => setSelectedProduct(sib)}
-          title={sib.name}
-        >
-          <span className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: "var(--accent)" }} />
-          <span className="rail-label flex-1 truncate text-left">{sib.name}</span>
-        </button>
-      ))}
-    </div>
-  ) : (
+      {siblings.length > 1 && (
+        <>
+          <div className="mac-nav-group">In this collection</div>
+          {siblings.map((sib) => (
+            <button
+              key={sib.id}
+              className="mac-nav-item w-full"
+              data-active={sib.id === selectedProduct.id}
+              onClick={() => setSelectedProduct(sib)}
+              title={sib.name}
+            >
+              <span className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: "var(--accent)" }} />
+              <span className="rail-label flex-1 truncate text-left">{sib.name}</span>
+            </button>
+          ))}
+        </>
+      )}
+    </>
+  ) : null;
+
+  const left = (
     <LeftRail
+      header={productContext}
       route={route}
-      setRoute={(r) => { setRoute(r); if (r !== "projects") setSelectedProjectId(null); }}
+      setRoute={(r) => {
+        setRoute(r);
+        // Choosing a section means leaving the product. Without this the
+        // route changed underneath an open product and every section's
+        // content stayed hidden behind its `!selectedProduct` guard — the
+        // menus looked dead.
+        setSelectedProduct(null);
+        if (r !== "projects") setSelectedProjectId(null);
+      }}
       projects={projects}
       attentionCount={attention.length}
       agencySettings={agencySettings}
-      onSelectProject={setSelectedProjectId}
+      onSelectProject={(id) => { setSelectedProduct(null); setSelectedProjectId(id); }}
       selectedProjectId={selectedProjectId}
     />
   );
