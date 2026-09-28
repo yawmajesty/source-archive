@@ -289,7 +289,7 @@ export function MoodboardCanvas({
       {/* Surface */}
       <div
         ref={surfaceRef}
-        className="relative flex-1 overflow-hidden"
+        className="relative min-w-0 flex-1 overflow-hidden"
         style={{ cursor: drag.current?.mode === "pan" ? "grabbing" : "grab" }}
         onPointerDown={(e) => {
           if (e.target !== e.currentTarget && !(e.target as HTMLElement).dataset.surface) return;
@@ -538,7 +538,7 @@ export function MoodboardCanvas({
 
       {/* Inspector */}
       {selectedItem && (
-        <aside className="flex w-72 shrink-0 flex-col overflow-y-auto border-l border-[var(--sa-border)] bg-[var(--sa-window)]">
+        <aside className="absolute inset-y-0 right-0 z-20 flex w-full max-w-[18rem] shrink-0 flex-col overflow-y-auto border-l border-[var(--sa-border)] bg-[var(--sa-window)] md:static md:z-auto md:w-72 md:max-w-none">
           <div className="flex items-center gap-2 border-b border-[var(--sa-border)] px-3 py-2.5">
             <p className="flex-1 text-[12.5px] font-semibold text-[var(--sa-text-primary)]">Image</p>
             <button
