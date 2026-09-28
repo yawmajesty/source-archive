@@ -610,9 +610,9 @@ function CostBuilderTab({ products: initial, items: initialItems, rates, onRates
           </div>
 
           {/* Cost items */}
-          <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--sa-border)", background: "var(--sa-window)" }}>
+          <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid var(--sa-border)", background: "var(--sa-window)", overflowY: "hidden" }}>
             {/* Header */}
-            <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1fr 7rem 4.5rem 5.5rem 5.5rem 1.5rem", gap: "0.5rem", borderBottom: "1px solid var(--sa-border)", background: "var(--sa-bg)" }}>
+            <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1fr 7rem 4.5rem 5.5rem 5.5rem 1.5rem", minWidth: "640px", gap: "0.5rem", borderBottom: "1px solid var(--sa-border)", background: "var(--sa-bg)" }}>
               {["Item", "Category", "Qty", "Unit price", "Total", ""].map((h) => (
                 <span key={h} className="text-[9px] font-semibold uppercase tracking-wide text-[var(--sa-text-muted)]">{h}</span>
               ))}
@@ -627,7 +627,7 @@ function CostBuilderTab({ products: initial, items: initialItems, rates, onRates
                 ? toUSD(lineTotal, item.currency, rates)
                 : toUSD(lineTotal, item.currency, rates) * (rates[baseCurrency] ?? 1);
               return (
-                <div key={item.id} className="grid px-4 py-2.5 items-center" style={{ gridTemplateColumns: "1fr 7rem 4.5rem 5.5rem 5.5rem 1.5rem", gap: "0.5rem", borderBottom: "1px solid var(--sa-border)" }}>
+                <div key={item.id} className="grid px-4 py-2.5 items-center" style={{ gridTemplateColumns: "1fr 7rem 4.5rem 5.5rem 5.5rem 1.5rem", minWidth: "640px", gap: "0.5rem", borderBottom: "1px solid var(--sa-border)" }}>
                   <div className="min-w-0">
                     <p className="text-[12px] font-medium text-[var(--sa-text-primary)] truncate">{item.description}</p>
                   </div>
@@ -643,7 +643,7 @@ function CostBuilderTab({ products: initial, items: initialItems, rates, onRates
             })}
 
             {/* Add item row */}
-            <div className="grid px-4 py-2.5 items-center gap-1.5" style={{ gridTemplateColumns: "1fr 7rem 4.5rem 5.5rem 5.5rem 1.5rem", borderBottom: selectedItems.length > 0 ? "1px solid var(--sa-border)" : undefined, background: "var(--sa-bg)" }}>
+            <div className="grid px-4 py-2.5 items-center gap-1.5" style={{ gridTemplateColumns: "1fr 7rem 4.5rem 5.5rem 5.5rem 1.5rem", minWidth: "640px", borderBottom: selectedItems.length > 0 ? "1px solid var(--sa-border)" : undefined, background: "var(--sa-bg)" }}>
               <input value={newItem.description} onChange={(e) => setNewItem((n) => ({ ...n, description: e.target.value }))} placeholder="Description" className="field-input text-[11px] w-full" />
               <select value={newItem.category} onChange={(e) => setNewItem((n) => ({ ...n, category: e.target.value }))} className="field-input text-[11px] w-full">
                 {Object.entries(COST_CATS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}

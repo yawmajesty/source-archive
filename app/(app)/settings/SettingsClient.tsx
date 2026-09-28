@@ -411,38 +411,40 @@ export function SettingsClient({ currentUser, team, isAdmin, agencySettings }: P
             </div>
 
             <div className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] overflow-hidden">
-              <table className="w-full text-[13px]">
-                <thead>
-                  <tr className="border-b border-[var(--sa-border)]">
-                    <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--sa-text-tertiary)]">Name / Email</th>
-                    <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--sa-text-tertiary)]">Role</th>
-                    <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--sa-text-tertiary)]">Joined</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--sa-border)]">
-                  {team.map((member) => (
-                    <tr key={member.id} className="hover:bg-[var(--sa-hover)] transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--sa-accent)]/20 text-[var(--sa-accent)] text-[10px] font-semibold select-none">
-                            {(member.fullName ?? member.email)[0].toUpperCase()}
-                          </div>
-                          <div>
-                            {member.fullName && <div className="font-medium text-[var(--sa-text-primary)]">{member.fullName}</div>}
-                            <div className="text-[11px] text-[var(--sa-text-tertiary)]">{member.email}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <RoleSelect profile={member} currentUserId={currentUser.id} />
-                      </td>
-                      <td className="px-4 py-3 text-[var(--sa-text-tertiary)]">
-                        {new Date(member.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-[13px]">
+                  <thead>
+                    <tr className="border-b border-[var(--sa-border)]">
+                      <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--sa-text-tertiary)]">Name / Email</th>
+                      <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--sa-text-tertiary)]">Role</th>
+                      <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--sa-text-tertiary)]">Joined</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--sa-border)]">
+                    {team.map((member) => (
+                      <tr key={member.id} className="hover:bg-[var(--sa-hover)] transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--sa-accent)]/20 text-[var(--sa-accent)] text-[10px] font-semibold select-none">
+                              {(member.fullName ?? member.email)[0].toUpperCase()}
+                            </div>
+                            <div>
+                              {member.fullName && <div className="font-medium text-[var(--sa-text-primary)]">{member.fullName}</div>}
+                              <div className="text-[11px] text-[var(--sa-text-tertiary)]">{member.email}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <RoleSelect profile={member} currentUserId={currentUser.id} />
+                        </td>
+                        <td className="px-4 py-3 text-[var(--sa-text-tertiary)]">
+                          {new Date(member.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               {team.length === 0 && (
                 <div className="flex flex-col items-center gap-2 py-10 text-[var(--sa-text-tertiary)]">
                   <User size={20} strokeWidth={1.5} />

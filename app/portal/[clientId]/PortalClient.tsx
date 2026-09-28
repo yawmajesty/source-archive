@@ -1388,8 +1388,8 @@ function SamplingInvoice({
                 </div>
 
                 {isProduction ? (
-                  <>
-                    <div className="grid px-6 py-1.5" style={{ gridTemplateColumns: "2rem 56px 1fr auto auto auto", gap: "0.75rem", borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
+                  <div className="overflow-x-auto">
+                    <div className="grid px-6 py-1.5" style={{ gridTemplateColumns: "2rem 56px 1fr auto auto auto", minWidth: "560px", gap: "0.75rem", borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
                       {["#", "Photo", "Item", "Qty", "Unit", "Total"].map((h) => (
                         <span key={h} className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: "var(--portal-text-muted)" }}>{h}</span>
                       ))}
@@ -1397,7 +1397,7 @@ function SamplingInvoice({
                     {activeInvoice.line_items.map((li, i) => (
                       <div key={i} className="grid px-6 py-3 items-center"
                         style={{
-                          gridTemplateColumns: "2rem 56px 1fr auto auto auto",
+                          gridTemplateColumns: "2rem 56px 1fr auto auto auto", minWidth: "560px",
                           gap: "0.75rem",
                           borderBottom: i < activeInvoice.line_items.length - 1 ? "1px solid var(--portal-border-subtle)" : undefined,
                           background: i % 2 === 0 ? "transparent" : "var(--portal-row-alt)",
@@ -1422,10 +1422,10 @@ function SamplingInvoice({
                         <span className="font-mono text-[13px] font-semibold text-right whitespace-nowrap" style={{ color: "var(--portal-text-primary)" }}>${li.amount_usd.toFixed(2)}</span>
                       </div>
                     ))}
-                  </>
+                  </div>
                 ) : (
-                  <>
-                    <div className="grid px-6 py-1.5" style={{ gridTemplateColumns: "2rem 1fr auto auto", gap: "0.75rem", borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
+                  <div className="overflow-x-auto">
+                    <div className="grid px-6 py-1.5" style={{ gridTemplateColumns: "2rem 1fr auto auto", minWidth: "420px", gap: "0.75rem", borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
                       {["#", "Item", "Date", "Amount"].map((h) => (
                         <span key={h} className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: "var(--portal-text-muted)" }}>{h}</span>
                       ))}
@@ -1433,7 +1433,7 @@ function SamplingInvoice({
                     {activeInvoice.line_items.map((li, i) => (
                       <div key={i} className="grid px-6 py-3 items-center"
                         style={{
-                          gridTemplateColumns: "2rem 1fr auto auto",
+                          gridTemplateColumns: "2rem 1fr auto auto", minWidth: "420px",
                           gap: "0.75rem",
                           borderBottom: i < activeInvoice.line_items.length - 1 ? "1px solid var(--portal-border-subtle)" : undefined,
                           background: i % 2 === 0 ? "transparent" : "var(--portal-row-alt)",
@@ -1457,7 +1457,7 @@ function SamplingInvoice({
                         <span className="font-mono text-[13px] font-semibold whitespace-nowrap" style={{ color: "var(--portal-text-primary)" }}>${li.amount_usd.toFixed(2)}</span>
                       </div>
                     ))}
-                  </>
+                  </div>
                 )}
 
                 <div className="flex flex-col gap-1 px-6 py-4" style={{ borderTop: "2px solid var(--portal-border)" }}>
@@ -2006,7 +2006,7 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
           stylesheet mistake. */}
       <TopbarMenu route={route} setRoute={goTo} attentionCount={attention.length} />
 
-      <div className="flex items-center gap-2.5">
+      <div className="flex min-w-0 items-center gap-2.5">
         <div
           className="hidden h-[22px] w-[22px] items-center justify-center rounded-[6px] text-[11px] font-bold text-white select-none md:flex"
           style={{ background: "var(--accent)" }}
@@ -2016,9 +2016,11 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
         <span className="truncate text-[13px] font-semibold tight" style={{ color: "var(--label)" }}>{client.name}</span>
       </div>
 
-      {/* breadcrumb */}
-      <span className="text-[13px]" style={{ color: "var(--label-3)" }}>/</span>
-      <span className="text-[13px]" style={{ color: "var(--label-2)" }}>{ROUTE_TITLE[route]}</span>
+      {/* breadcrumb — dropped on a phone, where the tab bar already names the route */}
+      <span className="hidden shrink-0 text-[13px] sm:inline" style={{ color: "var(--label-3)" }}>/</span>
+      <span className="hidden shrink-0 truncate text-[13px] sm:inline" style={{ color: "var(--label-2)" }}>
+        {ROUTE_TITLE[route]}
+      </span>
 
       {!selectedProduct && (route === "overview" || route === "projects") && (
         <div className="ml-2 hidden md:block">
@@ -2026,9 +2028,9 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
         </div>
       )}
 
-      <div className="flex-1" />
+      <div className="min-w-0 flex-1" />
 
-      <button className="mac-button hidden items-center gap-1.5 sm:flex" style={{ color: "var(--label-2)" }}>
+      <button className="mac-button hidden shrink-0 items-center gap-1.5 sm:flex" style={{ color: "var(--label-2)" }}>
         <Search size={13} strokeWidth={1.6} />
         <span className="text-[11.5px]">Search</span>
         <span className="tnum text-[10.5px]" style={{ color: "var(--label-3)" }}>⌘K</span>
@@ -2037,7 +2039,7 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
       <button
         onClick={toggle}
         aria-label="Toggle theme"
-        className="flex h-[26px] w-[26px] items-center justify-center rounded-[6.5px]"
+        className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[6.5px]"
         style={{ color: "var(--label-2)" }}
       >
         {dark ? <SunIcon size={15} strokeWidth={1.6} /> : <MoonIcon size={15} strokeWidth={1.6} />}

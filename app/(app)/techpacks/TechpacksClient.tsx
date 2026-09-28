@@ -439,8 +439,8 @@ export function TechpacksClient({ submissions: initial }: Props) {
   }
 
   return (
-    <div className="flex h-full overflow-hidden">
-      <div className={cn("flex flex-col overflow-hidden transition-all", selected ? "flex-1" : "w-full")}>
+    <div className="flex h-full flex-col overflow-hidden md:flex-row">
+      <div className={cn("flex min-w-0 flex-col overflow-hidden transition-all", selected ? "hidden flex-1 md:flex" : "w-full")}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 panel-border-b bg-[var(--sa-window)]">
@@ -519,7 +519,7 @@ export function TechpacksClient({ submissions: initial }: Props) {
 
       <AnimatePresence>
         {selected && (
-          <div className="w-[420px] shrink-0 overflow-hidden">
+          <div className="w-full shrink-0 overflow-hidden md:w-[420px]">
             <TechpackDetail
               key={selected.id}
               sub={selected}

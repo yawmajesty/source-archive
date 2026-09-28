@@ -61,10 +61,10 @@ export function PortalShell({
       <div className="portal-topbar mac-toolbar hairline-b flex items-center gap-3 px-3">{topbar}</div>
       <aside className="portal-left mac-sidebar hairline-r px-2 py-3">{left}</aside>
       <main className="portal-center">
-        <div className="portal-center-inner px-6 py-5">{children}</div>
+        <div className="portal-center-inner px-4 py-4 sm:px-6 sm:py-5">{children}</div>
       </main>
       {right ? <aside className="portal-right mac-sidebar hairline-l px-4 py-4">{right}</aside> : null}
-      {tabbar ? <nav className="portal-tabbar mac-toolbar items-center justify-around">{tabbar}</nav> : null}
+      {tabbar ? <nav className="portal-tabbar mac-toolbar hairline-t items-center justify-around">{tabbar}</nav> : null}
     </div>
   );
 }

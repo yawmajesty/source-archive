@@ -464,6 +464,7 @@
 .hairline-r { box-shadow: inset -0.5px 0 0 var(--sep); }
 .hairline-l { box-shadow: inset 0.5px 0 0 var(--sep); }
 .hairline-b { box-shadow: inset 0 -0.5px 0 var(--sep); }
+.hairline-t { box-shadow: inset 0 0.5px 0 var(--sep); }
 
 .mac-card {
   background: var(--content);
@@ -562,10 +563,10 @@
 .portal-app[data-left="icons"]   { grid-template-columns: 56px minmax(0, 1fr) 340px; }
 .portal-app[data-left="icons"][data-right="closed"] { grid-template-columns: 56px minmax(0, 1fr) 0px; }
 
-.portal-topbar { grid-column: 1 / -1; grid-row: 1; }
+.portal-topbar { grid-column: 1 / -1; grid-row: 1; min-width: 0; overflow: hidden; }
 .portal-left   { grid-column: 1; grid-row: 2; overflow-y: auto; overflow-x: hidden; }
-.portal-center { grid-column: 2; grid-row: 2; overflow-y: auto; }
-.portal-right  { grid-column: 3; grid-row: 2; overflow-y: auto; }
+.portal-center { grid-column: 2; grid-row: 2; overflow-y: auto; overflow-x: hidden; min-width: 0; }
+.portal-right  { grid-column: 3; grid-row: 2; overflow-y: auto; overflow-x: hidden; min-width: 0; }
 .portal-app[data-right="closed"] .portal-right { display: none; }
 
 .portal-center-inner { max-width: 1180px; margin: 0 auto; width: 100%; }
@@ -607,9 +608,10 @@
   .portal-app[data-right="open"] .portal-right {
     display: block;
     position: fixed;
-    inset: 56px 0 0 0;
+    inset: 56px 0 56px 0;
     z-index: 40;
     background: var(--content);
+    box-shadow: none;
   }
   .portal-tabbar { display: flex; }
 }

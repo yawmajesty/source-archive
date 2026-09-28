@@ -41,7 +41,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         pendingApprovals={pendingApprovals}
         userEmail={user?.emailAddresses[0]?.emailAddress ?? null}
       />
-      <main className="flex flex-1 flex-col overflow-hidden pt-12 md:pt-0">
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden pt-12 md:pt-0">
         {children}
       </main>
     </div>

@@ -454,8 +454,8 @@ export function ReferencesClient({ samples: initial, factories, clients }: Props
   const rightPanel = showAdd ? "add" : selected ? "detail" : null;
 
   return (
-    <div className="flex h-full overflow-hidden">
-      <div className={cn("flex flex-col overflow-hidden transition-all", rightPanel ? "flex-1" : "w-full")}>
+    <div className="flex h-full flex-col overflow-hidden md:flex-row">
+      <div className={cn("flex min-w-0 flex-col overflow-hidden transition-all", rightPanel ? "hidden flex-1 md:flex" : "w-full")}>
 
         <div className="flex items-center justify-between px-6 py-4 panel-border-b bg-[var(--sa-window)]">
           <div>
@@ -531,7 +531,7 @@ export function ReferencesClient({ samples: initial, factories, clients }: Props
 
       <AnimatePresence>
         {rightPanel === "add" && (
-          <div className="w-96 shrink-0 overflow-hidden">
+          <div className="w-full shrink-0 overflow-hidden md:w-96">
             <AddSamplePanel
               clients={clients}
               onClose={() => setShowAdd(false)}
@@ -540,7 +540,7 @@ export function ReferencesClient({ samples: initial, factories, clients }: Props
           </div>
         )}
         {rightPanel === "detail" && selected && (
-          <div className="w-96 shrink-0 overflow-hidden">
+          <div className="w-full shrink-0 overflow-hidden md:w-96">
             <ReferenceDetail
               key={selected.id}
               sample={selected}

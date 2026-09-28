@@ -833,24 +833,26 @@ function VolumePricingCard({ product, onSaved, kind }: { product: Product; onSav
                 : "No supplier tiers set yet."}
             </p>
           ) : (
-            <table className="w-full text-[12px]">
-              <thead>
-                <tr className="text-left">
-                  <th className="pb-1.5 text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] font-semibold">Units</th>
-                  <th className="pb-1.5 text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] font-semibold text-right">Unit price</th>
-                  <th className="pb-1.5 text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] font-semibold text-right">Line total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--sa-border)]">
-                {tiers.map((t, i) => (
-                  <tr key={i}>
-                    <td className="py-1.5 font-mono text-[var(--sa-text-secondary)]">{t.moq.toLocaleString()}</td>
-                    <td className="py-1.5 font-mono font-semibold text-[var(--sa-text-primary)] text-right">${t.unit_price_usd.toFixed(2)}</td>
-                    <td className="py-1.5 font-mono text-[var(--sa-text-tertiary)] text-right">${(t.moq * t.unit_price_usd).toLocaleString("en-US", { maximumFractionDigits: 0 })}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-[12px]">
+                <thead>
+                  <tr className="text-left">
+                    <th className="pb-1.5 text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] font-semibold">Units</th>
+                    <th className="pb-1.5 text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] font-semibold text-right">Unit price</th>
+                    <th className="pb-1.5 text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)] font-semibold text-right">Line total</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-[var(--sa-border)]">
+                  {tiers.map((t, i) => (
+                    <tr key={i}>
+                      <td className="py-1.5 font-mono text-[var(--sa-text-secondary)]">{t.moq.toLocaleString()}</td>
+                      <td className="py-1.5 font-mono font-semibold text-[var(--sa-text-primary)] text-right">${t.unit_price_usd.toFixed(2)}</td>
+                      <td className="py-1.5 font-mono text-[var(--sa-text-tertiary)] text-right">${(t.moq * t.unit_price_usd).toLocaleString("en-US", { maximumFractionDigits: 0 })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )
         ) : (
           <div className="flex flex-col gap-2">
@@ -1812,27 +1814,29 @@ export function ProductDetailClient({
             {localBom.length === 0 ? (
               <p className="text-[13px] text-[var(--sa-text-tertiary)]">No materials added yet.</p>
             ) : (
-              <table className="w-full text-[12px]">
-                <thead>
-                  <tr className="border-b border-[var(--sa-border)]">
-                    {["Material", "Supplier", "Unit cost", "Notes"].map((h) => (
-                      <th key={h} className="pb-2 text-left font-semibold text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {localBom.map((item) => (
-                    <tr key={item.id} className="border-b border-[var(--sa-border)] last:border-0">
-                      <td className="py-2 pr-4 font-medium text-[var(--sa-text-primary)]">{item.material}</td>
-                      <td className="py-2 pr-4 text-[var(--sa-text-secondary)]">{item.supplier}</td>
-                      <td className="py-2 pr-4 font-mono text-[var(--sa-text-primary)]">${item.unit_cost_usd}</td>
-                      <td className="py-2 text-[var(--sa-text-tertiary)] italic">{item.notes || "—"}</td>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-[12px]">
+                  <thead>
+                    <tr className="border-b border-[var(--sa-border)]">
+                      {["Material", "Supplier", "Unit cost", "Notes"].map((h) => (
+                        <th key={h} className="pb-2 text-left font-semibold text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">
+                          {h}
+                        </th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {localBom.map((item) => (
+                      <tr key={item.id} className="border-b border-[var(--sa-border)] last:border-0">
+                        <td className="py-2 pr-4 font-medium text-[var(--sa-text-primary)]">{item.material}</td>
+                        <td className="py-2 pr-4 text-[var(--sa-text-secondary)]">{item.supplier}</td>
+                        <td className="py-2 pr-4 font-mono text-[var(--sa-text-primary)]">${item.unit_cost_usd}</td>
+                        <td className="py-2 text-[var(--sa-text-tertiary)] italic">{item.notes || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
             <button onClick={() => setShowAddMaterial(true)} className="mt-3 flex items-center gap-1.5 text-[12px] text-[var(--sa-accent)] hover:opacity-80 transition-opacity">
               <Plus size={12} strokeWidth={2.5} /> Add material
@@ -1872,40 +1876,42 @@ export function ProductDetailClient({
           {/* Costs */}
           {costs.length > 0 && (
             <CollapsibleSection title="Production Costs">
-              <table className="w-full text-[12px]">
-                <thead>
-                  <tr className="border-b border-[var(--sa-border)]">
-                    {["Date", "Category", "Description", "Amount", "Billable"].map((h) => (
-                      <th key={h} className="pb-2 text-left font-semibold text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {costs.map((c) => (
-                    <tr key={c.id} className="border-b border-[var(--sa-border)] last:border-0">
-                      <td className="py-2 pr-4 text-[var(--sa-text-tertiary)]">{formatDate(c.date_paid)}</td>
-                      <td className="py-2 pr-4">
-                        <span className="rounded-full bg-[var(--sa-hover)] px-2 py-0.5 text-[10px] capitalize text-[var(--sa-text-secondary)]">
-                          {c.category}
-                        </span>
-                      </td>
-                      <td className="py-2 pr-4 text-[var(--sa-text-primary)]">{c.description}</td>
-                      <td className="py-2 pr-4 font-mono text-[var(--sa-text-primary)]">
-                        ${c.amount_gbp.toLocaleString("en-US", { maximumFractionDigits: 0 })}
-                      </td>
-                      <td className="py-2">
-                        {c.billable_to_client ? (
-                          <span className="text-[10px] text-[var(--sa-success)]">Yes</span>
-                        ) : (
-                          <span className="text-[10px] text-[var(--sa-text-tertiary)]">No</span>
-                        )}
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-[12px]">
+                  <thead>
+                    <tr className="border-b border-[var(--sa-border)]">
+                      {["Date", "Category", "Description", "Amount", "Billable"].map((h) => (
+                        <th key={h} className="pb-2 text-left font-semibold text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">
+                          {h}
+                        </th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {costs.map((c) => (
+                      <tr key={c.id} className="border-b border-[var(--sa-border)] last:border-0">
+                        <td className="py-2 pr-4 text-[var(--sa-text-tertiary)]">{formatDate(c.date_paid)}</td>
+                        <td className="py-2 pr-4">
+                          <span className="rounded-full bg-[var(--sa-hover)] px-2 py-0.5 text-[10px] capitalize text-[var(--sa-text-secondary)]">
+                            {c.category}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-4 text-[var(--sa-text-primary)]">{c.description}</td>
+                        <td className="py-2 pr-4 font-mono text-[var(--sa-text-primary)]">
+                          ${c.amount_gbp.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="py-2">
+                          {c.billable_to_client ? (
+                            <span className="text-[10px] text-[var(--sa-success)]">Yes</span>
+                          ) : (
+                            <span className="text-[10px] text-[var(--sa-text-tertiary)]">No</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </CollapsibleSection>
           )}
 

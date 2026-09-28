@@ -124,9 +124,9 @@ export function CrmClient({ clients }: { clients: ClientCrmSummary[] }) {
   }
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden md:flex-row">
       {/* ── Who needs attention ─────────────────── */}
-      <aside className="flex w-72 shrink-0 flex-col overflow-hidden border-r border-[var(--sa-border)]">
+      <aside className="flex max-h-56 w-full shrink-0 flex-col overflow-hidden border-b border-[var(--sa-border)] md:max-h-none md:w-72 md:border-b-0 md:border-r">
         <div className="border-b border-[var(--sa-border)] px-4 py-3">
           <h1 className="text-[15px] font-semibold text-[var(--sa-text-primary)]">CRM</h1>
           <p className="text-[11.5px] text-[var(--sa-text-tertiary)]">
@@ -177,7 +177,7 @@ export function CrmClient({ clients }: { clients: ClientCrmSummary[] }) {
           <p className="text-[13px] text-[var(--sa-text-tertiary)]">Pick a client.</p>
         </div>
       ) : (
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 border-b border-[var(--sa-border)] px-6 py-3">
             <div className="min-w-0">
               <h2 className="truncate text-[15px] font-semibold text-[var(--sa-text-primary)]">
@@ -220,7 +220,7 @@ export function CrmClient({ clients }: { clients: ClientCrmSummary[] }) {
             </p>
           )}
 
-          <div className="flex flex-1 gap-6 overflow-y-auto p-6">
+          <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-4 lg:flex-row lg:p-6">
             {/* Timeline */}
             <div className="flex min-w-0 flex-1 flex-col gap-4">
               {summary && (
@@ -300,7 +300,7 @@ export function CrmClient({ clients }: { clients: ClientCrmSummary[] }) {
             </div>
 
             {/* Side */}
-            <div className="flex w-72 shrink-0 flex-col gap-4">
+            <div className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
               <FollowUp client={active} onError={setError} />
               <Contacts
                 clientId={active.id}
