@@ -36,8 +36,12 @@ import {
 import { CostingInspector, SampleTimeline } from "./shell/CostingInspector";
 import { StageSelector } from "@/app/(app)/products/[id]/StageSelector";
 import {
-  LeftRail, RightRailOverview, attentionItems, upcomingItems,
+  LeftRail,
+  RightRailOverview,
+  attentionItems,
+  upcomingItems,
   type PortalRoute,
+  MobileTabBar,
 } from "./shell/Rails";
 import { Sun as SunIcon, Moon as MoonIcon, Search } from "lucide-react";
 import type { Stage } from "@/lib/mock-data";
@@ -2131,7 +2135,23 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
 
   return (
     <>
-      <PortalShell topbar={topbar} left={left} right={right} rightOpen={rightOpen}>
+      <PortalShell
+        topbar={topbar}
+        left={left}
+        right={right}
+        rightOpen={rightOpen}
+        tabbar={
+          <MobileTabBar
+            route={route}
+            setRoute={(r) => {
+              setRoute(r);
+              setSelectedProduct(null);
+              if (r !== "projects") setSelectedProjectId(null);
+            }}
+            attentionCount={attention.length}
+          />
+        }
+      >
         {selectedProduct && (
           <ProductDetailView
             // Remount per product. This component seeds media, updates, stage

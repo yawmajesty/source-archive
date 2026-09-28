@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
+
 import {
   LayoutGrid, CheckCircle2, FolderOpen, FileText, Receipt,
-  Paperclip, Sparkles, Clock, AlertCircle, Images, PackagePlus,
+  Paperclip, Sparkles, Clock, AlertCircle, Images, PackagePlus, MoreHorizontal, X,
 } from "lucide-react";
 import { RailSection } from "./PortalShell";
 import type { PortalProject, PortalProduct } from "../page";
@@ -227,6 +229,128 @@ export function RightRailOverview({
           </div>
         )}
       </RailSection>
+    </>
+  );
+}
+
+
+// ── Mobile ───────────────────────────────────────────────────
+//
+// Below 719px the CSS hides the left rail and reserves a row for this.
+// Nothing was ever passed into that slot, so the portal had no
+// navigation at all on a phone: no Invoices, no Files, no way out of a
+// product. This is that missing piece.
+//
+// Four destinations plus More. A tab bar that scrolls hides whatever is
+// off the edge, and nine tabs at phone width are unreadable — so the
+// four a client actually opens get a tab, and the rest live one tap
+// deeper where they can be read properly.
+
+const PRIMARY: { route: PortalRoute; label: string; icon: typeof LayoutGrid }[] = [
+  { route: "overview",  label: "Home",     icon: LayoutGrid },
+  { route: "approvals", label: "Approve",  icon: CheckCircle2 },
+  { route: "projects",  label: "Products", icon: FolderOpen },
+  { route: "sampling",  label: "Invoices", icon: Receipt },
+];
+
+const SECONDARY: { route: PortalRoute; label: string; icon: typeof LayoutGrid }[] = [
+  { route: "moodboard",  label: "Moodboard",       icon: Images },
+  { route: "newproduct", label: "Brief a product", icon: PackagePlus },
+  { route: "files",      label: "Files",           icon: Paperclip },
+  { route: "contracts",  label: "Contracts",       icon: FileText },
+  { route: "references", label: "References",      icon: Sparkles },
+];
+
+export function MobileTabBar({
+  route, setRoute, attentionCount,
+}: {
+  route: PortalRoute;
+  setRoute: (r: PortalRoute) => void;
+  attentionCount: number;
+}) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const inMore = SECONDARY.some((s) => s.route === route);
+
+  function go(r: PortalRoute) {
+    setRoute(r);
+    setMoreOpen(false);
+  }
+
+  return (
+    <>
+      {moreOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end"
+          style={{ background: "rgba(0,0,0,.4)" }}
+          onClick={() => setMoreOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="w-full rounded-t-2xl pb-6 pt-2"
+            style={{ background: "var(--content)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center px-4 py-2">
+              <p className="flex-1 text-[15px] font-semibold" style={{ color: "var(--label)" }}>
+                More
+              </p>
+              <button onClick={() => setMoreOpen(false)} aria-label="Close">
+                <X size={18} style={{ color: "var(--label-3)" }} />
+              </button>
+            </div>
+            {SECONDARY.map((item) => {
+              const Icon = item.icon;
+              const active = route === item.route;
+              return (
+                <button
+                  key={item.route}
+                  onClick={() => go(item.route)}
+                  className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
+                  style={{ color: active ? "var(--accent)" : "var(--label)" }}
+                >
+                  <Icon size={19} strokeWidth={1.6} />
+                  <span className="text-[15px]">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {PRIMARY.map((item) => {
+        const Icon = item.icon;
+        const active = route === item.route;
+        return (
+          <button
+            key={item.route}
+            onClick={() => go(item.route)}
+            className="relative flex flex-1 flex-col items-center justify-center gap-0.5 py-1"
+            style={{ color: active ? "var(--accent)" : "var(--label-3)" }}
+            aria-current={active ? "page" : undefined}
+          >
+            <Icon size={19} strokeWidth={active ? 2 : 1.6} />
+            <span className="text-[10px] leading-none">{item.label}</span>
+            {item.route === "approvals" && attentionCount > 0 && (
+              <span
+                className="absolute right-[22%] top-1 flex h-[15px] min-w-[15px] items-center justify-center rounded-full px-1 text-[9px] font-semibold text-white"
+                style={{ background: "var(--danger, #FF3B30)" }}
+              >
+                {attentionCount}
+              </span>
+            )}
+          </button>
+        );
+      })}
+
+      <button
+        onClick={() => setMoreOpen(true)}
+        className="flex flex-1 flex-col items-center justify-center gap-0.5 py-1"
+        style={{ color: inMore ? "var(--accent)" : "var(--label-3)" }}
+        aria-label="More sections"
+      >
+        <MoreHorizontal size={19} strokeWidth={inMore ? 2 : 1.6} />
+        <span className="text-[10px] leading-none">More</span>
+      </button>
     </>
   );
 }
