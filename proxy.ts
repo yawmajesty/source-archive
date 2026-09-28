@@ -1,6 +1,12 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 const isPublicRoute = createRouteMatcher([
+  // The root is a dispatcher, not a protected page: it looks at who you are
+  // and sends you on, and it already sends signed-out visitors to
+  // /for-brands. Protecting it meant the bare domain returned 404 to anyone
+  // not signed in, because a Clerk development instance cannot complete its
+  // handshake on a real domain and rewrites to _not-found instead.
+  "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/portal(.*)",
