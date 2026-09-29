@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { STAGE_LABEL } from "@/lib/stages";
+import { imageUrl } from "@/lib/image-url";
 
 const INK = "#1D1D1F";
 const MUTED = "#6E6E73";
@@ -85,6 +86,130 @@ function textRows(rows: Array<[string, string | null | undefined]>): string {
     .join("\n");
 }
 
+// ── Blocks used by the forwardable brief alert ────────────────
+
+/** A titled run of detail, with a rule above it to separate sections. */
+function section(title: string, inner: string): string {
+  if (!inner) return "";
+  return (
+    `<div style="border-top:1px solid ${RULE};margin-top:18px;padding-top:14px;">` +
+    `<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:${MUTED};margin-bottom:10px;">${esc(title)}</div>` +
+    inner +
+    `</div>`
+  );
+}
+
+/**
+ * The name the brand's file was uploaded under.
+ *
+ * Storage keys are prefixed with a timestamp to keep them unique, which is
+ * right for storage and useless in an email — "File 1" tells a factory
+ * nothing, "kani_travel_uniform_001_tech_pack.pdf" tells them everything.
+ */
+function fileNameOf(url: string): string {
+  try {
+    const last = decodeURIComponent(new URL(url).pathname.split("/").pop() ?? "");
+    return last.replace(/^\d{10,}-/, "") || "Attachment";
+  } catch {
+    return "Attachment";
+  }
+}
+
+const IMAGE_EXT = /\.(jpe?g|png|gif|webp|avif|heic|bmp|tiff?)(\?|$)/i;
+
+/**
+ * Uploads, as something you can actually look at in the email.
+ *
+ * Thumbnails go through the resize endpoint — the originals are around a
+ * megabyte each and a brief with eight of them would be an email nobody's
+ * client wants to open. Each one links to the full-size file, and anything
+ * that isn't an image becomes a plain link rather than a broken box.
+ */
+function attachments(urls: string[]): string {
+  if (urls.length === 0) return "";
+  const images = urls.filter((u) => IMAGE_EXT.test(u));
+  const others = urls.filter((u) => !IMAGE_EXT.test(u));
+
+  const thumbs = images
+    .map(
+      (u) =>
+        `<a href="${esc(u)}" style="text-decoration:none;display:inline-block;margin:0 6px 6px 0;">` +
+        `<img src="${esc(imageUrl(u, 104))}" width="104" alt="" ` +
+        `style="display:block;width:104px;height:104px;object-fit:cover;border:1px solid ${RULE};border-radius:8px;" /></a>`,
+    )
+    .join("");
+
+  const links = others
+    .map(
+      (u) =>
+        `<div style="margin:0 0 6px;font-size:13px;"><a href="${esc(u)}" style="color:${ACCENT};">${esc(fileNameOf(u))}</a></div>`,
+    )
+    .join("");
+
+  return thumbs + links;
+}
+
+function attachmentsText(urls: string[]): string {
+  return urls.map((u) => `  ${fileNameOf(u)}\n    ${u}`).join("\n");
+}
+
+/** One product from the brief, with everything the brand told us about it. */
+function briefProductBlock(prod: BriefProductLike, index: number): string {
+  const facts = [
+    prod.target_qty != null ? `${prod.target_qty.toLocaleString()} units` : null,
+    prod.colorways != null ? `${prod.colorways} colourway${prod.colorways === 1 ? "" : "s"}` : null,
+    prod.target_price_usd != null ? `target $${prod.target_price_usd.toFixed(2)}` : null,
+  ].filter(Boolean).join(" &middot; ");
+
+  return (
+    `<div style="border:1px solid ${RULE};border-radius:10px;padding:14px;margin-bottom:10px;">` +
+    `<div style="font-size:15px;font-weight:600;color:${INK};">${index + 1}. ${esc(prod.name || "Unnamed product")}</div>` +
+    (prod.category ? `<div style="font-size:12px;color:${MUTED};margin-top:2px;">${esc(prod.category)}</div>` : "") +
+    (facts ? `<div style="font-size:13px;color:${INK};margin-top:8px;">${facts}</div>` : "") +
+    (prod.description
+      ? `<div style="font-size:13px;line-height:1.6;color:${MUTED};margin-top:8px;">${esc(prod.description).replace(/\n/g, "<br />")}</div>`
+      : "") +
+    (prod.sustainability
+      ? `<div style="font-size:13px;line-height:1.6;color:${MUTED};margin-top:8px;"><strong style="color:${INK};font-weight:600;">Sustainability:</strong> ${esc(prod.sustainability)}</div>`
+      : "") +
+    (prod.moodboard_link
+      ? `<div style="font-size:13px;margin-top:8px;"><a href="${esc(prod.moodboard_link)}" style="color:${ACCENT};">Moodboard link</a></div>`
+      : "") +
+    (prod.moodboard_files && prod.moodboard_files.length
+      ? `<div style="margin-top:10px;">${attachments(prod.moodboard_files)}</div>`
+      : "") +
+    `</div>`
+  );
+}
+
+function briefProductText(prod: BriefProductLike, index: number): string {
+  const lines = [`${index + 1}. ${prod.name || "Unnamed product"}${prod.category ? ` (${prod.category})` : ""}`];
+  const facts = [
+    prod.target_qty != null ? `${prod.target_qty} units` : null,
+    prod.colorways != null ? `${prod.colorways} colourways` : null,
+    prod.target_price_usd != null ? `target $${prod.target_price_usd.toFixed(2)}` : null,
+  ].filter(Boolean).join(" · ");
+  if (facts) lines.push(`   ${facts}`);
+  if (prod.description) lines.push(`   ${prod.description}`);
+  if (prod.sustainability) lines.push(`   Sustainability: ${prod.sustainability}`);
+  if (prod.moodboard_link) lines.push(`   Moodboard: ${prod.moodboard_link}`);
+  if (prod.moodboard_files?.length) lines.push(attachmentsText(prod.moodboard_files));
+  return lines.join("\n");
+}
+
+/** Structurally what BriefProduct is, without importing the mock-data module. */
+export interface BriefProductLike {
+  name: string;
+  category?: string | null;
+  description?: string | null;
+  target_qty?: number | null;
+  target_price_usd?: number | null;
+  colorways?: number | null;
+  moodboard_link?: string | null;
+  moodboard_files?: string[];
+  sustainability?: string | null;
+}
+
 export interface Built {
   subject: string;
   html: string;
@@ -120,44 +245,106 @@ export function briefReceivedClient(input: {
   };
 }
 
+/**
+ * The brief alert, written to be forwarded.
+ *
+ * It used to carry six fields and a link, which meant the only way to see
+ * what someone had actually asked for was to log in — and the only way to
+ * show it to anyone else was to describe it to them. Everything the form
+ * collected is in here now, products laid out one by one with their
+ * reference images, so this email can go straight to whoever needs to
+ * quote it without a word of explanation.
+ *
+ * Contact details sit at the top for the same reason: a forwarded brief is
+ * no use to a factory or a freelancer if reaching the brand means coming
+ * back to ask.
+ */
 export function briefReceivedAdmin(input: {
   companyName: string;
   contactName: string;
   contactEmail: string;
+  phone?: string | null;
+  website?: string | null;
   country?: string | null;
+  industry?: string | null;
+  brandStage?: string | null;
+  manufacturedBefore?: boolean | null;
+  howFoundUs?: string | null;
   budget?: string | null;
   timeline?: string | null;
-  productSummary?: string | null;
   message?: string | null;
+  moodboardLinks?: string | null;
+  sustainability?: string | null;
+  briefFiles?: string[];
+  products?: BriefProductLike[];
   leadsUrl: string;
+  bookingUrl?: string | null;
 }): Built {
+  const products = input.products ?? [];
+  const files = input.briefFiles ?? [];
+  const made =
+    input.manufacturedBefore == null ? null : input.manufacturedBefore ? "Yes" : "No — first time";
+
+  const contact: Array<[string, string | null | undefined]> = [
+    ["Name", input.contactName],
+    ["Email", input.contactEmail],
+    ["Phone", input.phone],
+    ["Website", input.website],
+    ["Country", input.country],
+  ];
+  const about: Array<[string, string | null | undefined]> = [
+    ["Industry", input.industry],
+    ["Brand stage", input.brandStage],
+    ["Manufactured before", made],
+    ["Budget", input.budget],
+    ["Timeline", input.timeline],
+    ["Found us via", input.howFoundUs],
+  ];
+
   return {
-    subject: `New brief — ${input.companyName}`,
+    subject: `New brief — ${input.companyName}${products.length ? ` · ${products.length} product${products.length === 1 ? "" : "s"}` : ""}`,
     html: shell(
-      h1(`New brief from ${esc(input.companyName)}`) +
-        p(`${esc(input.contactName)} &lt;${esc(input.contactEmail)}&gt; just submitted the brief form.`) +
-        detailRows([
-          ["Contact", `${input.contactName} · ${input.contactEmail}`],
-          ["Country", input.country],
-          ["Products", input.productSummary],
-          ["Budget", input.budget],
-          ["Timeline", input.timeline],
-          ["Message", input.message],
-        ]) +
-        `<div style="margin-top:16px;">${button(input.leadsUrl, "Open in Leads")}</div>`,
-      "Sent to you because you're an admin on Source Archive.",
+      h1(`New brief from ${input.companyName}`) +
+        p(`${esc(input.contactName)} submitted the brief form. Everything they sent is below — forward this as it is.`) +
+        section("Contact", detailRows(contact)) +
+        section("About them", detailRows(about)) +
+        (products.length
+          ? section(
+              `Products (${products.length})`,
+              products.map((prod, i) => briefProductBlock(prod, i)).join(""),
+            )
+          : "") +
+        section("Attachments", attachments(files)) +
+        section(
+          "In their words",
+          detailRows([
+            ["Message", input.message],
+            ["Moodboard links", input.moodboardLinks],
+            ["Sustainability requirements", input.sustainability],
+          ]),
+        ) +
+        `<div style="margin-top:20px;">${button(input.leadsUrl, "Open in Leads")}` +
+        (input.bookingUrl
+          ? `<a href="${esc(input.bookingUrl)}" style="display:inline-block;margin:6px 0 0 8px;font-size:14px;color:${ACCENT};text-decoration:none;padding:10px 4px;">Booking link</a>`
+          : "") +
+        `</div>`,
+      "Sent to you because you're an admin on Source Archive. Reply to reach the brand directly.",
     ),
     text:
       `New brief from ${input.companyName}\n\n` +
+      `CONTACT\n` + textRows(contact) + `\n\n` +
+      `ABOUT THEM\n` + textRows(about) + `\n\n` +
+      (products.length
+        ? `PRODUCTS (${products.length})\n` + products.map((prod, i) => briefProductText(prod, i)).join("\n\n") + `\n\n`
+        : "") +
+      (files.length ? `ATTACHMENTS\n${attachmentsText(files)}\n\n` : "") +
       textRows([
-        ["Contact", `${input.contactName} · ${input.contactEmail}`],
-        ["Country", input.country],
-        ["Products", input.productSummary],
-        ["Budget", input.budget],
-        ["Timeline", input.timeline],
         ["Message", input.message],
+        ["Moodboard links", input.moodboardLinks],
+        ["Sustainability requirements", input.sustainability],
       ]) +
-      `\n\nOpen in Leads: ${input.leadsUrl}`,
+      `\n\nOpen in Leads: ${input.leadsUrl}` +
+      (input.bookingUrl ? `\nBooking link: ${input.bookingUrl}` : ""),
   };
 }
 
@@ -491,7 +678,7 @@ export interface Draft {
   body: string;
 }
 
-export type LeadReplyKind = "acknowledge" | "more_info";
+export type LeadReplyKind = "acknowledge" | "more_info" | "book_call";
 
 /**
  * "We've got it, here's when we'll come back."
@@ -570,6 +757,60 @@ export function moreInfoDraft(input: {
 }
 
 /**
+ * "Let's get a call in."
+ *
+ * The reply that should follow a brief with enough in it to talk about.
+ * Leads the booking link with a reason to click it — a bare link reads as
+ * admin, a line about what the call will cover reads as interest — and
+ * says what we'll have looked at beforehand, which is the difference
+ * between a sales call and a useful one.
+ */
+export function bookCallDraft(input: {
+  contactName: string;
+  companyName?: string | null;
+  isBrief: boolean;
+  bookingUrl: string;
+}): Draft {
+  const first = input.contactName.trim().split(/\s+/)[0];
+  const what = input.isBrief ? "your brief" : "your enquiry";
+  const forCompany = input.companyName ? ` for ${input.companyName}` : "";
+
+  return {
+    subject: input.companyName ? `${input.companyName} — let's set up a call` : "Let's set up a call",
+    body:
+      `${first ? `Hi ${first},` : "Hello,"}\n\n` +
+      `Thanks for sending ${what}${forCompany} over — we've read through it and we'd like to talk ` +
+      `it through properly.\n\n` +
+      `You can pick a time that suits you here:\n` +
+      `${input.bookingUrl}\n\n` +
+      `Before the call we'll have looked at what you've sent, so we can come to you with where we ` +
+      `think it should be made, roughly what it costs at the quantities you mentioned, and what the ` +
+      `timeline realistically looks like. If there's anything else you want us to look at first, ` +
+      `just reply and send it over.\n\n` +
+      `Looking forward to it.\n\n` +
+      `Best,\n`,
+  };
+}
+
+/**
+ * Make bare URLs clickable.
+ *
+ * Runs on already-escaped text, so there is nothing left to inject — and
+ * it has to, because a booking link the recipient cannot click is the one
+ * thing the call invitation exists to deliver. Some clients auto-link and
+ * some do not; this stops it being their decision. Trailing punctuation is
+ * left outside the link so a sentence-ending full stop does not become
+ * part of the address.
+ */
+function linkify(escaped: string): string {
+  return escaped.replace(/https?:\/\/[^\s<]+/g, (match) => {
+    const trailing = match.match(/[.,;:!?)\]]+$/);
+    const href = trailing ? match.slice(0, -trailing[0].length) : match;
+    return `<a href="${href}" style="color:${ACCENT};">${href}</a>${trailing ? trailing[0] : ""}`;
+  });
+}
+
+/**
  * Render an edited draft.
  *
  * Blank lines separate paragraphs, single newlines become line breaks, so
@@ -582,7 +823,7 @@ export function leadReply(draft: Draft): Built {
     .split(/\n{2,}/)
     .map((b) => b.trim())
     .filter(Boolean)
-    .map((b) => p(esc(b).replace(/\n/g, "<br />")))
+    .map((b) => p(linkify(esc(b)).replace(/\n/g, "<br />")))
     .join("");
 
   return {

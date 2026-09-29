@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Check, CheckCheck, Copy, ExternalLink, HelpCircle, Plus, Send, Trash2 } from "lucide-react";
+import { ArrowRight, CalendarPlus, Check, CheckCheck, Copy, ExternalLink, HelpCircle, Plus, Send, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { updateLeadStatus, convertLeadToClient, createLead, deleteLead } from "./actions";
 import { LeadReplyDialog } from "@/components/leads/LeadReplyDialog";
@@ -396,8 +396,18 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
               want made, and any specs.
             </p>
 
+            <button
+              onClick={() => setReplyKind("book_call")}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-[var(--sa-border)] px-3 py-2 text-[12.5px] font-medium text-[var(--sa-text-primary)] transition-colors hover:bg-[var(--sa-hover)]"
+            >
+              <CalendarPlus size={12} /> Set up a call
+            </button>
+            <p className="mt-1 text-[10.5px] leading-snug text-[var(--sa-text-tertiary)]">
+              Sends your booking link with a line on what the call will cover.
+            </p>
+
             <p className="mt-1.5 text-[10.5px] leading-snug text-[var(--sa-text-tertiary)]">
-              Both open the draft first so you can change it before it goes.
+              All three open the draft first so you can change it before it goes.
             </p>
 
             {ackNote && (

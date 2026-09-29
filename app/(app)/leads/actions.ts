@@ -4,10 +4,12 @@ import { revalidatePath } from "next/cache";
 import { getAgencySupabase } from "@/lib/supabase-agency";
 import { getAgencyContext } from "@/lib/agency-data";
 import { can } from "@/lib/permissions";
+import { bookingUrl } from "@/lib/booking";
 import { sendAll, looksLikeEmail } from "@/lib/email/send";
 import {
   acknowledgeDraft,
   moreInfoDraft,
+  bookCallDraft,
   leadReply,
   replyWindowFor,
   type Draft,
@@ -167,15 +169,18 @@ export async function draftLeadReply(
   const draft =
     kind === "acknowledge"
       ? acknowledgeDraft({ ...shared, window: replyWindowFor() })
-      : moreInfoDraft(shared);
+      : kind === "book_call"
+        ? bookCallDraft({ ...shared, bookingUrl: bookingUrl() })
+        : moreInfoDraft(shared);
 
   return { success: true, to: lead.contact_email, draft };
 }
 
 /** Which log slug each quick reply is filed under. */
-const REPLY_TEMPLATE: Record<LeadReplyKind, "lead_acknowledged" | "lead_more_info"> = {
+const REPLY_TEMPLATE: Record<LeadReplyKind, "lead_acknowledged" | "lead_more_info" | "lead_book_call"> = {
   acknowledge: "lead_acknowledged",
   more_info: "lead_more_info",
+  book_call: "lead_book_call",
 };
 
 /**

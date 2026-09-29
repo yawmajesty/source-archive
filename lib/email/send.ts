@@ -35,7 +35,8 @@ export type EmailTemplate =
   | "brief_declined"
   | "brief_accepted"
   | "lead_acknowledged"
-  | "lead_more_info";
+  | "lead_more_info"
+  | "lead_book_call";
 
 export interface OutboundEmail {
   agencyId: string;

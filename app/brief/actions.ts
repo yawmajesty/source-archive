@@ -4,6 +4,7 @@ import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { sendAll, agencyNotificationRecipients } from "@/lib/email/send";
 import { briefReceivedClient, briefReceivedAdmin } from "@/lib/email/templates";
 import { buildPublicUrl } from "@/lib/url";
+import { bookingUrl } from "@/lib/booking";
 import type { BriefProduct } from "@/lib/mock-data";
 
 interface BriefPayload {
@@ -71,16 +72,28 @@ export async function submitBrief(payload: BriefPayload) {
     companyName: payload.company_name,
     productSummary: productSummary || null,
   });
+  // Everything the form collected goes in the alert, so it can be forwarded
+  // to whoever is quoting it without them needing a login.
   const alert = briefReceivedAdmin({
     companyName: payload.company_name,
     contactName: payload.contact_name,
     contactEmail: payload.contact_email,
+    phone: payload.phone,
+    website: payload.website,
     country: payload.country,
+    industry: payload.industry,
+    brandStage: payload.brand_stage,
+    manufacturedBefore: payload.manufactured_before,
+    howFoundUs: payload.how_found_us,
     budget: payload.estimated_budget,
     timeline: payload.timeline,
-    productSummary: productSummary || null,
     message: payload.message,
+    moodboardLinks: payload.moodboard_links,
+    sustainability: payload.sustainability_requirements,
+    briefFiles: payload.brief_files,
+    products: payload.brief_products,
     leadsUrl,
+    bookingUrl: bookingUrl(),
   });
 
   await sendAll([

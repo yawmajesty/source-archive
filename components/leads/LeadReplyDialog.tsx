@@ -23,6 +23,8 @@ const INTRO: Record<LeadReplyKind, string> = {
     "Confirms we've got it and says when we'll come back. Worth adding a line about what they actually sent — it is the difference between a receipt and a reply.",
   more_info:
     "For a brief too thin to act on. Say what you'd need from this one specifically if you can; a named gap gets answered far more often than a list does.",
+  book_call:
+    "Sends your booking link. Worth naming one thing from their brief you want to get into — it turns a calendar link into a reason to pick a slot.",
 };
 
 export function LeadReplyDialog({
@@ -85,7 +87,11 @@ export function LeadReplyDialog({
         <div className="flex items-center gap-3 border-b border-[var(--sa-border)] px-5 py-3.5">
           <div className="min-w-0 flex-1">
             <p className="text-[14px] font-semibold text-[var(--sa-text-primary)]">
-              {kind === "acknowledge" ? "Thank them" : "Ask for more detail"}
+              {kind === "acknowledge"
+                ? "Thank them"
+                : kind === "book_call"
+                  ? "Set up a call"
+                  : "Ask for more detail"}
             </p>
             <p className="truncate text-[11.5px] text-[var(--sa-text-tertiary)]">
               {loading ? "Loading the draft…" : to ? `To ${to}` : "No address on this lead"}
