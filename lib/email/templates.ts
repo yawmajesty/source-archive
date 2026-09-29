@@ -48,6 +48,12 @@ const bullets = (items: string[]) =>
     )
     .join("");
 
+/** How every message to a client ends. */
+const signoff = () =>
+  `<p style="margin:18px 0 0;font-size:14px;line-height:1.6;color:${MUTED};">Best,<br />Source Archive team</p>`;
+
+const SIGNOFF_TEXT = "\n\nBest,\nSource Archive team";
+
 const button = (href: string, label: string) =>
   `<a href="${esc(href)}" style="display:inline-block;margin-top:6px;background:${ACCENT};color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:500;padding:10px 18px;border-radius:6px;">${esc(label)}</a>`;
 
@@ -233,7 +239,8 @@ export function briefReceivedClient(input: {
         detailRows([
           ["Brand", input.companyName],
           ["What you're making", input.productSummary],
-        ]),
+        ]) +
+        signoff(),
       "You're getting this because you submitted a brief at Source Archive.",
     ),
     text:
@@ -241,7 +248,8 @@ export function briefReceivedClient(input: {
       `Your brief has landed with us and someone will read it properly rather than skim it. ` +
       `Expect to hear back within two working days.\n\n` +
       `If you think of anything else in the meantime, just reply to this email.\n\n` +
-      textRows([["Brand", input.companyName], ["What you're making", input.productSummary]]),
+      textRows([["Brand", input.companyName], ["What you're making", input.productSummary]]) +
+      SIGNOFF_TEXT,
   };
 }
 
@@ -354,10 +362,14 @@ export function enquiryReceivedClient(input: { contactName: string }): Built {
     subject: "Thanks for getting in touch",
     html: shell(
       h1(`Thanks, ${esc(first)}`) +
-        p("We've got your message and someone will come back to you shortly. Reply to this email if you want to add anything."),
+        p("We've got your message and someone will come back to you shortly. Reply to this email if you want to add anything.") +
+        signoff(),
       "You're getting this because you contacted Source Archive.",
     ),
-    text: `Thanks, ${first}.\n\nWe've got your message and someone will come back to you shortly. Reply to this email if you want to add anything.`,
+    text:
+      `Thanks, ${first}.\n\nWe've got your message and someone will come back to you shortly. ` +
+      `Reply to this email if you want to add anything.` +
+      SIGNOFF_TEXT,
   };
 }
 
@@ -393,10 +405,14 @@ export function techpackReceivedClient(input: { contactName: string; garment?: s
     html: shell(
       h1(`Thanks, ${esc(first)}`) +
         p("We've got your tech pack request. We'll review the details and come back to you with next steps and a quote.") +
-        detailRows([["Garment", input.garment]]),
+        detailRows([["Garment", input.garment]]) +
+        signoff(),
       "You're getting this because you requested a tech pack from Source Archive.",
     ),
-    text: `Thanks, ${first}.\n\nWe've got your tech pack request. We'll review the details and come back to you with next steps and a quote.\n\n${textRows([["Garment", input.garment]])}`,
+    text:
+      `Thanks, ${first}.\n\nWe've got your tech pack request. We'll review the details and come back ` +
+      `to you with next steps and a quote.\n\n${textRows([["Garment", input.garment]])}` +
+      SIGNOFF_TEXT,
   };
 }
 
@@ -455,13 +471,15 @@ export function stageUpdateClient(input: {
         (input.note
           ? `<div style="border-left:2px solid ${RULE};padding:2px 0 2px 12px;margin:14px 0;font-size:14px;line-height:1.6;color:${MUTED};">${esc(input.note)}</div>`
           : "") +
-        `<div style="margin-top:16px;">${button(input.portalUrl, "See it in your portal")}</div>`,
+        `<div style="margin-top:16px;">${button(input.portalUrl, "See it in your portal")}</div>` +
+        signoff(),
       "You're getting this because you're working with Source Archive. Tell us any time if you'd rather not.",
     ),
     text:
       `${input.productName} — ${label}\n\n${sentence}\n` +
       (input.note ? `\n${input.note}\n` : "") +
-      `\nSee it in your portal: ${input.portalUrl}`,
+      `\nSee it in your portal: ${input.portalUrl}` +
+      SIGNOFF_TEXT,
   };
 }
 
@@ -614,7 +632,7 @@ export function declineDefaultBody(input: { name: string; productName: string; c
     `— A tech pack template you can send to any factory: [link]\n` +
     `— If you need an introduction to a manufacturer, reply and we'll point you somewhere good.\n\n` +
     `Do keep us in mind for the next one — we'd like to work together when the timing lands better.\n\n` +
-    `Best,\n`
+    `Best,\nSource Archive team`
   );
 }
 
@@ -707,7 +725,7 @@ export function acknowledgeDraft(input: {
       `on right now.\n\n` +
       `If anything changes in the meantime, or you think of something you forgot to mention, just ` +
       `reply to this email.\n\n` +
-      `Best,\n`,
+      `Best,\nSource Archive team`,
   };
 }
 
@@ -752,7 +770,7 @@ export function moreInfoDraft(input: {
       `It really doesn't need to be polished. Rough notes are genuinely fine — we just need enough ` +
       `to come back to you with something useful.\n\n` +
       `Once we've got that, we'll get a call in the diary.\n\n` +
-      `Best,\n`,
+      `Best,\nSource Archive team`,
   };
 }
 
@@ -783,12 +801,12 @@ export function bookCallDraft(input: {
       `it through properly.\n\n` +
       `You can pick a time that suits you here:\n` +
       `${input.bookingUrl}\n\n` +
-      `Before the call we'll have looked at what you've sent, so we can come to you with where we ` +
-      `think it should be made, roughly what it costs at the quantities you mentioned, and what the ` +
-      `timeline realistically looks like. If there's anything else you want us to look at first, ` +
-      `just reply and send it over.\n\n` +
+      `We'll have gone through what you've sent before we speak, so we can use the time to get into ` +
+      `the details — where it's best made, what's realistic on timing, and what we'd need from you ` +
+      `to put costs together. If there's anything else you want us to look at first, just reply and ` +
+      `send it over.\n\n` +
       `Looking forward to it.\n\n` +
-      `Best,\n`,
+      `Best,\nSource Archive team`,
   };
 }
 
@@ -830,5 +848,46 @@ export function leadReply(draft: Draft): Built {
     subject: draft.subject,
     html: shell(paragraphs, "You're getting this because you contacted Source Archive."),
     text: draft.body,
+  };
+}
+
+/**
+ * "Something changed in your portal."
+ *
+ * A client should not have to check a website to find out an invoice is
+ * waiting. This says what happened in one line, and links straight to it —
+ * the point is the link, so the email stays short enough that the link is
+ * the only thing to do with it.
+ *
+ * Used for anything the client can see: invoices going out, payments
+ * landing, files arriving. The headline is written by the caller because
+ * "there's been an update" on its own is the kind of notification people
+ * learn to ignore.
+ */
+export function portalUpdate(input: {
+  headline: string;
+  detail?: string | null;
+  portalUrl: string;
+  linkLabel?: string;
+}): Built {
+  return {
+    // The headline alone: it already reads as a subject line, and appending
+    // the sender gave "New invoice — Round 2 sampling — Source Archive",
+    // which is two dashes and a word the From field already says.
+    subject: input.headline,
+    html: shell(
+      h1("There's been an update in your portal") +
+        p(`<strong style="color:${INK};font-weight:600;">${esc(input.headline)}</strong>`) +
+        (input.detail ? p(esc(input.detail)) : "") +
+        `<div style="margin-top:16px;">${button(input.portalUrl, input.linkLabel ?? "Open your portal")}</div>` +
+        signoff(),
+      "You're getting this because you're working with Source Archive. Tell us any time if you'd rather not.",
+    ),
+    text:
+      `There's been an update in your portal.\n\n` +
+      `${input.headline}\n` +
+      (input.detail ? `${input.detail}\n` : "") +
+      `\n${input.linkLabel ?? "Open your portal"}: ${input.portalUrl}` +
+      SIGNOFF_TEXT,
   };
 }

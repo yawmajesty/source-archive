@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { notifyPortalUpdate } from "@/lib/email/portal-notify";
+import { sumInvoice, money } from "@/lib/invoice-total";
 import { getAgencySupabase } from "@/lib/supabase-agency";
 import { getAgencyContext } from "@/lib/agency-data";
 import type { InvoiceLineItem } from "@/lib/data";
@@ -38,11 +40,46 @@ export async function createProjectQuote(data: {
 }
 
 export async function sendQuote(invoiceId: string, clientId: string, projectId: string): Promise<void> {
-  await ctxOrThrow();
+  const ctx = await ctxOrThrow();
   const supabase = await getAgencySupabase();
+  const { data: invoice } = await supabase
+    .from("sampling_invoices")
+    .select("title, round, invoice_kind, line_items, deposit_percent")
+    .eq("id", invoiceId)
+    .maybeSingle();
+
   await supabase.from("sampling_invoices").update({ status: "sent" }).eq("id", invoiceId);
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/portal/${clientId}`);
+
+  // Sending it is the moment the client has something to act on. Until now
+  // the invoice appeared in the portal and nothing said so.
+  const inv = invoice as {
+    title: string | null; round: number | null; invoice_kind: string | null;
+    line_items: unknown; deposit_percent: number | null;
+  } | null;
+  if (!inv) return;
+
+  const name =
+    inv.title ??
+    (inv.invoice_kind === "production"
+      ? `Production invoice${inv.round ? ` — Round ${inv.round}` : ""}`
+      : `Round ${inv.round ?? 1} sampling`);
+  const total = sumInvoice(inv.line_items);
+  const deposit = inv.deposit_percent ?? 100;
+  const due = total * (deposit / 100);
+
+  await notifyPortalUpdate({
+    agencyId: ctx.agency.id,
+    clientId,
+    headline: `New invoice — ${name}`,
+    detail:
+      deposit < 100
+        ? `${money(due)} due now (${deposit}% deposit of ${money(total)}). You can pay it in the portal.`
+        : `${money(due)} due. You can pay it in the portal.`,
+    linkLabel: "View and pay",
+    relatedId: invoiceId,
+  });
 }
 
 export async function deleteQuote(invoiceId: string, clientId: string, projectId: string): Promise<void> {
@@ -57,8 +94,14 @@ export async function deleteQuote(invoiceId: string, clientId: string, projectId
 // transfer or some other channel that isn't the Stripe webhook. Records the
 // paid_at timestamp so we know when the money arrived.
 export async function markInvoicePaid(invoiceId: string, clientId: string, projectId: string): Promise<{ success: boolean; error?: string }> {
-  await ctxOrThrow();
+  const ctx = await ctxOrThrow();
   const supabase = await getAgencySupabase();
+  const { data: invoice } = await supabase
+    .from("sampling_invoices")
+    .select("title, round, invoice_kind")
+    .eq("id", invoiceId)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("sampling_invoices")
     .update({ status: "paid", paid_at: new Date().toISOString() })
@@ -66,6 +109,25 @@ export async function markInvoicePaid(invoiceId: string, clientId: string, proje
   if (error) return { success: false, error: error.message };
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/portal/${clientId}`);
+
+  // A payment that arrived by transfer leaves no trace the client can see.
+  // Confirming it is what stops someone paying the same invoice twice.
+  const inv = invoice as { title: string | null; round: number | null; invoice_kind: string | null } | null;
+  const name =
+    inv?.title ??
+    (inv?.invoice_kind === "production"
+      ? `Production invoice${inv?.round ? ` — Round ${inv.round}` : ""}`
+      : `Round ${inv?.round ?? 1} sampling`);
+
+  await notifyPortalUpdate({
+    agencyId: ctx.agency.id,
+    clientId,
+    headline: `Payment received — ${name}`,
+    detail: "Thank you. The invoice is now marked paid in your portal.",
+    linkLabel: "See your invoices",
+    relatedId: invoiceId,
+  });
+
   return { success: true };
 }
 

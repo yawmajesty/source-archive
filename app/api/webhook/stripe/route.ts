@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { randomBytes } from "crypto";
+import { notifyPortalUpdate } from "@/lib/email/portal-notify";
 import { revalidatePath } from "next/cache";
 
 // The webhook is called by Stripe with no Clerk auth, so RLS would block
@@ -90,6 +91,26 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
     })
     .eq("id", invoiceId);
 
+  const { data: paidClient } = await supabase
+    .from("clients")
+    .select("agency_id")
+    .eq("id", clientId)
+    .maybeSingle();
+  const paidAgencyId = (paidClient as { agency_id: string | null } | null)?.agency_id ?? null;
+
+  // Tell them the money landed. The idempotency guard above returns early on
+  // a Stripe retry, so a retried webhook cannot send this twice.
+  if (paidAgencyId) {
+    await notifyPortalUpdate({
+      agencyId: paidAgencyId,
+      clientId,
+      headline: `Payment received — $${amountUsd.toFixed(2)}`,
+      detail: "Thank you. Your invoice is now marked paid in the portal.",
+      linkLabel: "See your invoices",
+      relatedId: invoiceId,
+    });
+  }
+
   // Record the payment as a cost entry (direction=in) so it hits the P&L.
   // Idempotent via source_ref — we don't insert a duplicate if this session
   // was already reconciled.
@@ -101,8 +122,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
     .maybeSingle();
 
   if (!existingCost) {
-    const { data: clientRow } = await supabase.from("clients").select("agency_id").eq("id", clientId).maybeSingle();
-    const agencyId = (clientRow as any)?.agency_id;
+    const agencyId = paidAgencyId;
     if (!agencyId) {
       console.warn("[stripe webhook] client has no agency_id — skipping cost entry:", clientId);
       revalidatePath(`/portal/${clientId}`);
