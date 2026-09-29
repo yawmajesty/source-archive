@@ -204,6 +204,11 @@ async function sendDigest(
             age: it.age,
             urgency: it.urgency,
             href: buildPublicUrl(it.href),
+            // Only where there is a project to park. The link opens the
+            // choice; it does not make it — see ParkDialog for why.
+            parkUrl: it.projectId
+              ? buildPublicUrl(`/dashboard?park=${encodeURIComponent(it.projectId)}`)
+              : null,
           })),
         }));
 
@@ -292,6 +297,10 @@ async function unpaidInvoices(
       // gets fetched by spam scanners and link previews, so a one-click
       // send from here would chase clients nobody meant to chase.
       chaseUrl: buildPublicUrl(`/invoices?chase=${encodeURIComponent(r.id)}`),
+      // Invoices belong to a client, not a project, so parking a project
+      // does nothing for them. This is their equivalent: still owed, still
+      // on the record, just no longer chased.
+      parkUrl: buildPublicUrl(`/invoices?park=${encodeURIComponent(r.id)}`),
     };
   });
 }

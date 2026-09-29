@@ -7,11 +7,16 @@ import { lineAmount, money } from "@/lib/invoice-total";
 import { setInvoiceStatus, draftInvoiceChase, sendInvoiceChase, archiveClient, type InvoiceRow } from "./actions";
 import { useRouter, useSearchParams } from "next/navigation";
 import { EmailDraftDialog } from "@/components/email/EmailDraftDialog";
+import { ParkInvoiceDialog } from "@/components/dashboard/ParkDialog";
+import { setInvoiceAside } from "@/app/(app)/dashboard/park-actions";
 
 const STATUS: Record<string, { label: string; bg: string; fg: string }> = {
   draft: { label: "Draft", bg: "var(--sa-hover)",       fg: "var(--sa-text-secondary)" },
   sent:  { label: "Sent",  bg: "rgba(255,149,0,.14)",   fg: "var(--sa-warning)" },
   paid:  { label: "Paid",  bg: "rgba(52,199,89,.14)",   fg: "var(--sa-success)" },
+  // Owed, but deliberately not being chased. Without a label here it
+  // rendered as a blank badge, which reads like a bug rather than a choice.
+  parked: { label: "Set aside", bg: "var(--sa-hover)", fg: "var(--sa-text-tertiary)" },
 };
 
 export function InvoicesClient({ invoices: initial }: { invoices: InvoiceRow[] }) {
@@ -64,11 +69,19 @@ export function InvoicesClient({ invoices: initial }: { invoices: InvoiceRow[] }
   const router = useRouter();
   const [chasing, setChasing] = useState<string | null>(null);
   const [chaseNote, setChaseNote] = useState<string | null>(null);
+  const [parking, setParking] = useState<string | null>(null);
 
   useEffect(() => {
-    const id = params.get("chase");
-    if (id) setChasing(id);
+    const chase = params.get("chase");
+    if (chase) setChasing(chase);
+    const park = params.get("park");
+    if (park) setParking(park);
   }, [params]);
+
+  function closePark() {
+    setParking(null);
+    router.replace("/invoices");
+  }
 
   function closeChase() {
     setChasing(null);
@@ -78,6 +91,13 @@ export function InvoicesClient({ invoices: initial }: { invoices: InvoiceRow[] }
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {parking && (
+        <ParkInvoiceDialog
+          invoiceId={parking}
+          onClose={closePark}
+          onDone={(msg) => { setChaseNote(msg); router.refresh(); }}
+        />
+      )}
       {chasing && (
         <EmailDraftDialog
           title="Chase this invoice"
@@ -247,11 +267,35 @@ export function InvoicesClient({ invoices: initial }: { invoices: InvoiceRow[] }
                             </button>
                           )}
                           {inv.status === "sent" && (
+                            <>
+                              <button
+                                onClick={() => { setError(null); setNotice(null); setChasing(inv.id); }}
+                                className="flex items-center gap-1.5 rounded-md border border-[var(--sa-border)] px-3 py-1.5 text-[12.5px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
+                              >
+                                <Send size={12} /> Send a reminder
+                              </button>
+                              <button
+                                onClick={() => { setError(null); setNotice(null); setParking(inv.id); }}
+                                className="flex items-center gap-1.5 rounded-md border border-[var(--sa-border)] px-3 py-1.5 text-[12.5px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
+                              >
+                                Stop chasing
+                              </button>
+                            </>
+                          )}
+                          {inv.status === "parked" && (
                             <button
-                              onClick={() => { setError(null); setNotice(null); setChasing(inv.id); }}
-                              className="flex items-center gap-1.5 rounded-md border border-[var(--sa-border)] px-3 py-1.5 text-[12.5px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
+                              disabled={busy === inv.id}
+                              onClick={async () => {
+                                setBusy(inv.id); setError(null); setNotice(null);
+                                const res = await setInvoiceAside(inv.id, false);
+                                setBusy(null);
+                                if (!res.success) { setError(res.error); return; }
+                                setNotice("Back in what you're chasing.");
+                                router.refresh();
+                              }}
+                              className="rounded-md border border-[var(--sa-border)] px-3 py-1.5 text-[12.5px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] disabled:opacity-50"
                             >
-                              <Send size={12} /> Send a reminder
+                              Start chasing again
                             </button>
                           )}
                           {inv.status === "draft" && (

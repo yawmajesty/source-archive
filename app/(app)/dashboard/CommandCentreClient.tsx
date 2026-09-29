@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   FileText, Inbox, CalendarClock, Clock, Receipt, Camera, Megaphone,
@@ -13,6 +13,8 @@ import {
 } from "@/lib/command-centre";
 import { quickAction } from "./command-actions";
 import { LeadReplyDialog } from "@/components/leads/LeadReplyDialog";
+import { ParkProjectDialog } from "@/components/dashboard/ParkDialog";
+import { useSearchParams, useRouter } from "next/navigation";
 import { BriefReviewer } from "./BriefReviewer";
 
 const ICON: Record<QueueKind, React.ElementType> = {
@@ -36,11 +38,16 @@ const ACTIONS: Partial<Record<QueueKind, Array<{ action: string; label: string; 
     { action: "contacted", label: "Replied", icon: Check },
     { action: "lost", label: "Not for us", icon: X },
   ],
+  approval:  [{ action: "park", label: "Park the project", icon: PauseCircle }],
+  margin:    [{ action: "park", label: "Park the project", icon: PauseCircle }],
   followup:  [{ action: "done", label: "Done", icon: Check }, { action: "snooze", label: "Next week", icon: Clock3 }],
   invoice:   [{ action: "paid", label: "Paid", icon: Check }],
   task:      [{ action: "done", label: "Done", icon: Check }],
   marketing: [{ action: "done", label: "Went out", icon: Check }],
-  stalled:   [{ action: "complete", label: "Finished", icon: Check }],
+  stalled:   [
+    { action: "complete", label: "Finished", icon: Check },
+    { action: "park", label: "Park the project", icon: PauseCircle },
+  ],
 };
 
 function when(iso: string): string {
@@ -81,11 +88,36 @@ export function CommandCentreClient({
 
   const [replying, setReplying] = useState<{ leadId: string; rowId: string } | null>(null);
 
+  // The morning digest links here with ?park=<projectId>. It opens the
+  // choice rather than making it — see ParkDialog for why a link in an
+  // email must never change anything on its own.
+  const params = useSearchParams();
+  const router = useRouter();
+  const [parking, setParking] = useState<{ id: string; name?: string | null } | null>(null);
+  const [parkNote, setParkNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = params.get("park");
+    if (id) setParking({ id });
+  }, [params]);
+
+  function closePark() {
+    setParking(null);
+    router.replace("/dashboard");
+  }
+
   async function act(item: QueueItem, action: string) {
     setError(null);
     // Thanking someone opens the draft rather than sending it. It is the one
     // action here that puts words in front of a person, so it gets read
     // first; the row stays put until it actually goes.
+    // Parking is a decision with two answers, so it opens the same dialog
+    // the digest links to rather than guessing which one you meant.
+    if (action === "park") {
+      if (!item.projectId) { setError("This one isn't attached to a project"); return; }
+      setParking({ id: item.projectId, name: item.subtitle ?? item.title });
+      return;
+    }
     if (item.kind === "lead" && action === "thanks") {
       setReplying({ leadId: item.id.replace(/^[a-z]+-/, ""), rowId: item.id });
       return;
@@ -102,6 +134,19 @@ export function CommandCentreClient({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {parking && (
+        <ParkProjectDialog
+          projectId={parking.id}
+          projectName={parking.name}
+          onClose={closePark}
+          onDone={(msg) => { setParkNote(msg); router.refresh(); }}
+        />
+      )}
+      {parkNote && (
+        <div className="border-b border-[var(--sa-border)] px-6 py-2 text-[12px]" style={{ color: "var(--sa-success)" }}>
+          {parkNote}
+        </div>
+      )}
       {replying && (
         <LeadReplyDialog
           leadId={replying.leadId}

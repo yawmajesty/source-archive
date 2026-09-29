@@ -13,6 +13,7 @@ import { STAGE_LABEL } from "@/lib/stages";
 import { sumInvoice } from "@/lib/invoice-total";
 import {
   QUEUE_META, ageOf, urgencyFor, sortQueue, sortQueues, STALL_DAYS, QUIET_PORTAL_DAYS,
+  PARKED_PROJECT,
   type CommandCentre, type Queue, type QueueItem, type QueueKind,
 } from "@/lib/command-centre";
 
@@ -46,7 +47,7 @@ export async function buildCommandCentre(
     visits, costRows, costedProducts,
   ] = await Promise.all([
     supabase.from("clients").select("id, name, status, next_follow_up_at, follow_up_note"),
-    supabase.from("projects").select("id, name, client_id"),
+    supabase.from("projects").select("id, name, client_id, status"),
     supabase.from("products").select("id, name, stage, project_id").neq("stage", "shipped"),
     supabase.from("product_briefs").select("id, name, product_id, client_id, status, created_at, last_reply_side, last_reply_at"),
     supabase.from("product_brief_replies").select("brief_id, side, created_at"),
@@ -71,8 +72,16 @@ export async function buildCommandCentre(
   const activeIds = new Set(activeClients.map((c) => c.id));
   const clientName = new Map(clientRows.map((c) => [c.id, c.name]));
 
-  const projectRows = (projects.data ?? []) as Array<{ id: string; name: string; client_id: string }>;
+  const projectRows = (projects.data ?? []) as Array<{
+    id: string; name: string; client_id: string; status: string | null;
+  }>;
   const projectById = new Map(projectRows.map((p) => [p.id, p]));
+  // A project put on ice, or marked done, stops appearing here. Its data
+  // is untouched — this only decides what competes for attention, which
+  // is the difference between a list you read and one you learn to skip.
+  const parkedProjects = new Set(
+    projectRows.filter((p) => PARKED_PROJECT.has(p.status ?? "active")).map((p) => p.id),
+  );
   // Everything downstream is filtered to active clients: an inactive
   // client keeps their data and their portal, they just stop competing
   // for attention here.
@@ -83,6 +92,7 @@ export async function buildCommandCentre(
     id: string; name: string | null; stage: string | null; project_id: string | null;
   }>;
   const liveProducts = productRows.filter((p) => {
+    if (p.project_id && parkedProjects.has(p.project_id)) return false;
     const cid = clientOfProject(p.project_id);
     return cid ? activeIds.has(cid) : false;
   });
@@ -187,6 +197,7 @@ export async function buildCommandCentre(
       age: null,
       urgency: "waiting",
       href: `/products/${p.id}`,
+      projectId: p.project_id ?? null,
       rank: 0,
     });
   }
@@ -257,6 +268,7 @@ export async function buildCommandCentre(
       age: moved ? ageOf(moved, now) : "never moved",
       urgency: "waiting",
       href: `/products/${p.id}`,
+      projectId: p.project_id ?? null,
       rank: moved ? new Date(moved).getTime() : 0,
     });
   }
@@ -290,6 +302,7 @@ export async function buildCommandCentre(
         age: null,
         urgency: over > budget * 0.25 ? "overdue" : "today",
         href: `/products/${p.id}`,
+        projectId: p.project_id ?? null,
         rank: -over,
       });
     }

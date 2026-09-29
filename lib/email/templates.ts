@@ -1009,7 +1009,15 @@ export interface DigestQueue {
   tone: string;
   stake: string;
   total: number;
-  items: Array<{ title: string; subtitle: string | null; age: string | null; urgency: string; href: string }>;
+  items: Array<{
+    title: string;
+    subtitle: string | null;
+    age: string | null;
+    urgency: string;
+    href: string;
+    /** Where to go to put the whole project aside, when it has one. */
+    parkUrl?: string | null;
+  }>;
 }
 
 export interface DigestInvoice {
@@ -1021,6 +1029,8 @@ export interface DigestInvoice {
   amount: string;
   age: string | null;
   chaseUrl: string;
+  /** Where to go to set it aside, for when chasing is not the answer. */
+  parkUrl?: string | null;
 }
 
 const URGENCY_TONE: Record<string, string> = {
@@ -1069,6 +1079,9 @@ export function dailyDigest(input: {
                 `<a href="${esc(it.href)}" style="font-size:14px;color:${INK};text-decoration:none;font-weight:500;">${esc(it.title)}</a>` +
                 `<span style="font-size:12px;color:${URGENCY_TONE[it.urgency] ?? MUTED};"> &middot; ${esc(it.urgency)}</span>` +
                 (it.subtitle ? `<div style="font-size:12.5px;color:${MUTED};">${esc(it.subtitle)}${it.age ? ` &middot; ${esc(it.age)}` : ""}</div>` : "") +
+                (it.parkUrl
+                  ? `<a href="${esc(it.parkUrl)}" style="font-size:11.5px;color:${MUTED};text-decoration:none;">Park this project &rarr;</a>`
+                  : "") +
                 `</div>`,
             )
             .join("") +
@@ -1089,10 +1102,13 @@ export function dailyDigest(input: {
               `<div style="font-size:14px;font-weight:600;color:${INK};">${esc(inv.clientName)} &middot; ${esc(inv.amount)}</div>` +
               `<div style="font-size:12.5px;color:${MUTED};margin-top:2px;">${esc(inv.title)}${inv.age ? ` &middot; sent ${esc(inv.age)}` : ""}</div>` +
               `<a href="${esc(inv.chaseUrl)}" style="display:inline-block;margin-top:9px;font-size:13px;color:${ACCENT};text-decoration:none;">Chase this invoice &rarr;</a>` +
+              (inv.parkUrl
+                ? `<a href="${esc(inv.parkUrl)}" style="display:inline-block;margin:9px 0 0 14px;font-size:13px;color:${MUTED};text-decoration:none;">Stop chasing &rarr;</a>`
+                : "") +
               `</div>`,
           )
           .join("") +
-          `<div style="font-size:12px;color:${MUTED};margin-top:4px;">Chasing opens a draft you can read and change first — nothing sends from this email.</div>`,
+          `<div style="font-size:12px;color:${MUTED};margin-top:4px;">Every link here opens the app and asks first — nothing sends or changes from this email.</div>`,
       )
     : "";
 
@@ -1126,7 +1142,12 @@ export function dailyDigest(input: {
       (input.invoices.length
         ? `\nUNPAID INVOICES (${input.invoices.length})\n` +
           input.invoices
-            .map((inv) => `  ${inv.clientName} · ${inv.amount} — ${inv.title}${inv.age ? ` (sent ${inv.age})` : ""}\n    Chase: ${inv.chaseUrl}`)
+            .map(
+              (inv) =>
+                `  ${inv.clientName} · ${inv.amount} — ${inv.title}${inv.age ? ` (sent ${inv.age})` : ""}\n` +
+                `    Chase: ${inv.chaseUrl}` +
+                (inv.parkUrl ? `\n    Stop chasing: ${inv.parkUrl}` : ""),
+            )
             .join("\n") +
           `\n`
         : "") +
@@ -1134,7 +1155,13 @@ export function dailyDigest(input: {
         .map(
           (q) =>
             `\n${q.label.toUpperCase()} (${q.total})\n` +
-            q.items.map((it) => `  · ${it.title}${it.subtitle ? ` — ${it.subtitle}` : ""} [${it.urgency}]`).join("\n") +
+            q.items
+              .map(
+                (it) =>
+                  `  · ${it.title}${it.subtitle ? ` — ${it.subtitle}` : ""} [${it.urgency}]` +
+                  (it.parkUrl ? `\n      Park the project: ${it.parkUrl}` : ""),
+              )
+              .join("\n") +
             (q.total > q.items.length ? `\n  and ${q.total - q.items.length} more` : ""),
         )
         .join("\n") +

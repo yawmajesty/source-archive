@@ -36,7 +36,24 @@ export interface QueueItem {
   href: string;
   /** Sorts within a queue; lower is more urgent. */
   rank: number;
+  /**
+   * The project this item belongs to, where it has one. Carried so the
+   * digest can offer to put the whole project aside rather than making
+   * someone chase the same stalled product every morning.
+   */
+  projectId?: string | null;
 }
+
+/** A project that has stopped competing for attention, and why. */
+export type ProjectStatus = "active" | "on_ice" | "done";
+
+export const PARKED_PROJECT: ReadonlySet<string> = new Set(["on_ice", "done"]);
+
+export const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
+  active: "Active",
+  on_ice: "On ice",
+  done: "Done",
+};
 
 export interface Queue {
   kind: QueueKind;
