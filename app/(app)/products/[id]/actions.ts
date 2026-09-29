@@ -1,6 +1,10 @@
 "use server";
 
 import Anthropic from "@anthropic-ai/sdk";
+import { sendAll, clientRecipients } from "@/lib/email/send";
+import { approvalRequested } from "@/lib/email/templates";
+import { buildPublicUrl } from "@/lib/url";
+import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { revalidatePath } from "next/cache";
 import { getAgencySupabase } from "@/lib/supabase-agency";
 import { getAgencyContext } from "@/lib/agency-data";
@@ -202,7 +206,64 @@ export async function createSampleForProduct(input: {
   const { error } = await supabase.from("samples").insert({ agency_id: ctx.agency.id, ...input });
   if (error) return { success: false, error: error.message };
   revalidatePath(`/products/${input.product_id}`);
+
+  // A sample that has arrived and not been approved is the single most
+  // common thing holding a run up, and the portal only showed it to people
+  // who happened to look. One that is still in transit, or already signed
+  // off, is not waiting on anybody.
+  if (input.received_date && !input.approved_at) {
+    await requestApproval(ctx.agency.id, input.product_id, input.factory_notes ?? null);
+  }
+
   return { success: true };
+}
+
+/** Ask the client to look at a sample that has landed. */
+async function requestApproval(agencyId: string, productId: string, note: string | null): Promise<void> {
+  try {
+    const service = getAgencyServiceSupabase();
+    const { data: product } = await service
+      .from("products")
+      .select("name, project_id")
+      .eq("id", productId)
+      .maybeSingle();
+    const prod = product as { name: string; project_id: string | null } | null;
+    if (!prod?.project_id) return;
+
+    const { data: project } = await service
+      .from("projects")
+      .select("client_id")
+      .eq("id", prod.project_id)
+      .maybeSingle();
+    const clientId = (project as { client_id: string | null } | null)?.client_id;
+    if (!clientId) return;
+
+    const { emails, clientName, enabled } = await clientRecipients(clientId);
+    if (!enabled || emails.length === 0) return;
+
+    const built = approvalRequested({
+      productName: prod.name,
+      clientName,
+      note,
+      portalUrl: buildPublicUrl(`/portal/${clientId}`),
+    });
+
+    await sendAll(
+      emails.map((to) => ({
+        agencyId,
+        to,
+        subject: built.subject,
+        html: built.html,
+        text: built.text,
+        template: "approval_requested" as const,
+        relatedType: "product" as const,
+        relatedId: productId,
+      })),
+    );
+  } catch (err) {
+    // Logging a sample must not fail because the email did.
+    console.error("[sample] approval request failed:", err);
+  }
 }
 
 export async function updateProductImages(productId: string, images: string[]): Promise<{ success: true } | { success: false; error: string }> {

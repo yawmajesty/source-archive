@@ -1,6 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { sendAll, clientRecipients } from "@/lib/email/send";
+import { portalInvite } from "@/lib/email/templates";
+import { buildPublicUrl } from "@/lib/url";
 import { getAgencySupabase } from "@/lib/supabase-agency";
 import { getAgencyContext } from "@/lib/agency-data";
 
@@ -76,11 +79,51 @@ export async function deleteClientCascade(clientId: string): Promise<{ success: 
   return { success: true };
 }
 
-export async function toggleClientPortal(clientId: string, enabled: boolean): Promise<{ success: true } | { success: false; error: string }> {
-  await ctxOrThrow();
+export async function toggleClientPortal(
+  clientId: string,
+  enabled: boolean,
+): Promise<{ success: true; invited?: string[] } | { success: false; error: string }> {
+  const ctx = await ctxOrThrow();
   const supabase = await getAgencySupabase();
+
+  const { data: before } = await supabase
+    .from("clients")
+    .select("name, contact_name, portal_enabled")
+    .eq("id", clientId)
+    .maybeSingle();
+  const prior = before as { name: string; contact_name: string | null; portal_enabled: boolean | null } | null;
+
   const { error } = await supabase.from("clients").update({ portal_enabled: enabled }).eq("id", clientId);
   if (error) return { success: false, error: error.message };
   revalidatePath(`/clients/${clientId}`);
-  return { success: true };
+
+  // Turning it on used to flip a flag and tell nobody, so a client only
+  // learned their portal existed if someone remembered to send the link by
+  // hand. Only on the transition: re-saving a client who already had it on
+  // should not invite them again.
+  if (!enabled || prior?.portal_enabled) return { success: true };
+
+  const { emails, clientName, enabled: wantsEmail } = await clientRecipients(clientId);
+  if (!wantsEmail || emails.length === 0) return { success: true };
+
+  const built = portalInvite({
+    contactName: prior?.contact_name ?? "",
+    clientName: clientName || prior?.name || "your",
+    portalUrl: buildPublicUrl(`/portal/${clientId}`),
+  });
+
+  await sendAll(
+    emails.map((to) => ({
+      agencyId: ctx.agency.id,
+      to,
+      subject: built.subject,
+      html: built.html,
+      text: built.text,
+      template: "portal_invite" as const,
+      relatedType: "client" as const,
+      relatedId: clientId,
+    })),
+  );
+
+  return { success: true, invited: emails };
 }

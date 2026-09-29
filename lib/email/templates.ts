@@ -891,3 +891,283 @@ export function portalUpdate(input: {
       SIGNOFF_TEXT,
   };
 }
+
+// ── Alerts to the team ────────────────────────────────────────
+
+/**
+ * Something happened on the client's side that you'd want to know about.
+ *
+ * The portal told clients "your agency will be notified" and then notified
+ * nobody. These are the messages that make that sentence true. Deliberately
+ * plain — they exist to get you to the thing, not to be read for their own
+ * sake, so the quote from the client is the body and everything else is a
+ * link.
+ */
+export function agencyAlert(input: {
+  headline: string;
+  who: string;
+  quote?: string | null;
+  url: string;
+  linkLabel?: string;
+}): Built {
+  return {
+    subject: input.headline,
+    html: shell(
+      h1(input.headline) +
+        p(`From <strong style="color:${INK};font-weight:600;">${esc(input.who)}</strong>.`) +
+        (input.quote
+          ? `<div style="border-left:2px solid ${RULE};padding:2px 0 2px 12px;margin:14px 0;font-size:14px;line-height:1.6;color:${MUTED};white-space:pre-line;">${esc(input.quote)}</div>`
+          : "") +
+        `<div style="margin-top:16px;">${button(input.url, input.linkLabel ?? "Open it")}</div>`,
+      "Sent to you because you're an admin on Source Archive.",
+    ),
+    text:
+      `${input.headline}\n\nFrom ${input.who}.\n` +
+      (input.quote ? `\n${input.quote}\n` : "") +
+      `\n${input.linkLabel ?? "Open it"}: ${input.url}`,
+  };
+}
+
+// ── To the client ─────────────────────────────────────────────
+
+/**
+ * "Your portal is ready."
+ *
+ * Turning a portal on used to flip a flag and tell nobody, so the client
+ * only found out if someone remembered to send the link by hand. Says what
+ * the portal is for before it says how to reach it — a bare link to a
+ * website nobody mentioned reads like phishing.
+ */
+export function portalInvite(input: {
+  contactName: string;
+  clientName: string;
+  portalUrl: string;
+}): Built {
+  const first = input.contactName.trim().split(/\s+/)[0];
+  return {
+    subject: `Your ${input.clientName} portal is ready`,
+    html: shell(
+      h1(first ? `Hi ${first} — your portal is ready` : "Your portal is ready") +
+        p("We've set up a space for your work with us. It's where you'll find your products as they move through development, samples to approve, invoices, and anywhere we need something from you.") +
+        p("Nothing to install and no password to remember — the link below is yours, so keep it somewhere you'll find it again.") +
+        `<div style="margin-top:16px;">${button(input.portalUrl, "Open your portal")}</div>` +
+        signoff(),
+      "You're getting this because you're working with Source Archive.",
+    ),
+    text:
+      `${first ? `Hi ${first} — your portal is ready.` : "Your portal is ready."}\n\n` +
+      `We've set up a space for your work with us. It's where you'll find your products as they ` +
+      `move through development, samples to approve, invoices, and anywhere we need something from ` +
+      `you.\n\n` +
+      `Nothing to install and no password to remember — the link below is yours, so keep it ` +
+      `somewhere you'll find it again.\n\n` +
+      `Open your portal: ${input.portalUrl}` +
+      SIGNOFF_TEXT,
+  };
+}
+
+/**
+ * "A sample is waiting for you."
+ *
+ * Unapproved samples are the single most common thing holding a run up,
+ * and the portal only showed it to people who happened to look. Says what
+ * happens next if they approve, because "please review" without a
+ * consequence is easy to leave until tomorrow.
+ */
+export function approvalRequested(input: {
+  productName: string;
+  clientName: string;
+  note?: string | null;
+  portalUrl: string;
+}): Built {
+  return {
+    subject: `${input.productName} — ready for your approval`,
+    html: shell(
+      h1(`${input.productName} is ready for you to look at`) +
+        p("The sample is in your portal. Once you approve it we can move into production; if something isn't right, leave a note instead and we'll pick it up from there.") +
+        (input.note
+          ? `<div style="border-left:2px solid ${RULE};padding:2px 0 2px 12px;margin:14px 0;font-size:14px;line-height:1.6;color:${MUTED};">${esc(input.note)}</div>`
+          : "") +
+        `<div style="margin-top:16px;">${button(input.portalUrl, "Review the sample")}</div>` +
+        signoff(),
+      "You're getting this because you're working with Source Archive.",
+    ),
+    text:
+      `${input.productName} is ready for you to look at.\n\n` +
+      `The sample is in your portal. Once you approve it we can move into production; if something ` +
+      `isn't right, leave a note instead and we'll pick it up from there.\n` +
+      (input.note ? `\n${input.note}\n` : "") +
+      `\nReview the sample: ${input.portalUrl}` +
+      SIGNOFF_TEXT,
+  };
+}
+
+// ── The morning digest ────────────────────────────────────────
+
+export interface DigestQueue {
+  label: string;
+  tone: string;
+  stake: string;
+  total: number;
+  items: Array<{ title: string; subtitle: string | null; age: string | null; urgency: string; href: string }>;
+}
+
+export interface DigestInvoice {
+  id: string;
+  /** The raw figure, so the digest can total its own list. */
+  amountValue: number;
+  title: string;
+  clientName: string;
+  amount: string;
+  age: string | null;
+  chaseUrl: string;
+}
+
+const URGENCY_TONE: Record<string, string> = {
+  overdue: "#B4453C",
+  today: "#B07A17",
+  soon: "#0058B0",
+  waiting: "#6E6E73",
+};
+
+/**
+ * One email a day with everything on it.
+ *
+ * The dashboard already worked out what needs doing; the problem was that
+ * it only existed if somebody opened it, and eighteen unanswered leads is
+ * what that costs. So this is the same queues, pushed rather than pulled.
+ *
+ * One email, not one per queue — the fastest way to make a daily message
+ * ignorable is to send four of them. Queues with nothing in them are left
+ * out entirely, so a quiet day produces a short email rather than a wall
+ * of zeros, and the day it gets long is the day it earns attention.
+ *
+ * Invoices get their own section with a chase link each, because chasing
+ * is a judgement call: someone who said they'd pay Friday should not be
+ * chased on Wednesday, and an automatic reminder cannot know that.
+ */
+export function dailyDigest(input: {
+  greeting: string;
+  needsYou: number;
+  owed: string;
+  queues: DigestQueue[];
+  invoices: DigestInvoice[];
+  shootsTomorrow: number;
+  dashboardUrl: string;
+}): Built {
+  const quiet = input.needsYou === 0 && input.invoices.length === 0;
+
+  const queueHtml = input.queues
+    .map(
+      (q) =>
+        section(
+          `${q.label} (${q.total})`,
+          q.items
+            .map(
+              (it) =>
+                `<div style="margin:0 0 9px;">` +
+                `<a href="${esc(it.href)}" style="font-size:14px;color:${INK};text-decoration:none;font-weight:500;">${esc(it.title)}</a>` +
+                `<span style="font-size:12px;color:${URGENCY_TONE[it.urgency] ?? MUTED};"> &middot; ${esc(it.urgency)}</span>` +
+                (it.subtitle ? `<div style="font-size:12.5px;color:${MUTED};">${esc(it.subtitle)}${it.age ? ` &middot; ${esc(it.age)}` : ""}</div>` : "") +
+                `</div>`,
+            )
+            .join("") +
+            (q.total > q.items.length
+              ? `<div style="font-size:12px;color:${MUTED};margin-top:6px;">and ${q.total - q.items.length} more</div>`
+              : ""),
+        ),
+    )
+    .join("");
+
+  const invoiceHtml = input.invoices.length
+    ? section(
+        `Unpaid invoices (${input.invoices.length})`,
+        input.invoices
+          .map(
+            (inv) =>
+              `<div style="border:1px solid ${RULE};border-radius:10px;padding:12px;margin-bottom:8px;">` +
+              `<div style="font-size:14px;font-weight:600;color:${INK};">${esc(inv.clientName)} &middot; ${esc(inv.amount)}</div>` +
+              `<div style="font-size:12.5px;color:${MUTED};margin-top:2px;">${esc(inv.title)}${inv.age ? ` &middot; sent ${esc(inv.age)}` : ""}</div>` +
+              `<a href="${esc(inv.chaseUrl)}" style="display:inline-block;margin-top:9px;font-size:13px;color:${ACCENT};text-decoration:none;">Chase this invoice &rarr;</a>` +
+              `</div>`,
+          )
+          .join("") +
+          `<div style="font-size:12px;color:${MUTED};margin-top:4px;">Chasing opens a draft you can read and change first — nothing sends from this email.</div>`,
+      )
+    : "";
+
+  return {
+    subject: quiet
+      ? "Nothing waiting on you today"
+      : `${input.needsYou} thing${input.needsYou === 1 ? "" : "s"} need you${input.invoices.length ? ` · ${input.owed} owed` : ""}`,
+    html: shell(
+      h1(input.greeting) +
+        (quiet
+          ? p("Nothing is waiting on you and no invoices are outstanding. Enjoy it.")
+          : p(
+              `<strong style="color:${INK};font-weight:600;">${input.needsYou}</strong> thing${input.needsYou === 1 ? "" : "s"} need you today` +
+                (input.invoices.length ? `, and <strong style="color:${INK};font-weight:600;">${esc(input.owed)}</strong> is outstanding.` : "."),
+            )) +
+        (input.shootsTomorrow > 0
+          ? p(`<strong style="color:${INK};font-weight:600;">${input.shootsTomorrow} shoot${input.shootsTomorrow === 1 ? "" : "s"} tomorrow.</strong>`)
+          : "") +
+        invoiceHtml +
+        queueHtml +
+        `<div style="margin-top:20px;">${button(input.dashboardUrl, "Open the dashboard")}</div>`,
+      "Your daily summary from Source Archive.",
+    ),
+    text:
+      `${input.greeting}\n\n` +
+      (quiet
+        ? "Nothing is waiting on you and no invoices are outstanding.\n"
+        : `${input.needsYou} thing${input.needsYou === 1 ? "" : "s"} need you today` +
+          (input.invoices.length ? `, and ${input.owed} is outstanding.\n` : ".\n")) +
+      (input.shootsTomorrow > 0 ? `${input.shootsTomorrow} shoot(s) tomorrow.\n` : "") +
+      (input.invoices.length
+        ? `\nUNPAID INVOICES (${input.invoices.length})\n` +
+          input.invoices
+            .map((inv) => `  ${inv.clientName} · ${inv.amount} — ${inv.title}${inv.age ? ` (sent ${inv.age})` : ""}\n    Chase: ${inv.chaseUrl}`)
+            .join("\n") +
+          `\n`
+        : "") +
+      input.queues
+        .map(
+          (q) =>
+            `\n${q.label.toUpperCase()} (${q.total})\n` +
+            q.items.map((it) => `  · ${it.title}${it.subtitle ? ` — ${it.subtitle}` : ""} [${it.urgency}]`).join("\n") +
+            (q.total > q.items.length ? `\n  and ${q.total - q.items.length} more` : ""),
+        )
+        .join("\n") +
+      `\n\nOpen the dashboard: ${input.dashboardUrl}`,
+  };
+}
+
+/**
+ * The chase itself — a draft, like every other reply we send by hand.
+ *
+ * Firm without being a solicitor's letter: it states the fact, gives the
+ * link to pay, and asks for a date if a date is the problem. Asking is
+ * what turns an ignored reminder into a reply.
+ */
+export function invoiceChaseDraft(input: {
+  contactName: string;
+  clientName: string;
+  invoiceTitle: string;
+  amount: string;
+  age: string | null;
+  portalUrl: string;
+}): Draft {
+  const first = input.contactName.trim().split(/\s+/)[0];
+  return {
+    subject: `${input.invoiceTitle} — still outstanding`,
+    body:
+      `${first ? `Hi ${first},` : "Hello,"}\n\n` +
+      `Just a note that ${input.invoiceTitle} for ${input.amount} is still showing as unpaid` +
+      (input.age ? ` — it went out ${input.age}` : "") +
+      `.\n\n` +
+      `You can settle it in your portal here:\n${input.portalUrl}\n\n` +
+      `If it's already gone out at your end, ignore this and let us know so we can mark it off. ` +
+      `And if it's a timing thing, just tell us when works — we'd rather know than chase.\n\n` +
+      `Best,\nSource Archive team`,
+  };
+}

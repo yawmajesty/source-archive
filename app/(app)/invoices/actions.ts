@@ -4,10 +4,11 @@ import { revalidatePath } from "next/cache";
 import { getAgencyContext } from "@/lib/agency-data";
 import { getAgencySupabase } from "@/lib/supabase-agency";
 import { can } from "@/lib/permissions";
-import { sendAll, clientRecipients } from "@/lib/email/send";
-import { esc } from "@/lib/email/templates";
+import { sendAll, clientRecipients, looksLikeEmail } from "@/lib/email/send";
+import { esc, invoiceChaseDraft, leadReply, type Draft } from "@/lib/email/templates";
 import { buildPublicUrl } from "@/lib/url";
-import { sumInvoice } from "@/lib/invoice-total";
+import { sumInvoice, money } from "@/lib/invoice-total";
+import { ageOf } from "@/lib/command-centre";
 
 export interface InvoiceRow {
   id: string;
@@ -99,64 +100,6 @@ export async function setInvoiceStatus(
 }
 
 /** Nudge the client about an unpaid invoice. */
-export async function chaseInvoice(
-  invoiceId: string,
-): Promise<{ success: true; status: string } | { success: false; error: string }> {
-  const ctx = await getAgencyContext();
-  if (!ctx) return { success: false, error: "Not a member of any agency" };
-  if (!can(ctx.role, ctx.permissions, "cost.view")) {
-    return { success: false, error: "You don't have permission" };
-  }
-
-  const supabase = await getAgencySupabase();
-  const { data } = await supabase
-    .from("sampling_invoices").select("*").eq("id", invoiceId).maybeSingle();
-  const inv = data as Record<string, unknown> | null;
-  if (!inv) return { success: false, error: "Invoice not found" };
-
-  const clientId = String(inv.client_id);
-  const total = sumInvoice(Array.isArray(inv.line_items) ? (inv.line_items as Array<Record<string, unknown>>) : []);
-  const label = (inv.title as string) || `Invoice · round ${inv.round ?? 1}`;
-
-  const { emails, enabled } = await clientRecipients(clientId);
-  if (!enabled || emails.length === 0) {
-    return { success: false, error: "No contact address on file for this client" };
-  }
-
-  const url = buildPublicUrl(`/portal/${clientId}`);
-  const results = await sendAll(
-    emails.map((to) => ({
-      agencyId: ctx.agency.id,
-      to,
-      subject: `${label} — still outstanding`,
-      html:
-        `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:560px;">` +
-        `<h1 style="font-size:19px;margin:0 0 12px;">${esc(label)}</h1>` +
-        `<p style="font-size:14px;color:#6E6E73;line-height:1.6;margin:0 0 12px;">` +
-        `A quick note that this one is still outstanding — $${total.toFixed(2)}. ` +
-        `You can settle it from your portal, and just reply here if anything looks wrong.</p>` +
-        `<p style="margin-top:16px;"><a href="${esc(url)}" style="background:#0058B0;color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:14px;">Open the invoice</a></p>` +
-        `</div>`,
-      text: `${label} — still outstanding\n\nA quick note that this one is still outstanding: $${total.toFixed(2)}. You can settle it from your portal, and just reply here if anything looks wrong.\n\n${url}`,
-      template: "crm_message" as const,
-      relatedType: "client" as const,
-      relatedId: clientId,
-    })),
-  );
-
-  revalidatePath("/invoices");
-  return { success: true, status: results[0]?.status ?? "sent" };
-}
-
-
-/**
- * Take a client's invoices out of the chase list.
- *
- * Reuses the existing inactive status rather than adding a per-invoice
- * flag: a debt you have stopped pursuing is a relationship that has
- * ended, and having two ways to express that would let them disagree.
- * Nothing is deleted and the invoices stay visible under All.
- */
 export async function archiveClient(clientId: string): Promise<{ success: boolean; error?: string }> {
   const ctx = await getAgencyContext();
   if (!ctx) return { success: false, error: "Not a member of any agency" };
@@ -172,4 +115,111 @@ export async function archiveClient(clientId: string): Promise<{ success: boolea
   revalidatePath("/dashboard");
   revalidatePath("/clients");
   return { success: true };
+}
+
+/**
+ * Build the chase for an unpaid invoice.
+ *
+ * Chasing is a judgement call, which is why nothing here sends on its own:
+ * a client who said they would pay on Friday should not be reminded on
+ * Wednesday, and no schedule can know that. The digest gives you the list
+ * and a link; a person decides.
+ */
+export async function draftInvoiceChase(
+  invoiceId: string,
+): Promise<{ success: true; to: string; draft: Draft } | { success: false; error: string }> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return { success: false, error: "Not a member of any agency" };
+
+  const supabase = await getAgencySupabase();
+  const { data } = await supabase
+    .from("sampling_invoices")
+    .select("id, client_id, title, round, invoice_kind, line_items, deposit_percent, status, created_at")
+    .eq("id", invoiceId)
+    .maybeSingle();
+
+  const inv = data as {
+    client_id: string; title: string | null; round: number | null; invoice_kind: string | null;
+    line_items: unknown; deposit_percent: number | null; status: string; created_at: string;
+  } | null;
+  if (!inv) return { success: false, error: "Invoice not found" };
+  if (inv.status === "paid") return { success: false, error: "This invoice is already paid" };
+
+  const { data: clientRow } = await supabase
+    .from("clients")
+    .select("name, contact_name, contact_email")
+    .eq("id", inv.client_id)
+    .maybeSingle();
+  const client = clientRow as { name: string; contact_name: string | null; contact_email: string | null } | null;
+  if (!looksLikeEmail(client?.contact_email)) {
+    return { success: false, error: "No usable email address on this client" };
+  }
+
+  const total = sumInvoice(inv.line_items);
+  const due = total * ((inv.deposit_percent ?? 100) / 100);
+  const title =
+    inv.title ??
+    (inv.invoice_kind === "production"
+      ? `Production invoice${inv.round ? ` — Round ${inv.round}` : ""}`
+      : `Round ${inv.round ?? 1} sampling`);
+
+  return {
+    success: true,
+    to: client!.contact_email as string,
+    draft: invoiceChaseDraft({
+      contactName: client?.contact_name ?? "",
+      clientName: client?.name ?? "",
+      invoiceTitle: title,
+      amount: money(due),
+      age: ageOf(inv.created_at),
+      portalUrl: buildPublicUrl(`/portal/${inv.client_id}`),
+    }),
+  };
+}
+
+/** Send the chase as edited. */
+export async function sendInvoiceChase(input: {
+  invoiceId: string;
+  subject: string;
+  body: string;
+}): Promise<{ success: true; to: string } | { success: false; error: string }> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return { success: false, error: "Not a member of any agency" };
+
+  const subject = input.subject.trim();
+  const body = input.body.trim();
+  if (!subject) return { success: false, error: "The subject is empty" };
+  if (!body) return { success: false, error: "The message is empty" };
+
+  const supabase = await getAgencySupabase();
+  const { data } = await supabase
+    .from("sampling_invoices")
+    .select("client_id, status")
+    .eq("id", input.invoiceId)
+    .maybeSingle();
+  const inv = data as { client_id: string; status: string } | null;
+  if (!inv) return { success: false, error: "Invoice not found" };
+  if (inv.status === "paid") return { success: false, error: "This invoice is already paid" };
+
+  const { emails, enabled } = await clientRecipients(inv.client_id);
+  if (!enabled || emails.length === 0) {
+    return { success: false, error: "No usable email address on this client" };
+  }
+
+  const built = leadReply({ subject, body });
+  const [result] = await sendAll(
+    emails.map((to) => ({
+      agencyId: ctx.agency.id,
+      to,
+      subject: built.subject,
+      html: built.html,
+      text: built.text,
+      template: "invoice_chase" as const,
+      relatedType: "client" as const,
+      relatedId: inv.client_id,
+    })),
+  );
+
+  if (result.status === "failed") return { success: false, error: result.error ?? "Could not send" };
+  return { success: true, to: emails[0] };
 }

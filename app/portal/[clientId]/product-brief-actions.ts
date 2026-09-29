@@ -1,6 +1,7 @@
 "use server";
 
 import { randomBytes } from "crypto";
+import { notifyAgency } from "@/lib/email/portal-notify";
 import { revalidatePath } from "next/cache";
 import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { resolvePortalAccess } from "@/app/(app)/clients/member-actions";
@@ -275,13 +276,13 @@ export async function submitBrief(
     );
   }
 
-  await notifyAgency(owner.agencyId, brief, productId);
+  await notifyBriefSubmitted(owner.agencyId, brief, productId);
 
   revalidatePath(`/portal/${owner.clientId}`);
   return { success: true, productId };
 }
 
-async function notifyAgency(agencyId: string, brief: ProductBrief, productId: string) {
+async function notifyBriefSubmitted(agencyId: string, brief: ProductBrief, productId: string) {
   const productUrl = buildPublicUrl(`/products/${productId}`);
   await notifySlack({
     title: `New product brief — ${brief.name}`,
@@ -399,6 +400,28 @@ export async function replyAsClient(input: {
     .from("product_briefs")
     .update({ last_reply_side: "client", last_reply_at: new Date().toISOString() })
     .eq("id", input.briefId);
+
+  // You reply and they're emailed; they replied and nothing happened. A
+  // half-connected thread is worse than none, because it looks answered.
+  const { data: briefRow } = await supabase
+    .from("product_briefs")
+    .select("name, product_id")
+    .eq("id", input.briefId)
+    .maybeSingle();
+  const brief = briefRow as { name: string | null; product_id: string | null } | null;
+
+  await notifyAgency({
+    agencyId: owner.agencyId,
+    headline: `Reply on ${brief?.name ?? "a brief"}`,
+    who: input.authorName?.slice(0, 120) || "The client",
+    quote: input.body.trim().slice(0, 1200),
+    url: brief?.product_id
+      ? buildPublicUrl(`/products/${brief.product_id}`)
+      : buildPublicUrl("/dashboard"),
+    linkLabel: "Read and reply",
+    relatedType: "product",
+    relatedId: brief?.product_id ?? null,
+  });
 
   revalidatePath(`/portal/${owner.clientId}`);
   return { success: true, reply: data as BriefReply };

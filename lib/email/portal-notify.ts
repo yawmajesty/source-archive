@@ -54,3 +54,63 @@ export async function notifyPortalUpdate(input: {
     console.error("[portal] update notification failed:", err);
   }
 }
+
+/**
+ * Tell the team something happened on the client's side.
+ *
+ * The mirror of notifyPortalUpdate. Goes to the agency's notification
+ * address, or its admins when none is set — the same resolution the intake
+ * forms use, so there is one answer to "who hears about this".
+ *
+ * Swallows its own failures for the same reason: a client approving a
+ * sample must not fail because our mail provider is having a morning.
+ */
+export async function notifyAgency(input: {
+  agencyId: string;
+  headline: string;
+  who: string;
+  quote?: string | null;
+  url: string;
+  linkLabel?: string;
+  relatedType?: "lead" | "product" | "client" | null;
+  relatedId?: string | null;
+}): Promise<void> {
+  try {
+    const { agencyAlert } = await import("./templates");
+    const { agencyNotificationRecipients } = await import("./send");
+    const to = await agencyNotificationRecipients(input.agencyId);
+    if (to.length === 0) return;
+
+    const { notifySlack } = await import("@/lib/slack");
+    await notifySlack({
+      title: input.headline,
+      body: input.quote ?? undefined,
+      fields: [["From", input.who]],
+      url: input.url,
+      urlLabel: input.linkLabel ?? "Open it",
+    });
+
+    const built = agencyAlert({
+      headline: input.headline,
+      who: input.who,
+      quote: input.quote ?? null,
+      url: input.url,
+      linkLabel: input.linkLabel,
+    });
+
+    await sendAll(
+      to.map((address) => ({
+        agencyId: input.agencyId,
+        to: address,
+        subject: built.subject,
+        html: built.html,
+        text: built.text,
+        template: "agency_alert" as const,
+        relatedType: input.relatedType ?? null,
+        relatedId: input.relatedId ?? null,
+      })),
+    );
+  } catch (err) {
+    console.error("[agency] alert failed:", err);
+  }
+}

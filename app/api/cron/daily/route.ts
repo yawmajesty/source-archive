@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { sendAll, looksLikeEmail } from "@/lib/email/send";
-import { campaignItemDue } from "@/lib/email/templates";
+import { campaignItemDue, dailyDigest, type DigestQueue, type DigestInvoice } from "@/lib/email/templates";
+import { buildCommandCentre } from "@/lib/command-centre-build";
+import { agencyNotificationRecipients } from "@/lib/email/send";
+import { sumInvoice, money } from "@/lib/invoice-total";
+import { ageOf } from "@/lib/command-centre";
 import { buildPublicUrl } from "@/lib/url";
 import { runBackup } from "@/app/(app)/settings/backup-actions";
 import { notifySlack } from "@/lib/slack";
@@ -123,10 +127,17 @@ export async function GET(request: Request) {
     }
   }
 
+  // ── The morning digest ──
+  // The dashboard already worked out what needs doing. The problem was that
+  // it only existed if somebody opened it, which is exactly when they did
+  // not need telling. One email, everything on it.
+  summary.digest = await sendDigest(supabase, Number(summary.shootsTomorrow) || 0);
+
   if (Number(summary.chased) > 0 || summary.backup !== "skipped") {
     await notifySlack({
       title: "Source Archive — daily run",
       fields: [
+        ["Digest", String(summary.digest)],
         ["Chased", `${summary.chased} of ${summary.owners} people`],
         ["Shoots tomorrow", String(summary.shootsTomorrow)],
         ["Backup", String(summary.backup)],
@@ -137,4 +148,150 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({ ok: true, ranAt: new Date().toISOString(), ...summary });
+}
+
+/**
+ * ageOf returns words, not a duration: "today", "yesterday", "4 months".
+ * Only the last kind takes "ago", and "sent today ago" is how you find out.
+ */
+function agoPhrase(age: string | null): string | null {
+  if (!age) return null;
+  return age === "today" || age === "yesterday" ? age : `${age} ago`;
+}
+
+/** How many queue items to name per section before saying "and N more". */
+const PER_QUEUE = 5;
+
+function greet(): string {
+  const hour = new Date().getUTCHours();
+  return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+}
+
+/**
+ * One digest per agency, to whoever hears about everything else.
+ *
+ * Built from the same function the dashboard uses, so the email and the
+ * screen can never disagree about what is waiting.
+ */
+async function sendDigest(
+  supabase: ReturnType<typeof getAgencyServiceSupabase>,
+  shootsTomorrow: number,
+): Promise<string> {
+  const { data: agencies } = await supabase.from("agencies").select("id, name");
+  const rows = (agencies ?? []) as Array<{ id: string; name: string | null }>;
+  let sent = 0;
+
+  for (const agency of rows.slice(0, 20)) {
+    try {
+      const to = await agencyNotificationRecipients(agency.id);
+      if (to.length === 0) continue;
+
+      const centre = await buildCommandCentre(supabase, { seesMoney: true, seesClients: true });
+
+      // Nothing waiting and nothing owed still sends — a digest that only
+      // arrives on bad days trains you to dread it, and its absence then
+      // says nothing at all.
+      const queues: DigestQueue[] = centre.queues
+        .filter((q) => q.kind !== "invoice" && q.items.length > 0)
+        .map((q) => ({
+          label: q.label,
+          tone: "",
+          stake: q.stake,
+          total: q.total,
+          items: q.items.slice(0, PER_QUEUE).map((it) => ({
+            title: it.title,
+            subtitle: it.subtitle,
+            age: it.age,
+            urgency: it.urgency,
+            href: buildPublicUrl(it.href),
+          })),
+        }));
+
+      const invoices = await unpaidInvoices(supabase, agency.id);
+      // Totalled from the list itself rather than taken from the centre:
+      // one number derived from two different filters is a number that
+      // eventually contradicts the rows printed underneath it.
+      const owed = invoices.reduce((sum, inv) => sum + inv.amountValue, 0);
+
+      const built = dailyDigest({
+        greeting: greet(),
+        needsYou: centre.totals.needsYou,
+        owed: money(owed),
+        queues,
+        invoices,
+        shootsTomorrow,
+        dashboardUrl: buildPublicUrl("/dashboard"),
+      });
+
+      const results = await sendAll(
+        to.map((address) => ({
+          agencyId: agency.id,
+          to: address,
+          subject: built.subject,
+          html: built.html,
+          text: built.text,
+          template: "daily_digest" as const,
+          relatedType: null,
+          relatedId: null,
+        })),
+      );
+      sent += results.filter((r) => r.status === "sent").length;
+    } catch (err) {
+      console.error("[cron] digest failed for", agency.id, err);
+    }
+  }
+
+  return `${sent} sent`;
+}
+
+/** Sent, not paid — each with a link that opens a chase you can edit. */
+async function unpaidInvoices(
+  supabase: ReturnType<typeof getAgencyServiceSupabase>,
+  agencyId: string,
+): Promise<DigestInvoice[]> {
+  const { data } = await supabase
+    .from("sampling_invoices")
+    .select("id, client_id, title, round, invoice_kind, line_items, deposit_percent, created_at")
+    .eq("agency_id", agencyId)
+    .eq("status", "sent")
+    .order("created_at");
+
+  const rows = (data ?? []) as Array<{
+    id: string; client_id: string; title: string | null; round: number | null;
+    invoice_kind: string | null; line_items: unknown; deposit_percent: number | null;
+    created_at: string;
+  }>;
+  if (rows.length === 0) return [];
+
+  const { data: clients } = await supabase
+    .from("clients")
+    .select("id, name, status")
+    .eq("agency_id", agencyId);
+  const active = (clients ?? []) as Array<{ id: string; name: string; status: string | null }>;
+  const names = new Map(active.map((c) => [c.id, c.name]));
+  // Exactly the rule the dashboard applies — "not inactive", which keeps
+  // onboarding and paused clients in. Anything stricter made the list
+  // disagree with the total above it.
+  const chaseable = new Set(active.filter((c) => c.status !== "inactive").map((c) => c.id));
+
+  return rows.filter((r) => chaseable.has(r.client_id)).map((r) => {
+    const total = sumInvoice(r.line_items);
+    const due = total * ((r.deposit_percent ?? 100) / 100);
+    return {
+      id: r.id,
+      amountValue: due,
+      title:
+        r.title ??
+        (r.invoice_kind === "production"
+          ? `Production invoice${r.round ? ` — Round ${r.round}` : ""}`
+          : `Round ${r.round ?? 1} sampling`),
+      clientName: names.get(r.client_id) ?? "A client",
+      amount: money(due),
+      age: agoPhrase(ageOf(r.created_at)),
+      // Opens the draft rather than sending anything: a link in an email
+      // gets fetched by spam scanners and link previews, so a one-click
+      // send from here would chase clients nobody meant to chase.
+      chaseUrl: buildPublicUrl(`/invoices?chase=${encodeURIComponent(r.id)}`),
+    };
+  });
 }

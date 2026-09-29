@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
+import { notifyAgency } from "@/lib/email/portal-notify";
+import { buildPublicUrl } from "@/lib/url";
 import { randomUUID } from "crypto";
 import { getStripe } from "@/lib/stripe";
 import { getPublicOrigin } from "@/lib/url";
@@ -153,6 +155,19 @@ export async function approveSampleFromPortal(input: {
     created_at: createdAt,
   });
 
+  // The portal tells the client "your agency will be notified" the moment
+  // they press this. Until now that sentence was not true.
+  await notifyAgency({
+    agencyId,
+    headline: `Sample approved — ${input.client_name}`,
+    who: input.client_name,
+    quote: "They've approved the sample. It's clear to move on.",
+    url: buildPublicUrl(`/products/${input.product_id}`),
+    linkLabel: "Open the product",
+    relatedType: "product",
+    relatedId: input.product_id,
+  });
+
   revalidatePath(`/portal/${input.client_id}`);
   return { success: true, created_at: createdAt };
 }
@@ -184,6 +199,20 @@ export async function submitPortalFeedback(input: {
     created_at: createdAt,
   });
   if (error) return { success: false, error: error.message };
+
+  // The portal has no "reject" button — leaving a note is how a client says
+  // this is not right yet, so it is worth exactly as much of your attention
+  // as an approval and gets the same treatment.
+  await notifyAgency({
+    agencyId,
+    headline: `Feedback from ${input.client_name}`,
+    who: input.client_name,
+    quote: trimmed,
+    url: buildPublicUrl(`/products/${input.product_id}`),
+    linkLabel: "Open the product",
+    relatedType: "product",
+    relatedId: input.product_id,
+  });
 
   revalidatePath(`/portal/${input.client_id}`);
   return { success: true, id, created_at: createdAt };

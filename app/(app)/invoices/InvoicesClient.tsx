@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Receipt, Send, Check, ExternalLink, ChevronDown, ChevronRight } from "lucide-react";
 import { lineAmount, money } from "@/lib/invoice-total";
-import { setInvoiceStatus, chaseInvoice, archiveClient, type InvoiceRow } from "./actions";
+import { setInvoiceStatus, draftInvoiceChase, sendInvoiceChase, archiveClient, type InvoiceRow } from "./actions";
+import { useRouter, useSearchParams } from "next/navigation";
+import { EmailDraftDialog } from "@/components/email/EmailDraftDialog";
 
 const STATUS: Record<string, { label: string; bg: string; fg: string }> = {
   draft: { label: "Draft", bg: "var(--sa-hover)",       fg: "var(--sa-text-secondary)" },
@@ -55,8 +57,43 @@ export function InvoicesClient({ invoices: initial }: { invoices: InvoiceRow[] }
     );
   }
 
+  // The morning digest links here with ?chase=<id>. It opens the draft and
+  // never sends: mail scanners and link previews fetch URLs in emails, so a
+  // link that sent on its own would chase clients nobody meant to chase.
+  const params = useSearchParams();
+  const router = useRouter();
+  const [chasing, setChasing] = useState<string | null>(null);
+  const [chaseNote, setChaseNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = params.get("chase");
+    if (id) setChasing(id);
+  }, [params]);
+
+  function closeChase() {
+    setChasing(null);
+    // Drop the parameter so a refresh doesn't reopen it.
+    router.replace("/invoices");
+  }
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {chasing && (
+        <EmailDraftDialog
+          title="Chase this invoice"
+          intro="Firm, not a solicitor's letter: it states the amount, links them to the portal to pay, and asks for a date if timing is the problem. Change anything before it goes."
+          sendLabel="Send the chase"
+          loadDraft={() => draftInvoiceChase(chasing)}
+          send={(subject, body) => sendInvoiceChase({ invoiceId: chasing, subject, body })}
+          onClose={closeChase}
+          onSent={(to) => setChaseNote(`Chase sent to ${to}`)}
+        />
+      )}
+      {chaseNote && (
+        <div className="border-b border-[var(--sa-border)] px-6 py-2 text-[12px]" style={{ color: "var(--sa-success)" }}>
+          {chaseNote}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3 border-b border-[var(--sa-border)] px-6 py-3">
         <div>
           <h1 className="text-[15px] font-semibold text-[var(--sa-text-primary)]">Invoices</h1>
@@ -211,19 +248,8 @@ export function InvoicesClient({ invoices: initial }: { invoices: InvoiceRow[] }
                           )}
                           {inv.status === "sent" && (
                             <button
-                              disabled={busy === inv.id}
-                              onClick={async () => {
-                                setBusy(inv.id); setError(null); setNotice(null);
-                                const res = await chaseInvoice(inv.id);
-                                setBusy(null);
-                                if (!res.success) { setError(res.error); return; }
-                                setNotice(
-                                  res.status === "sent"
-                                    ? "Reminder sent."
-                                    : "Recorded — not delivered while email is off. It's in the Emails log.",
-                                );
-                              }}
-                              className="flex items-center gap-1.5 rounded-md border border-[var(--sa-border)] px-3 py-1.5 text-[12.5px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] disabled:opacity-50"
+                              onClick={() => { setError(null); setNotice(null); setChasing(inv.id); }}
+                              className="flex items-center gap-1.5 rounded-md border border-[var(--sa-border)] px-3 py-1.5 text-[12.5px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
                             >
                               <Send size={12} /> Send a reminder
                             </button>

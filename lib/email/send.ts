@@ -37,7 +37,12 @@ export type EmailTemplate =
   | "lead_acknowledged"
   | "lead_more_info"
   | "lead_book_call"
-  | "portal_update";
+  | "portal_update"
+  | "agency_alert"
+  | "portal_invite"
+  | "approval_requested"
+  | "daily_digest"
+  | "invoice_chase";
 
 export interface OutboundEmail {
   agencyId: string;
