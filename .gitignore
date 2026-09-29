@@ -18,3 +18,9 @@ out/
 # clerk configuration (can include secrets)
 /.clerk/
 .env*
+
+# Clerk production cutover
+# the production Clerk secret, handed over as a file so it never goes through a chat window
+.env.production.local
+# maps old user ids to new ones during the cutover; useless afterwards, and not worth committing
+.clerk-cutover-map.json
