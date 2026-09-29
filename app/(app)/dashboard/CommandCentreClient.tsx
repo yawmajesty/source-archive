@@ -12,6 +12,7 @@ import {
   type CommandCentre, type QueueKind, type QueueItem, type Happening,
 } from "@/lib/command-centre";
 import { quickAction } from "./command-actions";
+import { LeadReplyDialog } from "@/components/leads/LeadReplyDialog";
 import { BriefReviewer } from "./BriefReviewer";
 
 const ICON: Record<QueueKind, React.ElementType> = {
@@ -78,8 +79,17 @@ export function CommandCentreClient({
     );
   }
 
+  const [replying, setReplying] = useState<{ leadId: string; rowId: string } | null>(null);
+
   async function act(item: QueueItem, action: string) {
     setError(null);
+    // Thanking someone opens the draft rather than sending it. It is the one
+    // action here that puts words in front of a person, so it gets read
+    // first; the row stays put until it actually goes.
+    if (item.kind === "lead" && action === "thanks") {
+      setReplying({ leadId: item.id.replace(/^[a-z]+-/, ""), rowId: item.id });
+      return;
+    }
     // The id is prefixed for uniqueness across queues; the row's own id
     // is what the server needs.
     const rawId = item.id.replace(/^[a-z]+-/, "");
@@ -92,6 +102,14 @@ export function CommandCentreClient({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {replying && (
+        <LeadReplyDialog
+          leadId={replying.leadId}
+          kind="acknowledge"
+          onClose={() => setReplying(null)}
+          onSent={() => dropItem(replying.rowId)}
+        />
+      )}
       <div className="flex flex-wrap items-center gap-3 border-b border-[var(--sa-border)] px-6 py-3">
         <div>
           <h1 className="text-[15px] font-semibold text-[var(--sa-text-primary)]">Command centre</h1>

@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Check, CheckCheck, Copy, ExternalLink, HelpCircle, Plus, Send, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { updateLeadStatus, convertLeadToClient, createLead, deleteLead, acknowledgeLead, requestMoreInfo } from "./actions";
+import { updateLeadStatus, convertLeadToClient, createLead, deleteLead } from "./actions";
+import { LeadReplyDialog } from "@/components/leads/LeadReplyDialog";
+import type { LeadReplyKind } from "@/lib/email/templates";
 import { buildPublicUrl } from "@/lib/url";
 import type { Lead } from "@/lib/data";
 import { imageUrl as sizedImage } from "@/lib/image-url";
@@ -171,8 +173,7 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
   const [converting, setConverting] = useState(false);
   const [convertedClientId, setConvertedClientId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [acking, setAcking] = useState(false);
-  const [asking, setAsking] = useState(false);
+  const [replyKind, setReplyKind] = useState<LeadReplyKind | null>(null);
   const [ackNote, setAckNote] = useState<{ ok: boolean; text: string } | null>(null);
 
   function setStatus(status: string) {
@@ -374,22 +375,31 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
               First reply
             </p>
             <button
-              disabled={acking}
-              onClick={async () => {
-                setAcking(true); setAckNote(null);
-                const res = await acknowledgeLead(lead.id);
-                setAcking(false);
-                if (!res.success) { setAckNote({ ok: false, text: res.error }); return; }
-                setAckNote({ ok: true, text: `Sent to ${res.to}` });
-              }}
-              className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[var(--sa-accent)] px-3 py-2 text-[12.5px] font-medium text-white disabled:opacity-50"
+              onClick={() => setReplyKind("acknowledge")}
+              className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[var(--sa-accent)] px-3 py-2 text-[12.5px] font-medium text-white"
             >
-              <Send size={12} /> {acking ? "Sending…" : "Send the thank-you"}
+              <Send size={12} /> Thank them
             </button>
             <p className="mt-1 text-[10.5px] leading-snug text-[var(--sa-text-tertiary)]">
-              Confirms we&apos;ve got it and says when we&apos;ll come back — 24–48 hours, or early
-              next week if it&apos;s late in the week. Marks them contacted.
+              Confirms we&apos;ve got it and says when we&apos;ll come back — 24&ndash;48 hours, or
+              early next week if it&apos;s late in the week.
             </p>
+
+            <button
+              onClick={() => setReplyKind("more_info")}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-[var(--sa-border)] px-3 py-2 text-[12.5px] font-medium text-[var(--sa-text-primary)] transition-colors hover:bg-[var(--sa-hover)]"
+            >
+              <HelpCircle size={12} /> Ask for more detail
+            </button>
+            <p className="mt-1 text-[10.5px] leading-snug text-[var(--sa-text-tertiary)]">
+              For a brief too thin to act on. Asks what they&apos;re trying to do, what products they
+              want made, and any specs.
+            </p>
+
+            <p className="mt-1.5 text-[10.5px] leading-snug text-[var(--sa-text-tertiary)]">
+              Both open the draft first so you can change it before it goes.
+            </p>
+
             {ackNote && (
               <p
                 className="mt-1 text-[11px]"
@@ -399,23 +409,14 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
               </p>
             )}
 
-            <button
-              disabled={asking}
-              onClick={async () => {
-                setAsking(true); setAckNote(null);
-                const res = await requestMoreInfo(lead.id);
-                setAsking(false);
-                if (!res.success) { setAckNote({ ok: false, text: res.error }); return; }
-                setAckNote({ ok: true, text: `Asked ${res.to} for more detail` });
-              }}
-              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-[var(--sa-border)] px-3 py-2 text-[12.5px] font-medium text-[var(--sa-text-primary)] transition-colors hover:bg-[var(--sa-hover)] disabled:opacity-50"
-            >
-              <HelpCircle size={12} /> {asking ? "Sending…" : "Ask for more detail"}
-            </button>
-            <p className="mt-1 text-[10.5px] leading-snug text-[var(--sa-text-tertiary)]">
-              For a brief too thin to act on. Asks what they&apos;re trying to do, what products they
-              want made, and any specs — politely, and says rough notes are fine. Marks them contacted.
-            </p>
+            {replyKind && (
+              <LeadReplyDialog
+                leadId={lead.id}
+                kind={replyKind}
+                onClose={() => setReplyKind(null)}
+                onSent={(to) => setAckNote({ ok: true, text: `Sent to ${to}` })}
+              />
+            )}
 
             <p className="mt-3 text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Update status</p>
             <div className="flex flex-wrap gap-1.5">

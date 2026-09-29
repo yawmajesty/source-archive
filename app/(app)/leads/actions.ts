@@ -5,7 +5,14 @@ import { getAgencySupabase } from "@/lib/supabase-agency";
 import { getAgencyContext } from "@/lib/agency-data";
 import { can } from "@/lib/permissions";
 import { sendAll, looksLikeEmail } from "@/lib/email/send";
-import { enquiryAcknowledged, moreInfoNeeded, replyWindowFor } from "@/lib/email/templates";
+import {
+  acknowledgeDraft,
+  moreInfoDraft,
+  leadReply,
+  replyWindowFor,
+  type Draft,
+  type LeadReplyKind,
+} from "@/lib/email/templates";
 import type { BriefProduct } from "@/lib/mock-data";
 
 async function ctxOrThrow() {
@@ -119,18 +126,16 @@ export async function convertLeadToClient(leadId: string): Promise<{ clientId: s
 }
 
 /**
- * Send the "we've got it, here's when we'll reply" note.
+ * Build the draft a quick reply starts from.
  *
- * The one email that should never be late. Someone who fills in a brief
- * and hears nothing for two days assumes it went nowhere, and by the
- * time a real reply arrives they have already asked someone else.
- *
- * Marks the lead contacted in the same step, because an acknowledgement
- * that doesn't move the lead out of "new" just means it gets sent twice.
+ * Done on the server rather than in the browser so both the Leads panel and
+ * the dashboard get the same wording from the same place, and so neither
+ * has to carry the lead's fields around just to compose a sentence.
  */
-export async function acknowledgeLead(
+export async function draftLeadReply(
   leadId: string,
-): Promise<{ success: true; status: string; to: string } | { success: false; error: string }> {
+  kind: LeadReplyKind,
+): Promise<{ success: true; to: string; draft: Draft } | { success: false; error: string }> {
   const ctx = await getAgencyContext();
   if (!ctx) return { success: false, error: "Not a member of any agency" };
   if (!can(ctx.role, ctx.permissions, "client.edit")) {
@@ -140,95 +145,84 @@ export async function acknowledgeLead(
   const supabase = await getAgencySupabase();
   const { data } = await supabase
     .from("leads")
-    .select("id, company_name, contact_name, contact_email, source, status")
+    .select("id, company_name, contact_name, contact_email, source")
     .eq("id", leadId)
     .maybeSingle();
 
   const lead = data as {
-    id: string; company_name: string | null; contact_name: string | null;
-    contact_email: string | null; source: string | null; status: string;
+    company_name: string | null; contact_name: string | null;
+    contact_email: string | null; source: string | null;
   } | null;
   if (!lead) return { success: false, error: "Lead not found" };
   if (!looksLikeEmail(lead.contact_email)) {
     return { success: false, error: "No usable email address on this lead" };
   }
 
-  const built = enquiryAcknowledged({
+  const shared = {
     contactName: lead.contact_name ?? "",
     companyName: lead.company_name,
     isBrief: lead.source === "brief_form",
-    window: replyWindowFor(),
-  });
+  };
 
-  const [result] = await sendAll([
-    {
-      agencyId: ctx.agency.id,
-      to: lead.contact_email,
-      toName: lead.contact_name,
-      subject: built.subject,
-      html: built.html,
-      text: built.text,
-      template: "lead_acknowledged" as const,
-      relatedType: "lead" as const,
-      relatedId: lead.id,
-    },
-  ]);
+  const draft =
+    kind === "acknowledge"
+      ? acknowledgeDraft({ ...shared, window: replyWindowFor() })
+      : moreInfoDraft(shared);
 
-  if (result.status === "failed") {
-    return { success: false, error: result.error ?? "Could not send" };
-  }
-
-  // Only advance a lead that's still untouched — re-acknowledging a
-  // qualified one shouldn't drag it backwards down the pipeline.
-  if (lead.status === "new") {
-    await supabase.from("leads").update({ status: "contacted" }).eq("id", leadId);
-  }
-
-  revalidatePath("/leads");
-  revalidatePath("/dashboard");
-  return { success: true, status: result.status, to: lead.contact_email as string };
+  return { success: true, to: lead.contact_email, draft };
 }
 
+/** Which log slug each quick reply is filed under. */
+const REPLY_TEMPLATE: Record<LeadReplyKind, "lead_acknowledged" | "lead_more_info"> = {
+  acknowledge: "lead_acknowledged",
+  more_info: "lead_more_info",
+};
+
 /**
- * Ask a thin lead for enough to make a call worth having.
+ * Send a quick reply to a lead, as edited by whoever is sending it.
  *
- * Separate from the thank-you rather than a variant of it: they answer
- * different situations, and one that tried to do both would end up saying
- * "thanks, now do some homework", which reads badly.
- *
- * Moves the lead to contacted for the same reason the acknowledgement
- * does — a reply that leaves it sitting in "new" gets sent twice.
+ * The subject and body arrive from the browser because they have been
+ * through a preview the sender could change — that is the point of the
+ * feature. They are still escaped when the HTML is built, and the kind is
+ * checked against a known set rather than trusted, because it decides what
+ * the message is filed as.
  */
-export async function requestMoreInfo(
-  leadId: string,
-): Promise<{ success: true; to: string } | { success: false; error: string }> {
+export async function sendLeadReply(input: {
+  leadId: string;
+  kind: LeadReplyKind;
+  subject: string;
+  body: string;
+}): Promise<{ success: true; to: string } | { success: false; error: string }> {
   const ctx = await getAgencyContext();
   if (!ctx) return { success: false, error: "Not a member of any agency" };
   if (!can(ctx.role, ctx.permissions, "client.edit")) {
     return { success: false, error: "You don't have permission to contact leads" };
   }
 
+  const template = REPLY_TEMPLATE[input.kind];
+  if (!template) return { success: false, error: "Unknown reply type" };
+
+  const subject = input.subject.trim();
+  const body = input.body.trim();
+  if (!subject) return { success: false, error: "The subject is empty" };
+  if (!body) return { success: false, error: "The message is empty" };
+
   const supabase = await getAgencySupabase();
   const { data } = await supabase
     .from("leads")
-    .select("id, company_name, contact_name, contact_email, source, status")
-    .eq("id", leadId)
+    .select("id, contact_name, contact_email, status")
+    .eq("id", input.leadId)
     .maybeSingle();
 
   const lead = data as {
-    id: string; company_name: string | null; contact_name: string | null;
-    contact_email: string | null; source: string | null; status: string;
+    id: string; contact_name: string | null; contact_email: string | null; status: string;
   } | null;
   if (!lead) return { success: false, error: "Lead not found" };
   if (!looksLikeEmail(lead.contact_email)) {
     return { success: false, error: "No usable email address on this lead" };
   }
 
-  const built = moreInfoNeeded({
-    contactName: lead.contact_name ?? "",
-    companyName: lead.company_name,
-    isBrief: lead.source === "brief_form",
-  });
+  const built = leadReply({ subject, body });
 
   const [result] = await sendAll([
     {
@@ -238,7 +232,7 @@ export async function requestMoreInfo(
       subject: built.subject,
       html: built.html,
       text: built.text,
-      template: "lead_more_info" as const,
+      template,
       relatedType: "lead" as const,
       relatedId: lead.id,
     },
@@ -248,8 +242,10 @@ export async function requestMoreInfo(
     return { success: false, error: result.error ?? "Could not send" };
   }
 
+  // Only advance a lead that is still untouched — replying to a qualified
+  // one should not drag it backwards down the pipeline.
   if (lead.status === "new") {
-    await supabase.from("leads").update({ status: "contacted" }).eq("id", leadId);
+    await supabase.from("leads").update({ status: "contacted" }).eq("id", input.leadId);
   }
 
   revalidatePath("/leads");

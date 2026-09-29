@@ -474,112 +474,120 @@ export function replyWindowFor(date = new Date()): string {
   const day = date.getUTCDay(); // 0 Sun … 6 Sat
   if (day === 5) return "early next week — anything arriving on a Friday tends to get looked at properly on Monday";
   if (day === 6 || day === 0) return "early next week";
-  if (day === 4) return "within 24 to 48 hours, so by early next week at the latest";
+  if (day === 4) return "within 24 to 48 hours — by early next week at the latest";
   return "within 24 to 48 hours";
 }
 
-export function enquiryAcknowledged(input: {
+// ── Quick replies to a lead ───────────────────────────────────
+//
+// These are drafts, not finished messages. Every one of them goes in front
+// of whoever is sending it first, because the sentence that makes a reply
+// land is the one about their actual product, and no template can write it.
+// The same shape as the brief decision email: plain text the sender edits,
+// rendered through the shell on the way out.
+
+export interface Draft {
+  subject: string;
+  body: string;
+}
+
+export type LeadReplyKind = "acknowledge" | "more_info";
+
+/**
+ * "We've got it, here's when we'll come back."
+ *
+ * The one reply that should never be late. Someone who sends a brief and
+ * hears nothing for two days assumes it went nowhere, and by the time a
+ * real answer arrives they have already asked someone else.
+ */
+export function acknowledgeDraft(input: {
   contactName: string;
   companyName?: string | null;
   isBrief: boolean;
   window: string;
-}): Built {
-  const first = input.contactName.trim().split(/\s+/)[0] || "there";
+}): Draft {
+  const first = input.contactName.trim().split(/\s+/)[0];
   const what = input.isBrief ? "your brief" : "your enquiry";
+  const forCompany = input.companyName ? ` for ${input.companyName}` : "";
 
   return {
     subject: input.isBrief ? "Thanks for your brief" : "Thanks for getting in touch",
-    html: shell(
-      h1(`Thanks, ${esc(first)}`) +
-        p(`We've got ${esc(what)}${input.companyName ? ` for ${esc(input.companyName)}` : ""} — thank you for sending it over.`) +
-        p(`We read these properly rather than skimming them, so give us ${esc(input.window)}. We'll come back to you either way: what the next steps look like, or an honest no if it isn't something we can take on right now.`) +
-        p("If anything changes in the meantime, or you think of something you forgot to mention, just reply to this email."),
-      "You're getting this because you contacted Source Archive.",
-    ),
-    text:
-      `Thanks, ${first}.\n\n` +
-      `We've got ${what}${input.companyName ? ` for ${input.companyName}` : ""} — thank you for sending it over.\n\n` +
-      `We read these properly rather than skimming them, so give us ${input.window}. ` +
-      `We'll come back to you either way: what the next steps look like, or an honest no if it isn't ` +
-      `something we can take on right now.\n\n` +
-      `If anything changes in the meantime, or you think of something you forgot to mention, just reply to this email.`,
+    body:
+      `${first ? `Hi ${first},` : "Hello,"}\n\n` +
+      `Thanks for sending ${what}${forCompany} over — we've got it.\n\n` +
+      `We read these properly rather than skimming them, so we'll come back to you ${input.window}. ` +
+      `Either way: what the next steps look like, or an honest no if it isn't something we can take ` +
+      `on right now.\n\n` +
+      `If anything changes in the meantime, or you think of something you forgot to mention, just ` +
+      `reply to this email.\n\n` +
+      `Best,\n`,
   };
 }
 
 /**
- * Ask for enough to make a call worth having.
+ * "Tell us enough to make a call worth having."
  *
- * Sent when a brief arrives too thin to act on. The point is not to put
- * anyone off — it is that a call with someone who hasn't decided what they
- * are making wastes both sides' time, and the polite version of that is to
- * say what we need and why, rather than to book the call and discover it
- * there.
+ * For a brief too thin to act on. A call with someone who hasn't decided
+ * what they are making costs an hour and produces nothing; the polite
+ * version of that is to say what we need and why, before booking it.
  *
- * Deliberately names the three things and says rough notes are fine. "Tell
- * us more" gets nothing back; a list gets answered.
+ * Names the three things rather than asking them to tell us more — a vague
+ * ask gets a vague answer or none — and says rough notes are fine, because
+ * the usual reason a brief arrives thin is that someone thinks it has to be
+ * polished first.
  */
-export function moreInfoNeeded(input: {
+export function moreInfoDraft(input: {
   contactName: string;
   companyName?: string | null;
   isBrief: boolean;
-}): Built {
-  // Plenty of enquiries arrive with no name on them. "Thanks, there" is
-  // worse than not using a name at all, so drop the greeting instead.
+}): Draft {
   const first = input.contactName.trim().split(/\s+/)[0];
-  const greeting = first ? `Thanks, ${first}` : "Thanks for getting in touch";
   const what = input.isBrief ? "your brief" : "your enquiry";
-  const forCompany = input.companyName ? ` for ${esc(input.companyName)}` : "";
-  const forCompanyText = input.companyName ? ` for ${input.companyName}` : "";
-
-  const asks: [string, string][] = [
-    [
-      "What you're trying to do",
-      "the idea behind the brand or the collection, and where you've got to with it so far",
-    ],
-    [
-      "What products you're looking to make",
-      "the actual garments or items, and roughly how many of each",
-    ],
-    [
-      "Any specs you already have",
-      "fabrics, colours, sizing, finishes, reference pieces you like, a target price — whatever exists",
-    ],
-  ];
+  const forCompany = input.companyName ? ` for ${input.companyName}` : "";
 
   return {
     subject: "A few more details before we set up a call",
-    html: shell(
-      h1(greeting) +
-        p(`We've got ${esc(what)}${forCompany}.`) +
-        p(
-          "Before we put a call in, it would help to understand a bit more about what you're planning. " +
-            "What we've got so far doesn't quite give us enough to work with, and we've found these " +
-            "conversations are far more useful when we've had a chance to think properly about your " +
-            "project beforehand — otherwise we spend the call gathering information rather than giving " +
-            "you anything worth having.",
-        ) +
-        p("If you could reply with:") +
-        bullets(asks.map(([label, detail]) => `<strong style="color:${INK};font-weight:600;">${esc(label)}</strong> — ${esc(detail)}`)) +
-        p(
-          "It really doesn't need to be polished. Rough notes are genuinely fine — we just need enough " +
-            "to come back to you with something useful.",
-        ) +
-        p("Once we've got that, we'll get a call in the diary."),
-      "You're getting this because you contacted Source Archive.",
-    ),
-    text:
-      `${greeting}.\n\n` +
-      `We've got ${what}${forCompanyText}.\n\n` +
+    body:
+      `${first ? `Hi ${first},` : "Hello,"}\n\n` +
+      `Thanks for sending ${what}${forCompany} over.\n\n` +
       `Before we put a call in, it would help to understand a bit more about what you're planning. ` +
       `What we've got so far doesn't quite give us enough to work with, and we've found these ` +
-      `conversations are far more useful when we've had a chance to think properly about your project ` +
-      `beforehand — otherwise we spend the call gathering information rather than giving you anything ` +
-      `worth having.\n\n` +
-      `If you could reply with:\n\n` +
-      asks.map(([label, detail]) => `  - ${label} - ${detail}`).join("\n") +
-      `\n\n` +
-      `It really doesn't need to be polished. Rough notes are genuinely fine - we just need enough to ` +
-      `come back to you with something useful.\n\n` +
-      `Once we've got that, we'll get a call in the diary.`,
+      `conversations are far more useful when we've had a chance to think properly about your ` +
+      `project beforehand — otherwise we spend the call gathering information rather than giving ` +
+      `you anything worth having.\n\n` +
+      `If you could reply with:\n` +
+      `— What you're trying to do: the idea behind the brand or the collection, and where you've ` +
+      `got to with it so far\n` +
+      `— What products you're looking to make: the actual garments or items, and roughly how many ` +
+      `of each\n` +
+      `— Any specs you already have: fabrics, colours, sizing, finishes, reference pieces you like, ` +
+      `a target price — whatever exists\n\n` +
+      `It really doesn't need to be polished. Rough notes are genuinely fine — we just need enough ` +
+      `to come back to you with something useful.\n\n` +
+      `Once we've got that, we'll get a call in the diary.\n\n` +
+      `Best,\n`,
+  };
+}
+
+/**
+ * Render an edited draft.
+ *
+ * Blank lines separate paragraphs, single newlines become line breaks, so
+ * the list in the more-information draft survives editing without anyone
+ * having to think about markup. Everything is escaped: the sender is
+ * trusted, the lead's own name and company in the draft are not.
+ */
+export function leadReply(draft: Draft): Built {
+  const paragraphs = draft.body
+    .split(/\n{2,}/)
+    .map((b) => b.trim())
+    .filter(Boolean)
+    .map((b) => p(esc(b).replace(/\n/g, "<br />")))
+    .join("");
+
+  return {
+    subject: draft.subject,
+    html: shell(paragraphs, "You're getting this because you contacted Source Archive."),
+    text: draft.body,
   };
 }

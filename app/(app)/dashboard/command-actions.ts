@@ -465,15 +465,6 @@ export async function quickAction(
   const supabase = await getAgencySupabase();
 
   switch (`${kind}:${action}`) {
-    case "lead:thanks": {
-      // Same email the Leads panel sends, so there is one wording and one
-      // behaviour wherever you happen to be standing.
-      const { acknowledgeLead } = await import("@/app/(app)/leads/actions");
-      const res = await acknowledgeLead(id);
-      if (!res.success) return { success: false, error: res.error };
-      break;
-    }
-
     case "lead:contacted":
       if (!can(ctx.role, ctx.permissions, "client.edit")) return { success: false, error: "No permission" };
       await supabase.from("leads").update({ status: "contacted" }).eq("id", id);
