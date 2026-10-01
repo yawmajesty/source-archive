@@ -480,7 +480,7 @@ export function TechpacksClient({ submissions: initial }: Props) {
         </div>
 
         {/* Column headers */}
-        <div className="grid grid-cols-[1fr_130px_120px_120px_100px] gap-3 px-5 py-2 bg-[var(--sa-bg)] border-b border-[var(--sa-border)]">
+        <div className="hidden grid-cols-[1fr_130px_120px_120px_100px] gap-3 border-b border-[var(--sa-border)] bg-[var(--sa-bg)] px-5 py-2 md:grid">
           {["Brand / Product", "Contact", "Budget", "Timeline", "Status"].map((h) => (
             <span key={h} className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{h}</span>
           ))}
@@ -500,18 +500,31 @@ export function TechpacksClient({ submissions: initial }: Props) {
               animate={{ opacity: 1 }}
               onClick={() => setSelected(selected?.id === s.id ? null : s)}
               className={cn(
-                "grid grid-cols-[1fr_130px_120px_120px_100px] gap-3 w-full items-center px-5 py-3 border-b border-[var(--sa-border)] text-left transition-colors",
+                "block w-full border-b border-[var(--sa-border)] px-4 py-3 text-left transition-colors sm:px-5",
+                "md:grid md:grid-cols-[1fr_130px_120px_120px_100px] md:items-center md:gap-3",
                 selected?.id === s.id ? "bg-[var(--sa-selected)]" : "hover:bg-[var(--sa-hover)]"
               )}
             >
-              <div>
-                <p className="text-[13px] font-medium text-[var(--sa-text-primary)] truncate">{s.company_name}</p>
-                <p className="text-[11px] text-[var(--sa-text-tertiary)]">{s.product_category}{s.collection_name ? ` · ${s.collection_name}` : ""}</p>
+              <div className="flex items-start gap-3 md:block">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13.5px] font-medium text-[var(--sa-text-primary)] md:text-[13px]">{s.company_name}</p>
+                  <p className="truncate text-[11px] text-[var(--sa-text-tertiary)]">
+                    {s.product_category}{s.collection_name ? ` · ${s.collection_name}` : ""}
+                  </p>
+                </div>
+                <span className="shrink-0 md:hidden"><StatusPill status={s.status} /></span>
               </div>
-              <span className="text-[12px] text-[var(--sa-text-secondary)] truncate">{s.contact_name}</span>
-              <span className="text-[12px] text-[var(--sa-text-tertiary)] truncate">{s.sampling_budget || "—"}</span>
-              <span className="text-[12px] text-[var(--sa-text-tertiary)] truncate">{s.launch_date || "—"}</span>
-              <StatusPill status={s.status} />
+
+              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11.5px] text-[var(--sa-text-tertiary)] md:hidden">
+                {s.contact_name && <span className="text-[var(--sa-text-secondary)]">{s.contact_name}</span>}
+                {s.sampling_budget && <span>{s.sampling_budget}</span>}
+                {s.launch_date && <span>{s.launch_date}</span>}
+              </div>
+
+              <span className="hidden truncate text-[12px] text-[var(--sa-text-secondary)] md:block">{s.contact_name}</span>
+              <span className="hidden truncate text-[12px] text-[var(--sa-text-tertiary)] md:block">{s.sampling_budget || "—"}</span>
+              <span className="hidden truncate text-[12px] text-[var(--sa-text-tertiary)] md:block">{s.launch_date || "—"}</span>
+              <span className="hidden md:block"><StatusPill status={s.status} /></span>
             </motion.button>
           ))}
         </div>

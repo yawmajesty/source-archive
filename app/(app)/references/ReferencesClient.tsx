@@ -492,7 +492,7 @@ export function ReferencesClient({ samples: initial, factories, clients }: Props
           })}
         </div>
 
-        <div className="grid grid-cols-[1fr_140px_160px_140px_110px] gap-3 px-5 py-2 bg-[var(--sa-bg)] border-b border-[var(--sa-border)]">
+        <div className="hidden grid-cols-[1fr_140px_160px_140px_110px] gap-3 border-b border-[var(--sa-border)] bg-[var(--sa-bg)] px-5 py-2 md:grid">
           {["Item / Client", "Brand", "Purpose", "Status", "Submitted"].map((h) => (
             <span key={h} className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{h}</span>
           ))}
@@ -511,20 +511,33 @@ export function ReferencesClient({ samples: initial, factories, clients }: Props
               animate={{ opacity: 1 }}
               onClick={() => { setSelected(selected?.id === s.id ? null : s); setShowAdd(false); }}
               className={cn(
-                "grid grid-cols-[1fr_140px_160px_140px_110px] gap-3 w-full items-center px-5 py-3 border-b border-[var(--sa-border)] text-left transition-colors",
+                "block w-full border-b border-[var(--sa-border)] px-4 py-3 text-left transition-colors sm:px-5",
+                "md:grid md:grid-cols-[1fr_140px_160px_140px_110px] md:items-center md:gap-3",
                 selected?.id === s.id ? "bg-[var(--sa-selected)]" : "hover:bg-[var(--sa-hover)]"
               )}
             >
-              <div>
-                <p className="text-[13px] font-medium text-[var(--sa-text-primary)] truncate">{s.item_description}</p>
-                <p className="text-[11px] text-[var(--sa-text-tertiary)]">{s.client_name}{s.product_name ? ` · ${s.product_name}` : ""}</p>
+              <div className="flex items-start gap-3 md:block">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13.5px] font-medium text-[var(--sa-text-primary)] md:text-[13px]">{s.item_description}</p>
+                  <p className="truncate text-[11px] text-[var(--sa-text-tertiary)]">
+                    {s.client_name}{s.product_name ? ` · ${s.product_name}` : ""}
+                  </p>
+                </div>
+                <span className="shrink-0 md:hidden"><StatusPill status={s.status} /></span>
               </div>
-              <span className="text-[12px] text-[var(--sa-text-secondary)] truncate">{s.brand || "—"}</span>
-              <div className="flex flex-wrap gap-1">
-                {s.reference_for.map((p) => <PurposePill key={p} purpose={p} />)}
+
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-[var(--sa-text-tertiary)] md:hidden">
+                {s.brand && <span className="text-[var(--sa-text-secondary)]">{s.brand}</span>}
+                <span>{formatDate(s.submitted_at)}</span>
+                {s.reference_for.map((pp) => <PurposePill key={pp} purpose={pp} />)}
               </div>
-              <StatusPill status={s.status} />
-              <span className="text-[11px] text-[var(--sa-text-tertiary)]">{formatDate(s.submitted_at)}</span>
+
+              <span className="hidden truncate text-[12px] text-[var(--sa-text-secondary)] md:block">{s.brand || "—"}</span>
+              <div className="hidden flex-wrap gap-1 md:flex">
+                {s.reference_for.map((pp) => <PurposePill key={pp} purpose={pp} />)}
+              </div>
+              <span className="hidden md:block"><StatusPill status={s.status} /></span>
+              <span className="hidden text-[11px] text-[var(--sa-text-tertiary)] md:block">{formatDate(s.submitted_at)}</span>
             </motion.button>
           ))}
         </div>

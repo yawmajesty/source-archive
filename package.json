@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "seed:brand": "node scripts/seed-brand.mjs"
+    "seed:brand": "node scripts/seed-brand.mjs",
+    "check:responsive": "node scripts/check-responsive.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
