@@ -3,7 +3,6 @@ import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { sendAll, looksLikeEmail } from "@/lib/email/send";
 import { campaignItemDue, dailyDigest, type DigestQueue, type DigestInvoice } from "@/lib/email/templates";
 import { buildCommandCentre } from "@/lib/command-centre-build";
-import { agencyNotificationRecipients } from "@/lib/email/send";
 import { sumInvoice, money } from "@/lib/invoice-total";
 import { ageOf } from "@/lib/command-centre";
 import { buildPublicUrl } from "@/lib/url";
@@ -183,14 +182,30 @@ async function sendDigest(
 
   for (const agency of rows.slice(0, 20)) {
     try {
-      const to = await agencyNotificationRecipients(agency.id);
-      if (to.length === 0) continue;
+      // Only to the address an agency deliberately nominated, never to the
+      // admin fallback. That fallback is right for a one-off alert about a
+      // brief someone just submitted; it is wrong for a daily email, which
+      // is a standing subscription nobody consented to by being an admin.
+      const { data: settings } = await supabase
+        .from("agency_settings")
+        .select("notification_email")
+        .eq("agency_id", agency.id)
+        .maybeSingle();
+      const nominated = (settings as { notification_email: string | null } | null)?.notification_email;
+      if (!looksLikeEmail(nominated)) continue;
+      const to = [nominated.trim()];
 
-      const centre = await buildCommandCentre(supabase, { seesMoney: true, seesClients: true });
+      // Scoped to this agency. Without it the service-role client returned
+      // every agency's rows, and each agency's admins were sent the lot.
+      const centre = await buildCommandCentre(supabase, {
+        agencyId: agency.id,
+        seesMoney: true,
+        seesClients: true,
+      });
 
-      // Nothing waiting and nothing owed still sends — a digest that only
-      // arrives on bad days trains you to dread it, and its absence then
-      // says nothing at all.
+      // Nothing waiting and nothing owed still sends, for the agency that
+      // asked for it — a digest that only arrives on bad days trains you to
+      // dread it, and its absence then says nothing at all.
       const queues: DigestQueue[] = centre.queues
         .filter((q) => q.kind !== "invoice" && q.items.length > 0)
         .map((q) => ({

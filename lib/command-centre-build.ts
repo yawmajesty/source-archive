@@ -34,8 +34,46 @@ export async function buildCommandCentre(
   // Either the request-scoped client or the service-role one, depending on
   // whether there is a user at all.
   supabase: SupabaseClient,
-  { seesMoney, seesClients }: { seesMoney: boolean; seesClients: boolean },
+  {
+    agencyId,
+    seesMoney,
+    seesClients,
+  }: {
+    /**
+     * Required, and not merely because it is tidier.
+     *
+     * The dashboard passes a client that RLS already scopes, so this is
+     * belt and braces there. The nightly digest has no user and passes the
+     * service-role client, which bypasses RLS entirely — and when this
+     * argument did not exist, that digest went out to every agency's
+     * admins carrying every other agency's clients, leads and products.
+     * Making it required means the compiler refuses to let that happen
+     * again rather than trusting whoever writes the next caller.
+     */
+    agencyId: string;
+    seesMoney: boolean;
+    seesClients: boolean;
+  },
 ): Promise<CommandCentre> {
+  if (!agencyId) throw new Error("buildCommandCentre needs an agencyId");
+
+  /**
+   * Every read in here is scoped to one agency, with no exceptions.
+   *
+   * Columns are passed in because PostgREST only accepts filters after
+   * select(), so the scoping has to wrap both calls. A dynamic table name
+   * loses Supabase's generated row types, which is why the builder is
+   * loosely typed here — every result below is cast explicitly anyway, and
+   * the trade is worth it to make the agency filter impossible to omit.
+   */
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const loose = supabase as unknown as {
+    from: (table: string) => { select: (columns: string) => any };
+  };
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+  const scope = (table: string, columns: string) =>
+    loose.from(table).select(columns).eq("agency_id", agencyId);
+
   const now = Date.now();
   const today = new Date().toISOString().slice(0, 10);
   const inSeven = new Date(now + 7 * 86_400_000).toISOString().slice(0, 10);
@@ -46,23 +84,24 @@ export async function buildCommandCentre(
     invoices, tasks, shoots, shootProducts, campaignItems, campaigns, stageEvents,
     visits, costRows, costedProducts,
   ] = await Promise.all([
-    supabase.from("clients").select("id, name, status, next_follow_up_at, follow_up_note"),
-    supabase.from("projects").select("id, name, client_id, status"),
-    supabase.from("products").select("id, name, stage, project_id").neq("stage", "shipped"),
-    supabase.from("product_briefs").select("id, name, product_id, client_id, status, created_at, last_reply_side, last_reply_at"),
-    supabase.from("product_brief_replies").select("brief_id, side, created_at"),
-    supabase.from("leads").select("id, company_name, contact_name, status, created_at, source"),
-    supabase.from("sampling_invoices").select("id, client_id, title, round, status, created_at, line_items"),
-    supabase.from("tasks").select("id, title, due_date, status, project_id, product_id").neq("status", "done"),
-    supabase.from("shoots").select("id, title, shoot_date, status, client_id").gte("shoot_date", today).lte("shoot_date", inSeven),
-    supabase.from("shoot_products").select("shoot_id, product_id"),
-    supabase.from("campaign_items").select("id, title, due_date, status, campaign_id").lt("due_date", today).not("status", "in", '("done","live")'),
-    supabase.from("campaigns").select("id, name, client_id"),
-    supabase.from("product_stage_events").select("product_id, created_at").order("created_at", { ascending: false }).limit(1000),
-    supabase.from("portal_visits").select("client_id, created_at").order("created_at", { ascending: false }).limit(2000),
-    supabase.from("costs").select("product_id, amount, project_id").is("deleted_at", null),
-    supabase.from("products").select("id, name, quoted_cost_usd, target_cost_usd, project_id, stage"),
+    scope("clients", "id, name, status, next_follow_up_at, follow_up_note"),
+    scope("projects", "id, name, client_id, status"),
+    scope("products", "id, name, stage, project_id").neq("stage", "shipped"),
+    scope("product_briefs", "id, name, product_id, client_id, status, created_at, last_reply_side, last_reply_at"),
+    scope("product_brief_replies", "brief_id, side, created_at"),
+    scope("leads", "id, company_name, contact_name, status, created_at, source"),
+    scope("sampling_invoices", "id, client_id, title, round, status, created_at, line_items"),
+    scope("tasks", "id, title, due_date, status, project_id, product_id").neq("status", "done"),
+    scope("shoots", "id, title, shoot_date, status, client_id").gte("shoot_date", today).lte("shoot_date", inSeven),
+    scope("shoot_products", "shoot_id, product_id"),
+    scope("campaign_items", "id, title, due_date, status, campaign_id").lt("due_date", today).not("status", "in", '("done","live")'),
+    scope("campaigns", "id, name, client_id"),
+    scope("product_stage_events", "product_id, created_at").order("created_at", { ascending: false }).limit(1000),
+    scope("portal_visits", "client_id, created_at").order("created_at", { ascending: false }).limit(2000),
+    scope("costs", "product_id, amount, project_id").is("deleted_at", null),
+    scope("products", "id, name, quoted_cost_usd, target_cost_usd, project_id, stage"),
   ]);
+
 
   const clientRows = (clients.data ?? []) as Array<{
     id: string; name: string; status: string | null;

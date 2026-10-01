@@ -30,7 +30,11 @@ export async function getCommandCentre(): Promise<CommandCentre> {
   // empty ones.
   const seesMoney = can(ctx.role, ctx.permissions, "cost.view");
   const seesClients = ctx.role !== "maker";
-  return buildCommandCentre(await getAgencySupabase(), { seesMoney, seesClients });
+  return buildCommandCentre(await getAgencySupabase(), {
+    agencyId: ctx.agency.id,
+    seesMoney,
+    seesClients,
+  });
 }
 
 
