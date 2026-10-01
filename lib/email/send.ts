@@ -48,6 +48,12 @@ export interface OutboundEmail {
   agencyId: string;
   to: string;
   toName?: string | null;
+  /**
+   * Copied in. Used where we want a record on our side of something that
+   * went to a client — a portal invitation, say — without sending them a
+   * separate email about their own email.
+   */
+  cc?: string[];
   replyTo?: string | null;
   subject: string;
   html: string;
@@ -69,6 +75,19 @@ export function looksLikeEmail(value: string | null | undefined): value is strin
   if (!value) return false;
   const v = value.trim();
   return v.length > 4 && v.length < 320 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+/** The copy list, deduplicated, validated, and minus the main recipient. */
+function ccList(message: OutboundEmail): string[] {
+  const to = message.to.trim().toLowerCase();
+  const seen = new Set<string>();
+  for (const raw of message.cc ?? []) {
+    if (!looksLikeEmail(raw)) continue;
+    const address = raw.trim().toLowerCase();
+    if (address === to) continue;
+    seen.add(address);
+  }
+  return Array.from(seen);
 }
 
 function config() {
@@ -139,6 +158,9 @@ export async function sendEmail(message: OutboundEmail): Promise<SendResult> {
         subject: message.subject,
         html: message.html,
         text: message.text,
+        // Never copy in the person it is already addressed to: Resend
+        // accepts it and they get the message twice.
+        ...(ccList(message).length ? { cc: ccList(message) } : {}),
         ...(message.replyTo ? { reply_to: message.replyTo } : {}),
       }),
     });

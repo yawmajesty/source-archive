@@ -14,13 +14,13 @@ import { imageUrl as sizedImage } from "@/lib/image-url";
 
 interface Props { leads: Lead[] }
 
-const STATUS_CFG: Record<string, { label: string; cls: string }> = {
-  new:           { label: "New",           cls: "bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400" },
-  contacted:     { label: "Contacted",     cls: "bg-amber-50 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400" },
-  qualified:     { label: "Qualified",     cls: "bg-purple-50 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400" },
-  proposal_sent: { label: "Proposal sent", cls: "bg-orange-50 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400" },
-  converted:     { label: "Converted",     cls: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" },
-  lost:          { label: "Lost",          cls: "bg-gray-100 text-gray-500 dark:bg-gray-500/20 dark:text-gray-400" },
+const STATUS_CFG: Record<string, { label: string; cls: string; dot: string }> = {
+  new:           { label: "New",           cls: "bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400" , dot: "bg-blue-500" },
+  contacted:     { label: "Contacted",     cls: "bg-amber-50 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400" , dot: "bg-amber-500" },
+  qualified:     { label: "Qualified",     cls: "bg-purple-50 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400" , dot: "bg-purple-500" },
+  proposal_sent: { label: "Proposal sent", cls: "bg-orange-50 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400" , dot: "bg-orange-500" },
+  converted:     { label: "Converted",     cls: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" , dot: "bg-emerald-500" },
+  lost:          { label: "Lost",          cls: "bg-gray-100 text-gray-500 dark:bg-gray-500/20 dark:text-gray-400" , dot: "bg-gray-400" },
 };
 
 const SOURCE_OPTIONS = ["brief_form", "referral", "direct", "cold_outreach", "event", "social", "other"];
@@ -102,14 +102,14 @@ function AddLeadPanel({ onClose, onCreated }: { onClose: () => void; onCreated: 
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
       transition={{ duration: 0.2 }}
-      className="flex flex-col h-full bg-[var(--sa-window)] border-l border-[var(--sa-border)]"
+      className="flex flex-col h-full min-h-0 bg-[var(--sa-window)] border-[var(--sa-border)] md:border-l"
     >
       <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--sa-border)]">
         <h2 className="text-[14px] font-semibold text-[var(--sa-text-primary)]">Add lead</h2>
         <button onClick={onClose} className="text-[12px] text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-primary)] px-2 py-1">✕</button>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
         <div>
           <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Company</p>
           <div className="flex flex-col gap-2">
@@ -222,7 +222,7 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
       transition={{ duration: 0.2 }}
-      className="flex flex-col h-full bg-[var(--sa-window)] border-l border-[var(--sa-border)]"
+      className="flex flex-col h-full min-h-0 bg-[var(--sa-window)] border-[var(--sa-border)] md:border-l"
     >
       <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--sa-border)]">
         <div>
@@ -242,7 +242,7 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-4">
 
         <div className="flex items-center gap-2 flex-wrap">
           <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-medium", STATUS_CFG[lead.status]?.cls)}>{STATUS_CFG[lead.status]?.label}</span>
@@ -481,6 +481,8 @@ export function LeadsClient({ leads }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState<Lead | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [filter, setFilter] = useState<string | null>(null);
+  const shown = filter ? leads.filter((l) => l.status === filter) : leads;
 
   const counts = (Object.keys(STATUS_CFG) as string[]).reduce((acc, s) => {
     acc[s] = leads.filter((l) => l.status === s).length;
@@ -492,7 +494,7 @@ export function LeadsClient({ leads }: Props) {
   return (
     <div className="flex h-full flex-col overflow-hidden md:flex-row">
       <div className={cn("flex min-w-0 flex-col overflow-hidden transition-all", rightPanel ? "hidden flex-1 md:flex" : "w-full")}>
-        <div className="flex items-center justify-between px-6 py-4 panel-border-b bg-[var(--sa-window)]">
+        <div className="flex items-center justify-between gap-3 px-4 py-3.5 panel-border-b bg-[var(--sa-window)] sm:px-6 sm:py-4">
           <div>
             <h1 className="text-[15px] font-semibold text-[var(--sa-text-primary)]">Leads</h1>
             <p className="text-[12px] text-[var(--sa-text-tertiary)]">{leads.length} total · {counts.new ?? 0} new</p>
@@ -506,29 +508,52 @@ export function LeadsClient({ leads }: Props) {
         </div>
 
         {/* Shareable form links */}
-        <div className="flex items-center gap-3 px-6 py-2.5 panel-border-b bg-[var(--sa-bg)] overflow-x-auto">
+        <div className="flex items-center gap-3 overflow-x-auto px-4 py-2.5 panel-border-b bg-[var(--sa-bg)] sm:px-6">
           <span className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] shrink-0">Share forms</span>
           <CopyLink label="Quick enquiry" path="/enquire" />
           <CopyLink label="Full brief" path="/brief" />
         </div>
 
-        <div className="flex items-center gap-3 px-6 py-3 panel-border-b bg-[var(--sa-window)] overflow-x-auto">
+        <div className="flex items-center gap-1.5 overflow-x-auto px-4 py-2.5 panel-border-b bg-[var(--sa-window)] sm:px-6">
+          <button
+            onClick={() => setFilter(null)}
+            aria-pressed={filter === null}
+            className={cn(
+              "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+              filter === null
+                ? "bg-[var(--sa-text-primary)] text-[var(--sa-window)]"
+                : "text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]",
+            )}
+          >
+            All {leads.length}
+          </button>
           {(Object.entries(STATUS_CFG) as [string, typeof STATUS_CFG[string]][]).map(([s, cfg]) => (
-            <div key={s} className="flex items-center gap-1.5 shrink-0">
-              <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", cfg.cls)}>{cfg.label}</span>
-              <span className="text-[12px] font-mono text-[var(--sa-text-secondary)]">{counts[s] ?? 0}</span>
-            </div>
+            <button
+              key={s}
+              onClick={() => setFilter(filter === s ? null : s)}
+              aria-pressed={filter === s}
+              className={cn(
+                "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+                filter === s
+                  ? "bg-[var(--sa-text-primary)] text-[var(--sa-window)]"
+                  : "text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]",
+              )}
+            >
+              <span className={cn("h-1.5 w-1.5 rounded-full", cfg.dot)} />
+              {cfg.label}
+              <span className="tnum opacity-70">{counts[s] ?? 0}</span>
+            </button>
           ))}
         </div>
 
-        <div className="grid grid-cols-[1fr_130px_120px_110px_100px] gap-3 px-5 py-2 bg-[var(--sa-bg)] border-b border-[var(--sa-border)]">
+        <div className="hidden grid-cols-[1fr_130px_120px_110px_100px] gap-3 border-b border-[var(--sa-border)] bg-[var(--sa-bg)] px-5 py-2 md:grid">
           {["Company", "Contact", "Budget", "Timeline", "Status"].map((h) => (
             <span key={h} className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{h}</span>
           ))}
         </div>
 
         <div className="flex-1 overflow-y-auto bg-[var(--sa-window)]">
-          {leads.map((lead) => {
+          {shown.map((lead) => {
             const cfg = STATUS_CFG[lead.status];
             return (
               <motion.button
@@ -537,25 +562,45 @@ export function LeadsClient({ leads }: Props) {
                 animate={{ opacity: 1 }}
                 onClick={() => { setSelected(selected?.id === lead.id ? null : lead); setShowAdd(false); }}
                 className={cn(
-                  "grid grid-cols-[1fr_130px_120px_110px_100px] gap-3 w-full items-center px-5 py-3 border-b border-[var(--sa-border)] text-left transition-colors",
+                  "block w-full border-b border-[var(--sa-border)] px-4 py-3 text-left transition-colors sm:px-5",
+                  "md:grid md:grid-cols-[1fr_130px_120px_110px_100px] md:items-center md:gap-3",
                   selected?.id === lead.id ? "bg-[var(--sa-selected)]" : "hover:bg-[var(--sa-hover)]"
                 )}
               >
-                <div>
-                  <p className="text-[13px] font-medium text-[var(--sa-text-primary)] truncate">{lead.company_name}</p>
-                  <p className="text-[11px] text-[var(--sa-text-tertiary)]">{lead.country} · {formatDate(lead.created_at)}</p>
+                {/* Phone: name and status on one line, the rest underneath. */}
+                <div className="flex items-start gap-3 md:block">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13.5px] font-medium text-[var(--sa-text-primary)] md:text-[13px]">
+                      {lead.company_name}
+                    </p>
+                    <p className="truncate text-[11px] text-[var(--sa-text-tertiary)]">
+                      {[lead.country, formatDate(lead.created_at)].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  <span className={cn("shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-medium md:hidden", cfg?.cls)}>
+                    {cfg?.label}
+                  </span>
                 </div>
-                <span className="text-[12px] text-[var(--sa-text-secondary)] truncate">{lead.contact_name}</span>
-                <span className="text-[12px] text-[var(--sa-text-tertiary)] truncate">{lead.estimated_budget || "—"}</span>
-                <span className="text-[12px] text-[var(--sa-text-tertiary)] truncate">{lead.timeline || "—"}</span>
-                <span className={cn("rounded-full px-2.5 py-0.5 text-[10px] font-medium w-fit", cfg?.cls)}>{cfg?.label}</span>
+
+                <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11.5px] text-[var(--sa-text-tertiary)] md:hidden">
+                  {lead.contact_name && <span className="text-[var(--sa-text-secondary)]">{lead.contact_name}</span>}
+                  {lead.estimated_budget && <span>{lead.estimated_budget}</span>}
+                  {lead.timeline && <span>{lead.timeline}</span>}
+                </div>
+
+                <span className="hidden truncate text-[12px] text-[var(--sa-text-secondary)] md:block">{lead.contact_name}</span>
+                <span className="hidden truncate text-[12px] text-[var(--sa-text-tertiary)] md:block">{lead.estimated_budget || "—"}</span>
+                <span className="hidden truncate text-[12px] text-[var(--sa-text-tertiary)] md:block">{lead.timeline || "—"}</span>
+                <span className={cn("hidden w-fit rounded-full px-2.5 py-0.5 text-[10px] font-medium md:block", cfg?.cls)}>
+                  {cfg?.label}
+                </span>
               </motion.button>
             );
           })}
-          {leads.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-[var(--sa-text-tertiary)]">
-              <p className="text-[13px]">No leads yet</p>
-              <p className="text-[11px]">Share the brief link or add one manually</p>
+          {shown.length === 0 && (
+            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-[var(--sa-text-tertiary)]">
+              <p className="text-[13px]">{filter ? `Nothing marked ${STATUS_CFG[filter]?.label.toLowerCase()}` : "No leads yet"}</p>
+              <p className="text-[11px]">{filter ? "Pick another status above." : "Share the brief link or add one manually"}</p>
             </div>
           )}
         </div>
@@ -563,7 +608,7 @@ export function LeadsClient({ leads }: Props) {
 
       <AnimatePresence>
         {rightPanel === "add" && (
-          <div className="w-full shrink-0 overflow-hidden md:w-96">
+          <div className="flex min-h-0 w-full flex-1 overflow-hidden md:w-96 md:flex-none md:shrink-0">
             <AddLeadPanel
               onClose={() => setShowAdd(false)}
               onCreated={() => { setShowAdd(false); router.refresh(); }}
@@ -571,7 +616,7 @@ export function LeadsClient({ leads }: Props) {
           </div>
         )}
         {rightPanel === "detail" && selected && (
-          <div className="w-full shrink-0 overflow-hidden md:w-96">
+          <div className="flex min-h-0 w-full flex-1 overflow-hidden md:w-96 md:flex-none md:shrink-0">
             <LeadDetail
               key={selected.id}
               lead={selected}

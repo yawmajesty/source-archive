@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { sendAll, clientRecipients } from "@/lib/email/send";
+import { sendAll, clientRecipients, agencyNotificationRecipients } from "@/lib/email/send";
 import { portalInvite } from "@/lib/email/templates";
 import { buildPublicUrl } from "@/lib/url";
 import { getAgencySupabase } from "@/lib/supabase-agency";
@@ -112,10 +112,16 @@ export async function toggleClientPortal(
     portalUrl: buildPublicUrl(`/portal/${clientId}`),
   });
 
+  // Copied to us rather than sent separately: one thread showing exactly
+  // what the client was told, which is the thing you want when they reply
+  // asking where their portal is.
+  const copyTo = await agencyNotificationRecipients(ctx.agency.id);
+
   await sendAll(
     emails.map((to) => ({
       agencyId: ctx.agency.id,
       to,
+      cc: copyTo,
       subject: built.subject,
       html: built.html,
       text: built.text,

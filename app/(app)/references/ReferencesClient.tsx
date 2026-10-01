@@ -111,14 +111,14 @@ function AddSamplePanel({ clients, onClose, onCreated }: { clients: Client[]; on
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
       transition={{ duration: 0.2 }}
-      className="flex flex-col h-full bg-[var(--sa-window)] border-l border-[var(--sa-border)]"
+      className="flex flex-col h-full min-h-0 bg-[var(--sa-window)] border-[var(--sa-border)] md:border-l"
     >
       <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--sa-border)]">
         <h2 className="text-[14px] font-semibold text-[var(--sa-text-primary)]">Add reference sample</h2>
         <button onClick={onClose} className="text-[12px] text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-primary)] px-2 py-1">✕</button>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
 
         {/* Client + product */}
         <div>
@@ -270,7 +270,7 @@ function ReferenceDetail({
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
       transition={{ duration: 0.2 }}
-      className="flex flex-col h-full bg-[var(--sa-window)] border-l border-[var(--sa-border)]"
+      className="flex flex-col h-full min-h-0 bg-[var(--sa-window)] border-[var(--sa-border)] md:border-l"
     >
       <div className="flex items-start justify-between px-5 py-4 border-b border-[var(--sa-border)]">
         <div>
@@ -282,7 +282,7 @@ function ReferenceDetail({
         <button onClick={onClose} className="text-[12px] text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-primary)] px-2 py-1">✕</button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-4">
 
         <div className="flex flex-wrap gap-1.5">
           <StatusPill status={sample.status} />
@@ -532,7 +532,7 @@ export function ReferencesClient({ samples: initial, factories, clients }: Props
 
       <AnimatePresence>
         {rightPanel === "add" && (
-          <div className="w-full shrink-0 overflow-hidden md:w-96">
+          <div className="flex min-h-0 w-full flex-1 overflow-hidden md:w-96 md:flex-none md:shrink-0">
             <AddSamplePanel
               clients={clients}
               onClose={() => setShowAdd(false)}
@@ -541,7 +541,7 @@ export function ReferencesClient({ samples: initial, factories, clients }: Props
           </div>
         )}
         {rightPanel === "detail" && selected && (
-          <div className="w-full shrink-0 overflow-hidden md:w-96">
+          <div className="flex min-h-0 w-full flex-1 overflow-hidden md:w-96 md:flex-none md:shrink-0">
             <ReferenceDetail
               key={selected.id}
               sample={selected}

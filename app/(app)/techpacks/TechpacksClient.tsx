@@ -255,7 +255,7 @@ function TechpackDetail({
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
       transition={{ duration: 0.2 }}
-      className="flex flex-col h-full bg-[var(--sa-window)] border-l border-[var(--sa-border)]"
+      className="flex flex-col h-full min-h-0 bg-[var(--sa-window)] border-[var(--sa-border)] md:border-l"
     >
       {/* Header */}
       <div className="flex items-start justify-between px-5 py-4 border-b border-[var(--sa-border)]">
@@ -519,7 +519,7 @@ export function TechpacksClient({ submissions: initial }: Props) {
 
       <AnimatePresence>
         {selected && (
-          <div className="w-full shrink-0 overflow-hidden md:w-[420px]">
+          <div className="flex min-h-0 w-full flex-1 overflow-hidden md:w-[420px] md:flex-none md:shrink-0">
             <TechpackDetail
               key={selected.id}
               sub={selected}
