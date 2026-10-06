@@ -7,9 +7,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Package, DollarSign, Factory, CheckSquare,
   Users, Inbox, Folder, FolderOpen, Settings, Menu, X, LogOut, Layers, FileText, Sparkles, Calculator, Mail, Contact, Camera, DatabaseBackup, Receipt,
+  Star, ChevronRight,
 } from "lucide-react";
 import { useClerk } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
+import { toggleClientPin } from "@/app/(app)/clients/actions";
 import { DarkModeToggle } from "@/components/shared/DarkModeToggle";
 import type { Client } from "@/lib/mock-data";
 
@@ -50,6 +52,80 @@ const fadeSlideItem = {
   show:  { opacity: 1, x: 0, transition: { duration: 0.2 } },
 };
 
+/**
+ * One client in the sidebar.
+ *
+ * The star only appears on hover, or when it is already pinned — a column
+ * of stars down a list of twenty-four is noise, and the pin is a thing you
+ * do occasionally rather than something you need to see constantly.
+ */
+function ClientRow({
+  client, active, onNavClick, onPinned,
+}: {
+  client: Client;
+  active: boolean;
+  onNavClick?: () => void;
+  onPinned: (message: string | null) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const pinned = Boolean(client.pinned_at);
+
+  async function togglePin(e: React.MouseEvent) {
+    // The row is a link; pinning must not navigate.
+    e.preventDefault();
+    e.stopPropagation();
+    if (busy) return;
+    setBusy(true);
+    onPinned(null);
+    const res = await toggleClientPin(client.id, !pinned);
+    setBusy(false);
+    if (!res.success) onPinned(res.error);
+  }
+
+  return (
+    <motion.div variants={fadeSlideItem}>
+      <div
+        className={cn(
+          "group flex items-center gap-1 rounded-md pr-1 transition-colors",
+          active ? "bg-[var(--sa-selected)]" : "hover:bg-[var(--sa-hover)]",
+        )}
+      >
+        <Link
+          href={`/clients/${client.id}`}
+          onClick={onNavClick}
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] leading-none transition-colors",
+            active ? "font-medium text-[var(--sa-accent)]" : "text-[var(--sa-text-secondary)] group-hover:text-[var(--sa-text-primary)]",
+          )}
+        >
+          {active
+            ? <FolderOpen size={14} strokeWidth={2} className="shrink-0 text-[var(--sa-accent)]" />
+            : <Folder size={14} strokeWidth={1.8} className="shrink-0 text-[var(--sa-text-tertiary)] group-hover:text-[var(--sa-text-secondary)]" />}
+          <span className="flex-1 truncate">{client.name}</span>
+          {client.has_new_activity && !active && (
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--sa-accent)]" />
+          )}
+        </Link>
+
+        <button
+          onClick={togglePin}
+          disabled={busy}
+          aria-label={pinned ? `Unpin ${client.name}` : `Pin ${client.name}`}
+          title={pinned ? "Unpin from the sidebar" : "Pin to the top of the sidebar"}
+          className={cn(
+            "shrink-0 rounded p-1 transition-opacity disabled:opacity-40",
+            pinned
+              ? "text-[var(--sa-accent)] opacity-100"
+              : "text-[var(--sa-text-tertiary)] opacity-0 hover:text-[var(--sa-text-primary)] focus-visible:opacity-100 group-hover:opacity-100",
+          )}
+        >
+          <Star size={12} strokeWidth={2} fill={pinned ? "currentColor" : "none"} />
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
 function NavItem({
   href, label, icon: Icon, isActive, hasActivity, badge, onClick,
 }: {
@@ -88,6 +164,18 @@ function SidebarContent({
 }: Props & { onNavClick?: () => void }) {
   const pathname = usePathname();
   const { signOut } = useClerk();
+  const [showInactive, setShowInactive] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
+
+  // Pinned first, in the order they were pinned; then everyone still being
+  // worked with; then the inactive ones, folded away. Before migration 039
+  // pinned_at is simply absent and this collapses to the old two groups.
+  const pinnedClients = clients
+    .filter((c) => c.pinned_at)
+    .sort((a, b) => String(a.pinned_at).localeCompare(String(b.pinned_at)));
+  const unpinned = clients.filter((c) => !c.pinned_at);
+  const liveClients = unpinned.filter((c) => c.status !== "inactive");
+  const inactiveClients = unpinned.filter((c) => c.status === "inactive");
 
   function isActive(href: string) {
     if (href === "/dashboard") return pathname === "/dashboard";
@@ -118,37 +206,59 @@ function SidebarContent({
           </motion.div>
         </div>
 
+        {pinnedClients.length > 0 && (
+          <div className="mb-1 mt-3">
+            <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--sa-text-tertiary)]">
+              <Star size={9} strokeWidth={2.5} fill="currentColor" /> Pinned
+            </div>
+            <motion.div variants={staggerContainer} initial="hidden" animate="show">
+              {pinnedClients.map((client) => (
+                <ClientRow key={client.id} client={client} active={isActive(`/clients/${client.id}`)}
+                  onNavClick={onNavClick} onPinned={setPinError} />
+              ))}
+            </motion.div>
+          </div>
+        )}
+
         <div className="mb-1 mt-3">
           <div className="px-2.5 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--sa-text-tertiary)]">
             Clients
           </div>
           <motion.div variants={staggerContainer} initial="hidden" animate="show">
-            {clients.map((client) => {
-              const href = `/clients/${client.id}`;
-              const active = isActive(href);
-              return (
-                <motion.div key={client.id} variants={fadeSlideItem}>
-                  <Link href={href} onClick={onNavClick}
-                    className={cn(
-                      "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] leading-none transition-colors group",
-                      active
-                        ? "bg-[var(--sa-selected)] text-[var(--sa-accent)] font-medium"
-                        : "text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] hover:text-[var(--sa-text-primary)]"
-                    )}
-                  >
-                    {active
-                      ? <FolderOpen size={14} strokeWidth={2} className="text-[var(--sa-accent)] shrink-0" />
-                      : <Folder size={14} strokeWidth={1.8} className="text-[var(--sa-text-tertiary)] group-hover:text-[var(--sa-text-secondary)] shrink-0" />
-                    }
-                    <span className="flex-1 truncate">{client.name}</span>
-                    {client.has_new_activity && !active && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--sa-accent)]" />
-                    )}
-                  </Link>
-                </motion.div>
-              );
-            })}
+            {liveClients.map((client) => (
+              <ClientRow key={client.id} client={client} active={isActive(`/clients/${client.id}`)}
+                onNavClick={onNavClick} onPinned={setPinError} />
+            ))}
           </motion.div>
+
+          {/* Inactive clients keep their records and their portal; they just
+              stop taking up the list you scroll every day. */}
+          {inactiveClients.length > 0 && (
+            <>
+              {showInactive && (
+                <motion.div variants={staggerContainer} initial="hidden" animate="show">
+                  {inactiveClients.map((client) => (
+                    <ClientRow key={client.id} client={client} active={isActive(`/clients/${client.id}`)}
+                      onNavClick={onNavClick} onPinned={setPinError} />
+                  ))}
+                </motion.div>
+              )}
+              <button
+                onClick={() => setShowInactive((v) => !v)}
+                className="mt-0.5 flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-left text-[11.5px] text-[var(--sa-text-tertiary)] transition-colors hover:bg-[var(--sa-hover)] hover:text-[var(--sa-text-secondary)]"
+              >
+                <ChevronRight size={11} strokeWidth={2}
+                  className={cn("shrink-0 transition-transform", showInactive && "rotate-90")} />
+                {showInactive ? "Hide" : "Show"} {inactiveClients.length} inactive
+              </button>
+            </>
+          )}
+
+          {pinError && (
+            <p className="px-2.5 pt-1.5 text-[11px] leading-snug" style={{ color: "var(--sa-danger)" }}>
+              {pinError}
+            </p>
+          )}
         </div>
 
       </div>

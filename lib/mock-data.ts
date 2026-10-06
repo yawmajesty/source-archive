@@ -47,6 +47,12 @@ export interface Client {
   contact_email: string;
   has_new_activity: boolean;
   portal_enabled?: boolean;
+  /**
+   * When this client was pinned to the sidebar, or null/absent.
+   * Optional because the column arrives with migration 039 and the sidebar
+   * has to render before and after that.
+   */
+  pinned_at?: string | null;
   created_at: string;
 }
 
