@@ -69,6 +69,28 @@ for (const root of ROOTS) {
         findings.push({ at, px, detail: m[1], why: "inline grid, no minWidth to scroll against" });
       }
 
+      // A w-full element used directly as a flex child next to a
+      // fixed-width sibling. w-full means width:100%, and a flex item
+      // defaults to min-width:auto, so it refuses to shrink to make room —
+      // the row bursts its container instead. min-w-0 or flex-1 fixes it.
+      // Narrow on purpose: both a w-full and a fixed-width class on the
+      // same row, and no shrink guard anywhere on it.
+      //
+      // Limited, and worth knowing how: it only sees literal classNames on
+      // one line. The instance that prompted it put w-full in a shared
+      // `inputCls` variable across several lines, and this would not have
+      // caught it. Reviewing a form at the width it is actually rendered in
+      // remains the only reliable check.
+      if (/\bflex\b/.test(line) || /className="flex/.test(line)) {
+        // Only meaningful when the row's children are on this same line.
+        const hasFull = /className="[^"]*\bw-full\b/.test(line);
+        const hasFixed = /className="[^"]*\bw-(?:\d+|\[\d+px\])\b/.test(line);
+        const guarded = /min-w-0|flex-1|shrink/.test(line);
+        if (hasFull && hasFixed && !guarded) {
+          findings.push({ at, px: 0, detail: line.trim().slice(0, 70), why: "w-full beside a fixed width in a flex row, nothing allowed to shrink" });
+        }
+      }
+
       // Fixed widths wide enough to crowd a phone on their own.
       if (!line.includes("className")) return;
       for (const m of line.matchAll(/(?<![\w:-])w-(?:(\d+)|\[(\d+)px\])(?![\w-])/g)) {

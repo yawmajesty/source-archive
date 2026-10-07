@@ -871,6 +871,7 @@ function CompositionPricingCard({
 
   const inputCls =
     "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-2.5 py-1.5 text-[12px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors";
+  const miniLabel = "mb-0.5 block text-[9.5px] font-semibold uppercase tracking-wide text-[var(--sa-text-tertiary)]";
 
   return (
     <section className="overflow-hidden rounded-xl border border-[var(--sa-border)] bg-[var(--sa-bg)]">
@@ -904,9 +905,9 @@ function CompositionPricingCard({
           ) : (
             <div className="flex flex-col gap-1.5">
               {source.map((t, i) => (
-                <div key={i} className="flex items-center gap-3">
+                <div key={i} className="flex items-start gap-2">
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12.5px] text-[var(--sa-text-primary)]">{t.label}</span>
+                    <span className="block text-[12.5px] leading-snug text-[var(--sa-text-primary)]">{t.label}</span>
                     {(t.note || t.moq != null) && (
                       <span className="block text-[11px] text-[var(--sa-text-tertiary)]">
                         {[t.note, t.moq != null ? `min ${t.moq.toLocaleString()}` : null].filter(Boolean).join(" · ")}
@@ -924,30 +925,73 @@ function CompositionPricingCard({
           <div className="flex flex-col gap-2">
             {rows.map((r, i) => (
               <div key={i} className="rounded-lg border border-[var(--sa-border)] p-2">
-                <div className="flex gap-2">
-                  <input className={inputCls} placeholder="100% cashmere" value={r.label}
-                    onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} />
-                  <input className={inputCls + " w-24 shrink-0 font-mono"} placeholder="0.00" value={r.unit_price_usd}
-                    onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, unit_price_usd: e.target.value } : x))} />
-                  <button onClick={() => setRows((p) => p.filter((_, j) => j !== i))}
-                    className="shrink-0 rounded-md px-2 text-[var(--sa-text-tertiary)] hover:text-red-600" aria-label="Remove">
+                {/* This card lives in a 256-320px column, so roughly 230px of
+                    usable width. Four fields across a row cannot fit, and a
+                    w-full input used directly as a flex child will not shrink
+                    to try — which is how the first version burst its card. */}
+                <div className="flex items-start gap-1.5">
+                  <div className="min-w-0 flex-1">
+                    <label className={miniLabel}>Blend</label>
+                    <input
+                      className={inputCls}
+                      placeholder="100% cashmere"
+                      value={r.label}
+                      onChange={(e) => setRows((p) => p.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))}
+                    />
+                  </div>
+                  <button
+                    onClick={() => setRows((p) => p.filter((_, j) => j !== i))}
+                    aria-label="Remove this blend"
+                    className="mt-[18px] shrink-0 rounded-md p-1 text-[var(--sa-text-tertiary)] transition-colors hover:text-red-600"
+                  >
                     <X size={12} />
                   </button>
                 </div>
-                <div className="mt-1.5 flex gap-2">
-                  <input className={inputCls} placeholder="Note — handfeel, weight (optional)" value={r.note}
-                    onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, note: e.target.value } : x))} />
-                  <input className={inputCls + " w-24 shrink-0 font-mono"} placeholder="MOQ" value={r.moq}
-                    onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, moq: e.target.value } : x))} />
+
+                <div className="mt-1.5 flex gap-1.5">
+                  <div className="min-w-0 flex-1">
+                    <label className={miniLabel}>Price / unit</label>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[12px] text-[var(--sa-text-tertiary)]">
+                        $
+                      </span>
+                      <input
+                        className={inputCls + " pl-5 font-mono"}
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        value={r.unit_price_usd}
+                        onChange={(e) => setRows((p) => p.map((x, j) => (j === i ? { ...x, unit_price_usd: e.target.value } : x)))}
+                      />
+                    </div>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <label className={miniLabel}>MOQ</label>
+                    <input
+                      className={inputCls + " font-mono"}
+                      inputMode="numeric"
+                      placeholder="optional"
+                      value={r.moq}
+                      onChange={(e) => setRows((p) => p.map((x, j) => (j === i ? { ...x, moq: e.target.value } : x)))}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-1.5">
+                  <label className={miniLabel}>Note</label>
+                  <input
+                    className={inputCls}
+                    placeholder="handfeel, weight — optional"
+                    value={r.note}
+                    onChange={(e) => setRows((p) => p.map((x, j) => (j === i ? { ...x, note: e.target.value } : x)))}
+                  />
                 </div>
               </div>
             ))}
-            <div className="flex items-center gap-2">
-              <button onClick={() => setRows((p) => [...p, { ...BLANK }])}
-                className="rounded-md border border-[var(--sa-border)] px-2.5 py-1 text-[11px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]">
-                Add a blend
-              </button>
-              <div className="flex-1" />
+            <button onClick={() => setRows((p) => [...p, { ...BLANK }])}
+              className="w-full rounded-md border border-dashed border-[var(--sa-border)] py-1.5 text-[11px] text-[var(--sa-text-secondary)] transition-colors hover:bg-[var(--sa-hover)]">
+              + Add a blend
+            </button>
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
               <button onClick={() => { setRows(initial); setSaveError(null); setEditing(false); }}
                 className="rounded-md px-2.5 py-1 text-[11px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]">
                 Cancel
