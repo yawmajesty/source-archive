@@ -36,6 +36,16 @@ export interface ImageOptions {
   quality?: number;
   /** "cover" crops to fill, "contain" fits inside. Thumbnails want cover. */
   resize?: "cover" | "contain" | "fill";
+  /**
+   * Cap the height too.
+   *
+   * Width alone keeps the aspect ratio, which sounds harmless until someone
+   * uploads a long screenshot: one measured here came back 240x1802 and
+   * 693KB at width=240. Bounding both axes with resize "contain" made the
+   * same image 229x240 and 82KB. Worth passing wherever the result has to
+   * fit a box rather than a column.
+   */
+  height?: number;
 }
 
 /**
@@ -58,6 +68,9 @@ export function imageUrl(
     width: String(target),
     quality: String(options.quality ?? 72),
   });
+  if (options.height) {
+    params.set("height", String(Math.min(Math.round(options.height * DPR), MAX_WIDTH)));
+  }
   if (options.resize) params.set("resize", options.resize);
 
   return `${src.replace(OBJECT_SEGMENT, RENDER_SEGMENT)}?${params.toString()}`;

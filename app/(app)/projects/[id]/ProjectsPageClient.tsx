@@ -14,6 +14,7 @@ import { ProductRow } from "@/components/shared/ProductRow";
 import { StageTrack } from "@/components/shared/StageTrack";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { cn } from "@/lib/utils";
+import { RfqSheetDialog } from "@/components/projects/RfqSheetDialog";
 import { forkProductsToRound, createProductInProject, renameProject, deleteProject } from "./actions";
 import type { Client, Project, Product, Factory, Stage, PriceTier } from "@/lib/mock-data";
 import type { SavedInvoice, AgencySettings } from "@/lib/data";
@@ -336,6 +337,7 @@ function CollectionTable({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [forking, startFork] = useTransition();
   const [viewTab, setViewTab] = useState<"products" | "sampling" | "production">("products");
+
 
   const allIds = productsWithFactory.map((i) => i.product.id);
   const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
@@ -687,6 +689,7 @@ function CollectionTable({
 // ── Main page component ───────────────────────────────────────────────────────
 export function ProjectsPageClient({ project, client, productsWithFactory, factories, products, savedInvoices, agencySettings }: Props) {
   const router = useRouter();
+  const [showRfq, setShowRfq] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(
     productsWithFactory[0]?.product.id ?? null
   );
@@ -763,6 +766,14 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
 
   return (
     <>
+      {showRfq && (
+        <RfqSheetDialog
+          projectId={project.id}
+          projectName={projectName}
+          styleCount={products.length}
+          onClose={() => setShowRfq(false)}
+        />
+      )}
       <div className="flex h-full overflow-hidden flex-col">
         {/* Collection header bar */}
         <div className="flex items-center justify-between gap-2 px-4 py-3 panel-border-b bg-[var(--sa-window)] shrink-0">
@@ -827,6 +838,13 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
               </button>
             </div>
 
+            <button
+              onClick={() => setShowRfq(true)}
+              title="Generate an RFQ sheet for the factory"
+              className="flex items-center gap-1 rounded-lg border border-[var(--sa-border)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--sa-text-secondary)] transition-colors hover:bg-[var(--sa-hover)]"
+            >
+              <FileSpreadsheet size={12} /> RFQ Sheet
+            </button>
             <a
               href={`/api/projects/${project.id}/production-invoice`}
               title="Download Production Invoice .xlsx (approved products only)"

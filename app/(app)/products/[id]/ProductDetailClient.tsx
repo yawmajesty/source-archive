@@ -66,6 +66,12 @@ function EditProductDrawer({
     lead_time_days: numStr(product.lead_time_days),
     colorways: product.colorways.join(", "),
     notes: product.notes ?? "",
+    // What the RFQ sheet reads.
+    style_no: product.style_no ?? "",
+    size_range: product.size_range ?? "",
+    fabric: product.fabric ?? "",
+    composition_gsm: product.composition_gsm ?? "",
+    notes_zh: product.notes_zh ?? "",
   });
 
   const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors";
@@ -97,6 +103,11 @@ function EditProductDrawer({
       lead_time_days: parseNum(form.lead_time_days),
       colorways: form.colorways.split(",").map((s) => s.trim()).filter(Boolean),
       notes: form.notes?.trim() ?? "",
+      style_no: form.style_no.trim() || null,
+      size_range: form.size_range.trim() || null,
+      fabric: form.fabric.trim() || null,
+      composition_gsm: form.composition_gsm.trim() || null,
+      notes_zh: form.notes_zh.trim() || null,
     };
     const res = await updateProductFields(product.id, updates as Record<string, unknown>);
     setSaving(false);
@@ -155,6 +166,25 @@ function EditProductDrawer({
           </div>
           <div><label className={labelCls}>Colorways (comma separated)</label><input className={inputCls} value={form.colorways} onChange={(e) => set("colorways", e.target.value)} placeholder="White, Black, Navy" /></div>
           <div><label className={labelCls}>Notes</label><textarea className={inputCls + " resize-none"} rows={3} value={form.notes} onChange={(e) => set("notes", e.target.value)} /></div>
+
+          <div className="border-t border-[var(--sa-border)] pt-3">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--sa-text-tertiary)]">
+              For the RFQ sheet
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div><label className={labelCls}>Style no.</label><input className={inputCls} value={form.style_no} onChange={(e) => set("style_no", e.target.value)} placeholder="SA-1001" /></div>
+              <div><label className={labelCls}>Size</label><input className={inputCls} value={form.size_range} onChange={(e) => set("size_range", e.target.value)} placeholder="S / M / L / XL" /></div>
+              <div><label className={labelCls}>Fabric</label><input className={inputCls} value={form.fabric} onChange={(e) => set("fabric", e.target.value)} placeholder="Brushed cotton twill" /></div>
+              <div><label className={labelCls}>Composition &amp; GSM</label><input className={inputCls} value={form.composition_gsm} onChange={(e) => set("composition_gsm", e.target.value)} placeholder="100% cotton · 320gsm" /></div>
+            </div>
+            <div className="mt-3">
+              <label className={labelCls}>Notes in Chinese</label>
+              <textarea className={inputCls + " resize-none"} rows={2} value={form.notes_zh} onChange={(e) => set("notes_zh", e.target.value)} placeholder="明线用同色线。" />
+              <p className="mt-1 text-[11px] text-[var(--sa-text-tertiary)]">
+                Sits above the English note in the same cell, so the factory reads both.
+              </p>
+            </div>
+          </div>
           {error && <p className="text-[12px] text-red-500">{error}</p>}
         </div>
         <div className="flex gap-2 px-5 py-4 border-t border-[var(--sa-border)]">

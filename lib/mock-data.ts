@@ -212,6 +212,14 @@ export interface Product {
   parent_product_id?: string | null;
   // production pricing
   client_unit_price_usd?: number | null;
+  // What the RFQ sheet asks a factory to quote against (migration 040).
+  // Style name, image, colour and the English note are name, images,
+  // colorways and notes above.
+  style_no?: string | null;
+  size_range?: string | null;
+  fabric?: string | null;
+  composition_gsm?: string | null;
+  notes_zh?: string | null;
   // jsonb columns (added via migration)
   bom_data?: BomItem[] | null;
   documents?: DocumentItem[] | null;
