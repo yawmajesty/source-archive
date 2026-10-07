@@ -1,6 +1,8 @@
 "use client";
 
 import { setClientStatus, renameClient } from "../status-actions";
+import { ClientHome } from "@/components/clients/ClientHome";
+import type { ClientOrigin } from "./origin-actions";
 import { CLIENT_STATUSES } from "@/lib/client-status";
 import { setFabricLibraryAccess } from "../status-actions";
 import { addClientMember, removeClientMember, type ClientMember } from "../member-actions";
@@ -31,6 +33,10 @@ interface Props {
   projectData: ProjectData[];
   portalActivity: PortalActivity;
   clientMembers?: ClientMember[];
+  /** The enquiry this client came from, when there is one. */
+  origin?: ClientOrigin | null;
+  /** Every product photo across their collections. */
+  photos?: Array<{ url: string; productName: string; productId: string }>;
 }
 
 const PATH_LABELS: Record<string, string> = {
@@ -476,7 +482,7 @@ function AddProjectModal({ clientId, onClose }: { clientId: string; onClose: () 
   );
 }
 
-export function ClientsPageClient({ client, projectData, portalActivity, clientMembers }: Props) {
+export function ClientsPageClient({ client, projectData, portalActivity, clientMembers, origin, photos }: Props) {
   const router = useRouter();
   const [selectedId, setSelectedIdRaw] = useState<string | null>(
     projectData[0]?.project.id ?? null
@@ -645,7 +651,12 @@ export function ClientsPageClient({ client, projectData, portalActivity, clientM
               backLabel={`Back to ${selected.project.name}`}
             />
           ) : (
-            <PortalActivityPanel activity={portalActivity} client={client} portalEnabled={portalEnabled} />
+            <div key="home" className="flex h-full flex-col overflow-y-auto">
+              <div className="px-4 pt-4 sm:px-5">
+                <ClientHome origin={origin ?? null} photos={photos ?? []} />
+              </div>
+              <PortalActivityPanel activity={portalActivity} client={client} portalEnabled={portalEnabled} />
+            </div>
           )}
         </AnimatePresence>
       </div>

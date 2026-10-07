@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, Plus, Trash2, ChevronRight, ChevronLeft, ExternalLink, Upload, X, FileText } from "lucide-react";
-import { submitBrief } from "./actions";
+import { submitBrief, reviseBrief } from "./actions";
 import { uploadFile } from "@/lib/storage";
 import type { BriefProduct } from "@/lib/mock-data";
 import type { AgencySettings } from "@/lib/data";
@@ -247,7 +247,34 @@ function StepIndicator({ step, total }: { step: number; total: number }) {
 
 const TOTAL_STEPS = 4;
 
-export function BriefForm({ agencySettings }: { agencySettings: AgencySettings }) {
+/**
+ * What a brand already sent, when they are coming back to add to it.
+ *
+ * Asking someone for more detail used to mean asking them to fill the whole
+ * form again, and a second attempt from scratch is almost always thinner
+ * than the first. This is the same form, already holding their answers.
+ */
+export interface BriefRevisit {
+  token: string;
+  brand: Partial<{
+    company_name: string; website: string; contact_name: string; contact_email: string;
+    phone: string; country: string; industry: string; brand_stage: string;
+    manufactured_before: "" | "yes" | "no"; how_found_us: string;
+  }>;
+  products: BriefProduct[];
+  refs: Partial<{
+    estimated_budget: string; timeline: string; moodboard_links: string;
+    moodboard_files: string[]; sustainability_requirements: string; message: string;
+  }>;
+}
+
+export function BriefForm({
+  agencySettings,
+  revisit,
+}: {
+  agencySettings: AgencySettings;
+  revisit?: BriefRevisit;
+}) {
   const [step, setStep] = useState(1);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -272,16 +299,20 @@ export function BriefForm({ agencySettings }: { agencySettings: AgencySettings }
     company_name: "", website: "", contact_name: "", contact_email: "",
     phone: "", country: "", industry: "", brand_stage: "",
     manufactured_before: "" as "" | "yes" | "no", how_found_us: "",
+    ...revisit?.brand,
   });
 
   // Step 2: Products
-  const [products, setProducts] = useState<BriefProduct[]>([{ ...EMPTY_PRODUCT }]);
+  const [products, setProducts] = useState<BriefProduct[]>(
+    revisit?.products.length ? revisit.products : [{ ...EMPTY_PRODUCT }],
+  );
 
   // Step 3: References
   const [refs, setRefs] = useState({
     estimated_budget: "", timeline: "", moodboard_links: "",
     moodboard_files: [] as string[],
     sustainability_requirements: "", message: "",
+    ...revisit?.refs,
   });
 
   function setBrandField(k: keyof typeof brand, v: string) {
@@ -307,7 +338,7 @@ export function BriefForm({ agencySettings }: { agencySettings: AgencySettings }
   async function handleSubmit() {
     setSubmitting(true);
 
-    await submitBrief({
+    const payload = {
       company_name: brand.company_name,
       website: brand.website || null,
       contact_name: brand.contact_name,
@@ -325,7 +356,9 @@ export function BriefForm({ agencySettings }: { agencySettings: AgencySettings }
       sustainability_requirements: refs.sustainability_requirements || null,
       message: refs.message || null,
       brief_products: products.filter((p) => p.name.trim()),
-    });
+    };
+    if (revisit) await reviseBrief(revisit.token, payload);
+    else await submitBrief(payload);
     setSubmitting(false);
     setSubmitted(true);
   }
@@ -373,6 +406,35 @@ export function BriefForm({ agencySettings }: { agencySettings: AgencySettings }
 
       <main className="mx-auto max-w-2xl px-6 py-10">
         <StepIndicator step={step} total={TOTAL_STEPS} />
+
+        {/* The three things a thin brief is almost always missing. Named
+            rather than implied: "add more detail" gets more adjectives, and
+            what a factory needs is photographs and separated products. */}
+        {revisit && (
+          <div
+            className="mb-5 rounded-xl px-4 py-3.5"
+            style={{ background: "#FFF8E6", border: "1px solid #F0DFA8" }}
+          >
+            <p className="text-[13.5px] font-semibold" style={{ color: "#1A1A2E" }}>
+              Welcome back — everything you sent is already here
+            </p>
+            <p className="mt-1 text-[12.5px] leading-relaxed" style={{ color: "#6B6B70" }}>
+              Add to it and send it again. Nothing is lost, and you can come back to this link.
+              Three things would help most:
+            </p>
+            <ul className="mt-2 flex flex-col gap-1.5">
+              {[
+                ["Photographs for each piece", "Even a phone photo of something similar, or a screenshot. It tells us more than a paragraph."],
+                ["One entry per product", "A hoodie and a tee are two products, not one. They take different fabric, patterns and prices, and a factory can't quote them together."],
+                ["Whatever specifics you have", "Fabric, colours, sizing, finishes, rough quantities, a target price."],
+              ].map(([title, detail]) => (
+                <li key={title} className="text-[12.5px] leading-snug" style={{ color: "#6B6B70" }}>
+                  <span className="font-semibold" style={{ color: "#1A1A2E" }}>{title}</span> — {detail}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <AnimatePresence mode="wait">
           {/* ── Step 1: Brand ── */}
@@ -460,7 +522,12 @@ export function BriefForm({ agencySettings }: { agencySettings: AgencySettings }
           {step === 2 && (
             <motion.div key="step2" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.2 }}>
               <h1 className="text-[28px] font-semibold text-[#1D1D1F] tracking-tight">What are you looking to make?</h1>
-              <p className="mt-2 text-[15px] text-[#6E6E73] leading-relaxed mb-8">Add each product individually — the more detail the better.</p>
+              <p className="mt-2 text-[15px] text-[#6E6E73] leading-relaxed">One entry per product, with a photo on each if you can.</p>
+              <p className="mt-1.5 mb-7 text-[13.5px] leading-relaxed" style={{ color: "#8A6D00" }}>
+                A hoodie and a tee are two products, not one. They take different fabric, different
+                patterns and different prices — a factory can&apos;t quote them as a single line, so
+                anything combined has to come back to you to be split up.
+              </p>
 
               <div className="flex flex-col gap-3">
                 {products.map((p, i) => (

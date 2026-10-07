@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getClient, getProjects, getProducts, getCosts, getPortalActivity } from "@/lib/data";
 import { ClientsPageClient } from "./ClientsPageClient";
 import { listClientMembers, type ClientMember } from "../member-actions";
+import { getClientOrigin } from "./origin-actions";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -36,12 +37,27 @@ export default async function ClientPage({ params }: Props) {
     getPortalActivity(id),
   ]);
 
+  // Where they came from, and every photograph taken since — both read here
+  // so the client page is one request rather than a page that fills in.
+  const origin = await getClientOrigin(id).catch(() => null);
+  const photos = projectData.flatMap(({ products }) =>
+    products.flatMap((product) =>
+      (product.images ?? []).map((url) => ({
+        url,
+        productName: product.name,
+        productId: product.id,
+      })),
+    ),
+  );
+
   return (
     <ClientsPageClient
       clientMembers={members}
       client={client}
       projectData={projectData}
       portalActivity={portalActivity}
+      origin={origin}
+      photos={photos}
     />
   );
 }

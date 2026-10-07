@@ -745,6 +745,8 @@ export function moreInfoDraft(input: {
   contactName: string;
   companyName?: string | null;
   isBrief: boolean;
+  /** A link back to the brief they already sent, when we have one. */
+  editUrl?: string | null;
 }): Draft {
   const first = input.contactName.trim().split(/\s+/)[0];
   const what = input.isBrief ? "your brief" : "your enquiry";
@@ -760,13 +762,18 @@ export function moreInfoDraft(input: {
       `conversations are far more useful when we've had a chance to think properly about your ` +
       `project beforehand — otherwise we spend the call gathering information rather than giving ` +
       `you anything worth having.\n\n` +
-      `If you could reply with:\n` +
-      `— What you're trying to do: the idea behind the brand or the collection, and where you've ` +
-      `got to with it so far\n` +
-      `— What products you're looking to make: the actual garments or items, and roughly how many ` +
-      `of each\n` +
-      `— Any specs you already have: fabrics, colours, sizing, finishes, reference pieces you like, ` +
-      `a target price — whatever exists\n\n` +
+      (input.editUrl
+        ? `You can open what you already sent and add to it here — nothing is lost, and you can ` +
+          `come back to it:\n${input.editUrl}\n\n` +
+          `The three things that would help most:\n`
+        : `If you could reply with:\n`) +
+      `— Photographs or references for each piece. Even a phone photo of something similar, or a ` +
+      `screenshot, tells us more than a paragraph can.\n` +
+      `— One entry per product. If you're making a hoodie and a tee, they need to be two separate ` +
+      `products rather than one — they take different fabric, different patterns and different ` +
+      `prices, and a factory cannot quote them together.\n` +
+      `— The specifics you do have: fabric, colours, sizing, finishes, rough quantities, a target ` +
+      `price. Anything concrete.\n\n` +
       `It really doesn't need to be polished. Rough notes are genuinely fine — we just need enough ` +
       `to come back to you with something useful.\n\n` +
       `Once we've got that, we'll get a call in the diary.\n\n` +

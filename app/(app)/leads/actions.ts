@@ -5,6 +5,8 @@ import { getAgencySupabase } from "@/lib/supabase-agency";
 import { getAgencyContext } from "@/lib/agency-data";
 import { can } from "@/lib/permissions";
 import { bookingUrl } from "@/lib/booking";
+import { buildPublicUrl } from "@/lib/url";
+import { randomBytes } from "crypto";
 import { sendAll, looksLikeEmail } from "@/lib/email/send";
 import {
   acknowledgeDraft,
@@ -86,6 +88,10 @@ export async function convertLeadToClient(leadId: string): Promise<{ clientId: s
     logo_initial: (lead.company_name as string)[0].toUpperCase(),
     status: "active",
     portal_enabled: false,
+    // Converting used to copy the lead's contents and then forget the lead
+    // existed, leaving everything the brand actually wrote on a record
+    // nobody opens again.
+    lead_id: leadId,
   });
 
   const projectName = lead.timeline
@@ -147,13 +153,13 @@ export async function draftLeadReply(
   const supabase = await getAgencySupabase();
   const { data } = await supabase
     .from("leads")
-    .select("id, company_name, contact_name, contact_email, source")
+    .select("id, company_name, contact_name, contact_email, source, edit_token")
     .eq("id", leadId)
     .maybeSingle();
 
   const lead = data as {
     company_name: string | null; contact_name: string | null;
-    contact_email: string | null; source: string | null;
+    contact_email: string | null; source: string | null; edit_token?: string | null;
   } | null;
   if (!lead) return { success: false, error: "Lead not found" };
   if (!looksLikeEmail(lead.contact_email)) {
@@ -166,12 +172,20 @@ export async function draftLeadReply(
     isBrief: lead.source === "brief_form",
   };
 
+  // Only the "more detail" reply carries a way back into the brief, and only
+  // for a brief that exists to reopen. Minting it here rather than on every
+  // lead means a token exists exactly when we have deliberately sent one.
+  let editUrl: string | null = null;
+  if (kind === "more_info" && lead.source === "brief_form") {
+    editUrl = await briefEditUrl(leadId);
+  }
+
   const draft =
     kind === "acknowledge"
       ? acknowledgeDraft({ ...shared, window: replyWindowFor() })
       : kind === "book_call"
         ? bookCallDraft({ ...shared, bookingUrl: bookingUrl() })
-        : moreInfoDraft(shared);
+        : moreInfoDraft({ ...shared, editUrl });
 
   return { success: true, to: lead.contact_email, draft };
 }
@@ -256,4 +270,38 @@ export async function sendLeadReply(input: {
   revalidatePath("/leads");
   revalidatePath("/dashboard");
   return { success: true, to: lead.contact_email as string };
+}
+
+/**
+ * A link that reopens the brief this lead came from.
+ *
+ * The token is the whole credential — the brief form is public and whoever
+ * filled it in has no login — so it is 32 random bytes and reused once
+ * minted, meaning a second "please add more" email does not invalidate the
+ * link from the first.
+ *
+ * Returns null rather than throwing when the column is missing: an email
+ * worth sending should not fail because a migration has not been run.
+ */
+async function briefEditUrl(leadId: string): Promise<string | null> {
+  const supabase = await getAgencySupabase();
+
+  const { data, error } = await supabase
+    .from("leads")
+    .select("edit_token")
+    .eq("id", leadId)
+    .maybeSingle();
+  if (error) return null;
+
+  const existing = (data as { edit_token: string | null } | null)?.edit_token;
+  if (existing) return buildPublicUrl(`/brief/${existing}`);
+
+  const token = randomBytes(24).toString("base64url");
+  const { error: writeErr } = await supabase
+    .from("leads")
+    .update({ edit_token: token, edit_token_at: new Date().toISOString() })
+    .eq("id", leadId);
+  if (writeErr) return null;
+
+  return buildPublicUrl(`/brief/${token}`);
 }
