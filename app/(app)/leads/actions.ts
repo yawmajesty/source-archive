@@ -189,11 +189,7 @@ export async function draftLeadReply(
       : kind === "book_call"
         ? bookCallDraft({ ...shared, bookingUrl: bookingUrl() })
         : kind === "decline"
-          ? declineDraft({
-              ...shared,
-              reason: reason ?? "at_capacity",
-              calculatorUrl: buildPublicUrl("/price"),
-            })
+          ? declineDraft({ ...shared, reason: reason ?? "at_capacity" })
           : moreInfoDraft({ ...shared, editUrl });
 
   return { success: true, to: lead.contact_email, draft };

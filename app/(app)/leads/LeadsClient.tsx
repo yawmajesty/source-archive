@@ -413,7 +413,7 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
               <XCircle size={12} /> Say no
             </button>
             <p className="mt-1 text-[10.5px] leading-snug text-[var(--sa-text-tertiary)]">
-              Three reasons to pick from — too early for them, we&apos;re full, or not what we do.
+              Three to pick from — not right now, not right for us, or not the right moment.
               Marks the lead lost.
             </p>
 

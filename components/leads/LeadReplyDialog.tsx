@@ -21,7 +21,7 @@ const INTRO: Record<LeadReplyKind, string> = {
   book_call:
     "Sends your booking link. Worth naming one thing from their brief you want to get into — it turns a calendar link into a reason to pick a slot.",
   decline:
-    "Says no, why, and what to do next. The third part is what brings them back when the timing is right, so it's worth keeping even if you cut everything else.",
+    "Deliberately vague — a small team, already committed, not this one right now. It gives no reason beyond that, and leaves the door open.",
 };
 
 export function LeadReplyDialog({
