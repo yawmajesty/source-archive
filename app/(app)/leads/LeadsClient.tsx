@@ -3,10 +3,11 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, CalendarPlus, Check, CheckCheck, Copy, ExternalLink, HelpCircle, Plus, Send, Trash2, XCircle } from "lucide-react";
+import { ArrowRight, CalendarCheck, CalendarPlus, Check, CheckCheck, Copy, ExternalLink, HelpCircle, Plus, Send, Trash2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { updateLeadStatus, convertLeadToClient, createLead, deleteLead } from "./actions";
 import { LeadReplyDialog } from "@/components/leads/LeadReplyDialog";
+import { LeadTrail } from "@/components/leads/LeadTrail";
 import type { LeadReplyKind } from "@/lib/email/templates";
 import { buildPublicUrl } from "@/lib/url";
 import type { Lead } from "@/lib/data";
@@ -174,6 +175,7 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
   const [convertedClientId, setConvertedClientId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [replyKind, setReplyKind] = useState<LeadReplyKind | null>(null);
+  const [bookedAt, setBookedAt] = useState<string | null>(lead.call_booked_at ?? null);
   const [ackNote, setAckNote] = useState<{ ok: boolean; text: string } | null>(null);
 
   function setStatus(status: string) {
@@ -421,6 +423,14 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
               All four open the draft first so you can change it before it goes.
             </p>
 
+            <div className="mt-3">
+              <LeadTrail
+                leadId={lead.id}
+                callBookedAt={bookedAt}
+                onChanged={setBookedAt}
+              />
+            </div>
+
             {ackNote && (
               <p
                 className="mt-1 text-[11px]"
@@ -493,7 +503,15 @@ export function LeadsClient({ leads }: Props) {
   const [selected, setSelected] = useState<Lead | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [filter, setFilter] = useState<string | null>(null);
-  const shown = filter ? leads.filter((l) => l.status === filter) : leads;
+  // "booked" is not a status — it is a separate fact — so it filters on its
+  // own axis rather than pretending to be one.
+  const shown =
+    filter === "booked"
+      ? leads.filter((l) => Boolean(l.call_booked_at))
+      : filter
+        ? leads.filter((l) => l.status === filter)
+        : leads;
+  const bookedCount = leads.filter((l) => Boolean(l.call_booked_at)).length;
 
   const counts = (Object.keys(STATUS_CFG) as string[]).reduce((acc, s) => {
     acc[s] = leads.filter((l) => l.status === s).length;
@@ -555,6 +573,24 @@ export function LeadsClient({ leads }: Props) {
               <span className="tnum opacity-70">{counts[s] ?? 0}</span>
             </button>
           ))}
+          {bookedCount > 0 && (
+            <>
+              <span className="mx-0.5 h-4 w-px shrink-0" style={{ background: "var(--sa-border)" }} />
+              <button
+                onClick={() => setFilter(filter === "booked" ? null : "booked")}
+                aria-pressed={filter === "booked"}
+                className={cn(
+                  "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+                  filter === "booked"
+                    ? "bg-[var(--sa-text-primary)] text-[var(--sa-window)]"
+                    : "text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]",
+                )}
+              >
+                <CalendarCheck size={11} /> Call booked
+                <span className="tnum opacity-70">{bookedCount}</span>
+              </button>
+            </>
+          )}
         </div>
 
         <div className="hidden grid-cols-[1fr_130px_120px_110px_100px] gap-3 border-b border-[var(--sa-border)] bg-[var(--sa-bg)] px-5 py-2 md:grid">
@@ -588,8 +624,15 @@ export function LeadsClient({ leads }: Props) {
                       {[lead.country, formatDate(lead.created_at)].filter(Boolean).join(" · ")}
                     </p>
                   </div>
-                  <span className={cn("shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-medium md:hidden", cfg?.cls)}>
-                    {cfg?.label}
+                  <span className="flex shrink-0 items-center gap-1.5 md:hidden">
+                    {lead.call_booked_at && (
+                      <span title="Call booked" className="flex text-[var(--sa-success)]">
+                        <CalendarCheck size={12} />
+                      </span>
+                    )}
+                    <span className={cn("rounded-full px-2.5 py-0.5 text-[10px] font-medium", cfg?.cls)}>
+                      {cfg?.label}
+                    </span>
                   </span>
                 </div>
 
@@ -602,15 +645,28 @@ export function LeadsClient({ leads }: Props) {
                 <span className="hidden truncate text-[12px] text-[var(--sa-text-secondary)] md:block">{lead.contact_name}</span>
                 <span className="hidden truncate text-[12px] text-[var(--sa-text-tertiary)] md:block">{lead.estimated_budget || "—"}</span>
                 <span className="hidden truncate text-[12px] text-[var(--sa-text-tertiary)] md:block">{lead.timeline || "—"}</span>
-                <span className={cn("hidden w-fit rounded-full px-2.5 py-0.5 text-[10px] font-medium md:block", cfg?.cls)}>
-                  {cfg?.label}
+                <span className="hidden items-center gap-1.5 md:flex">
+                  <span className={cn("w-fit rounded-full px-2.5 py-0.5 text-[10px] font-medium", cfg?.cls)}>
+                    {cfg?.label}
+                  </span>
+                  {lead.call_booked_at && (
+                    <span title="Call booked" className="flex shrink-0 text-[var(--sa-success)]">
+                      <CalendarCheck size={12} />
+                    </span>
+                  )}
                 </span>
               </motion.button>
             );
           })}
           {shown.length === 0 && (
             <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-[var(--sa-text-tertiary)]">
-              <p className="text-[13px]">{filter ? `Nothing marked ${STATUS_CFG[filter]?.label.toLowerCase()}` : "No leads yet"}</p>
+              <p className="text-[13px]">
+                {filter === "booked"
+                  ? "Nobody has a call booked"
+                  : filter
+                    ? `Nothing marked ${STATUS_CFG[filter]?.label.toLowerCase()}`
+                    : "No leads yet"}
+              </p>
               <p className="text-[11px]">{filter ? "Pick another status above." : "Share the brief link or add one manually"}</p>
             </div>
           )}

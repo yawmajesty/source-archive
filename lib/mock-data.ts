@@ -107,6 +107,13 @@ export interface Lead {
   brief_products?: BriefProduct[];
   moodboard_links?: string | null;
   brief_files?: string[] | null;
+  // When a call actually went in the diary (migration 043). Deliberately not
+  // a status: which stage they are at is a judgement, whether a call exists
+  // is a fact.
+  call_booked_at?: string | null;
+  // Set when they reopen and resend their brief (migration 041).
+  revised_at?: string | null;
+  revision_count?: number | null;
 }
 
 export interface Factory {
