@@ -226,6 +226,9 @@ export interface Product {
   images?: string[] | null;
   price_tiers?: PriceTier[] | null;
   internal_price_tiers?: PriceTier[] | null;
+  // Pricing by cloth rather than quantity (migration 042).
+  composition_tiers?: CompositionTier[] | null;
+  internal_composition_tiers?: CompositionTier[] | null;
   // Auto-tagged attributes (from vision model)
   auto_type?: string | null;
   auto_category?: string | null;
@@ -258,19 +261,39 @@ export interface PriceTier {
   unit_price_usd: number;
 }
 
+/**
+ * A price for a particular cloth rather than a particular quantity.
+ *
+ * Wool and cashmere are quoted this way: the brand picks the blend first and
+ * the quantity second, and the gap between 100% cashmere and a 50/50 is far
+ * larger than anything volume does to either. Volume tiers cannot express it,
+ * because what varies is the material.
+ */
+export interface CompositionTier {
+  /** As it would be written on a label: "70% cashmere, 30% wool". */
+  label: string;
+  unit_price_usd: number;
+  /** Only when this blend carries a different minimum from the others. */
+  moq?: number | null;
+  /** A line on how it differs — handfeel, weight, durability. */
+  note?: string | null;
+}
+
 export type PriceField =
   | "target_cost_usd"
   | "quoted_cost_usd"
   | "client_unit_price_usd"
   | "price_tiers"
-  | "internal_price_tiers";
+  | "internal_price_tiers"
+  | "composition_tiers"
+  | "internal_composition_tiers";
 
 export interface ProductPriceHistoryEntry {
   id: number;
   product_id: string;
   field_name: PriceField | string;
-  old_value: number | PriceTier[] | null;
-  new_value: number | PriceTier[] | null;
+  old_value: number | PriceTier[] | CompositionTier[] | null;
+  new_value: number | PriceTier[] | CompositionTier[] | null;
   changed_at: string;
 }
 

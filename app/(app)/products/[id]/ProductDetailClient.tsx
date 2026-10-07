@@ -18,7 +18,7 @@ import { TrafficDot } from "@/components/shared/TrafficLight";
 import { cn } from "@/lib/utils";
 import { createTask } from "../../tasks/actions";
 import { uploadFile } from "@/lib/storage";
-import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem, PriceTier, ProductionVariant, ProductionSize, ProductPriceHistoryEntry } from "@/lib/mock-data";
+import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem, PriceTier, CompositionTier, ProductionVariant, ProductionSize, ProductPriceHistoryEntry } from "@/lib/mock-data";
 import { autoTagProduct, updateAutoTags, updateProductFields, deleteProductRow, createSampleForProduct, updateProductImages, updateProductDocuments, recordAgencyProductMedia } from "./actions";
 import { imageUrl as sizedImage } from "@/lib/image-url";
 import { Lightbox } from "@/components/shared/Lightbox";
@@ -796,6 +796,174 @@ function supplierCostForMoq(product: Product, moq: number): number | null {
     return (best ?? sorted[0]).unit_price_usd;
   }
   return product.quoted_cost_usd ?? null;
+}
+
+/**
+ * Pricing by cloth rather than quantity.
+ *
+ * A cashmere scarf has a price for 100% cashmere, another for 70/30 with
+ * wool, another for a 50/50 — and the brand picks the blend before the
+ * quantity. Volume tiers cannot say that, because what varies is the
+ * material.
+ *
+ * Kept separate from the volume card rather than folded into it: the client
+ * list and the supplier list are different numbers, and a blend is a choice
+ * while a quantity is a consequence.
+ */
+function CompositionPricingCard({
+  product, onSaved, kind,
+}: { product: Product; onSaved: (p: Partial<Product>) => void; kind: "client" | "internal" }) {
+  const field = kind === "client" ? "composition_tiers" : "internal_composition_tiers";
+  const title = kind === "client" ? "Composition pricing (client)" : "Composition pricing (internal)";
+  const subtitle = kind === "client" ? "Shown in their portal when set" : "Supplier costs — internal only";
+  const source = (kind === "client" ? product.composition_tiers : product.internal_composition_tiers) ?? [];
+
+  type Row = { label: string; unit_price_usd: string; moq: string; note: string };
+  const initial: Row[] = source.map((t) => ({
+    label: t.label,
+    unit_price_usd: String(t.unit_price_usd),
+    moq: t.moq != null ? String(t.moq) : "",
+    note: t.note ?? "",
+  }));
+
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [rows, setRows] = useState<Row[]>(initial);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const BLANK: Row = { label: "", unit_price_usd: "", moq: "", note: "" };
+
+  function startEdit() {
+    setRows(initial.length > 0 ? initial : [{ ...BLANK }]);
+    setSaveError(null);
+    setEditing(true);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveError(null);
+    const parsed: CompositionTier[] = rows
+      .map((r) => ({
+        label: r.label.trim(),
+        unit_price_usd: parseFloat(r.unit_price_usd),
+        moq: r.moq.trim() ? parseInt(r.moq) : null,
+        note: r.note.trim() || null,
+      }))
+      .filter((r) => r.label && Number.isFinite(r.unit_price_usd) && r.unit_price_usd > 0)
+      // Cheapest first, which is the order a brand reads them in.
+      .sort((a, b) => a.unit_price_usd - b.unit_price_usd);
+
+    const updates: Partial<Product> = { [field]: parsed };
+    const res = await updateProductFields(product.id, updates as Record<string, unknown>);
+    setSaving(false);
+    if (!res.success) {
+      // The columns arrive with migration 042.
+      setSaveError(
+        /composition_tiers/.test(res.error)
+          ? "Composition pricing needs a one-time database step — run migrations/042_composition_pricing.sql."
+          : res.error,
+      );
+      return;
+    }
+    onSaved(updates);
+    setEditing(false);
+  }
+
+  const inputCls =
+    "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-2.5 py-1.5 text-[12px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors";
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-[var(--sa-border)] bg-[var(--sa-bg)]">
+      <div className="flex items-center justify-between gap-2 px-4 py-3 panel-border-b">
+        <div className="min-w-0">
+          <span className="text-[12px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">{title}</span>
+          <span className="ml-2 text-[10px] text-[var(--sa-text-tertiary)]">{subtitle}</span>
+        </div>
+        {!editing && (
+          <button onClick={startEdit}
+            className="shrink-0 rounded-md border border-[var(--sa-border)] px-2.5 py-1 text-[11px] text-[var(--sa-text-secondary)] transition-colors hover:bg-[var(--sa-hover)]">
+            {source.length > 0 ? "Edit" : "Add blends"}
+          </button>
+        )}
+      </div>
+
+      <div className="px-4 py-3">
+        {kind === "client" && (
+          <p className="mb-2.5 text-[11px] leading-snug text-[var(--sa-text-tertiary)]">
+            Enter your volume tiers against the <strong className="font-medium text-[var(--sa-text-secondary)]">cheapest</strong> blend.
+            The portal adds the difference for whichever one the client picks, so the quantity discount
+            stays the same across all of them.
+          </p>
+        )}
+        {!editing ? (
+          source.length === 0 ? (
+            <p className="text-[12px] text-[var(--sa-text-tertiary)]">
+              {kind === "client"
+                ? "No blends set. Add them for anything quoted by composition — wool, cashmere, blends."
+                : "No supplier blends set yet."}
+            </p>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {source.map((t, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12.5px] text-[var(--sa-text-primary)]">{t.label}</span>
+                    {(t.note || t.moq != null) && (
+                      <span className="block text-[11px] text-[var(--sa-text-tertiary)]">
+                        {[t.note, t.moq != null ? `min ${t.moq.toLocaleString()}` : null].filter(Boolean).join(" · ")}
+                      </span>
+                    )}
+                  </span>
+                  <span className="shrink-0 font-mono text-[12.5px] font-semibold text-[var(--sa-text-primary)]">
+                    ${t.unit_price_usd.toFixed(2)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )
+        ) : (
+          <div className="flex flex-col gap-2">
+            {rows.map((r, i) => (
+              <div key={i} className="rounded-lg border border-[var(--sa-border)] p-2">
+                <div className="flex gap-2">
+                  <input className={inputCls} placeholder="100% cashmere" value={r.label}
+                    onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} />
+                  <input className={inputCls + " w-24 shrink-0 font-mono"} placeholder="0.00" value={r.unit_price_usd}
+                    onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, unit_price_usd: e.target.value } : x))} />
+                  <button onClick={() => setRows((p) => p.filter((_, j) => j !== i))}
+                    className="shrink-0 rounded-md px-2 text-[var(--sa-text-tertiary)] hover:text-red-600" aria-label="Remove">
+                    <X size={12} />
+                  </button>
+                </div>
+                <div className="mt-1.5 flex gap-2">
+                  <input className={inputCls} placeholder="Note — handfeel, weight (optional)" value={r.note}
+                    onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, note: e.target.value } : x))} />
+                  <input className={inputCls + " w-24 shrink-0 font-mono"} placeholder="MOQ" value={r.moq}
+                    onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, moq: e.target.value } : x))} />
+                </div>
+              </div>
+            ))}
+            <div className="flex items-center gap-2">
+              <button onClick={() => setRows((p) => [...p, { ...BLANK }])}
+                className="rounded-md border border-[var(--sa-border)] px-2.5 py-1 text-[11px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]">
+                Add a blend
+              </button>
+              <div className="flex-1" />
+              <button onClick={() => { setRows(initial); setSaveError(null); setEditing(false); }}
+                className="rounded-md px-2.5 py-1 text-[11px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]">
+                Cancel
+              </button>
+              <button onClick={handleSave} disabled={saving}
+                className="rounded-md bg-[var(--sa-accent)] px-3 py-1 text-[11px] font-medium text-white disabled:opacity-50">
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
+            {saveError && <p className="text-[11.5px] text-red-500">{saveError}</p>}
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }
 
 function VolumePricingCard({ product, onSaved, kind }: { product: Product; onSaved: (p: Partial<Product>) => void; kind: "client" | "internal" }) {
@@ -2073,6 +2241,8 @@ export function ProductDetailClient({
           {/* Volume pricing tiers */}
           <VolumePricingCard kind="client" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
           <VolumePricingCard kind="internal" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
+          <CompositionPricingCard kind="client" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
+          <CompositionPricingCard kind="internal" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
 
           {/* Price history */}
           <PriceHistoryCard history={priceHistory} />

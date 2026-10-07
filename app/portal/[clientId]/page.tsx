@@ -22,7 +22,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { PortalClient } from "./PortalClient";
 import type { Contract, PortalFile, AgencySettings, SavedInvoice } from "@/lib/data";
-import type { Stage } from "@/lib/mock-data";
+import type { CompositionTier, Stage } from "@/lib/mock-data";
 
 interface Props {
   params: Promise<{ clientId: string }>;
@@ -45,7 +45,17 @@ export interface PortalProduct {
   sample_fee_usd: number | null;
   expected_sample_date: string | null;
   sample_round: number;
+  lead_time_days: number | null;
   price_tiers: { moq: number; unit_price_usd: number }[];
+  /**
+   * Client-facing composition prices only.
+   *
+   * internal_composition_tiers is the supplier's side of the same list and
+   * must never reach here — this type is a whitelist precisely so that a new
+   * column does not arrive in the portal by accident, which is how the
+   * factory cost sheet once leaked margin.
+   */
+  composition_tiers: CompositionTier[];
   milestones: { id: string; title: string; due_date: string; completed_at: string | null }[];
   updates: { id: string; author: string; author_initials: string; text: string; created_at: string; author_role: "agency" | "client" }[];
 }
@@ -124,7 +134,9 @@ export default async function PortalPage({ params }: Props) {
             sample_fee_usd: (product as any).sample_fee_usd ?? null,
             expected_sample_date: (product as any).expected_sample_date ?? null,
             sample_round: (product as any).sample_round ?? 1,
+            lead_time_days: (product as any).lead_time_days ?? null,
             price_tiers: ((product as any).price_tiers ?? []) as { moq: number; unit_price_usd: number }[],
+            composition_tiers: ((product as any).composition_tiers ?? []) as CompositionTier[],
             milestones: milestones.map((m) => ({
               id: m.id,
               title: m.title,
