@@ -890,9 +890,8 @@ function CompositionPricingCard({
       <div className="px-4 py-3">
         {kind === "client" && (
           <p className="mb-2.5 text-[11px] leading-snug text-[var(--sa-text-tertiary)]">
-            Enter your volume tiers against the <strong className="font-medium text-[var(--sa-text-secondary)]">cheapest</strong> blend.
-            The portal adds the difference for whichever one the client picks, so the quantity discount
-            stays the same across all of them.
+            Listed in the portal on its own, separately from volume pricing. Each price here is the
+            price — nothing is added to it or worked out from it.
           </p>
         )}
         {!editing ? (
