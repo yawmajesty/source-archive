@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, CalendarPlus, Check, CheckCheck, Copy, ExternalLink, HelpCircle, Plus, Send, Trash2 } from "lucide-react";
+import { ArrowRight, CalendarPlus, Check, CheckCheck, Copy, ExternalLink, HelpCircle, Plus, Send, Trash2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { updateLeadStatus, convertLeadToClient, createLead, deleteLead } from "./actions";
 import { LeadReplyDialog } from "@/components/leads/LeadReplyDialog";
@@ -406,8 +406,19 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
               Sends your booking link with a line on what the call will cover.
             </p>
 
+            <button
+              onClick={() => setReplyKind("decline")}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-[var(--sa-border)] px-3 py-2 text-[12.5px] font-medium text-[var(--sa-text-secondary)] transition-colors hover:bg-[var(--sa-hover)] hover:text-[var(--sa-text-primary)]"
+            >
+              <XCircle size={12} /> Say no
+            </button>
+            <p className="mt-1 text-[10.5px] leading-snug text-[var(--sa-text-tertiary)]">
+              Three reasons to pick from — too early for them, we&apos;re full, or not what we do.
+              Marks the lead lost.
+            </p>
+
             <p className="mt-1.5 text-[10.5px] leading-snug text-[var(--sa-text-tertiary)]">
-              All three open the draft first so you can change it before it goes.
+              All four open the draft first so you can change it before it goes.
             </p>
 
             {ackNote && (

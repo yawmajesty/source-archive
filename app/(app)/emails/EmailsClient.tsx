@@ -15,6 +15,7 @@ const TEMPLATE_LABEL: Record<string, string> = {
   lead_acknowledged: "Lead — thank-you",
   lead_more_info: "Lead — asked for more detail",
   lead_book_call: "Lead — call invitation",
+  lead_declined: "Lead — declined",
   portal_update: "Portal update to client",
   agency_alert: "Alert to the team",
   portal_invite: "Portal invitation",

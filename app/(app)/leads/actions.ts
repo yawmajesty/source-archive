@@ -12,6 +12,8 @@ import {
   acknowledgeDraft,
   moreInfoDraft,
   bookCallDraft,
+  declineDraft,
+  type DeclineReason,
   leadReply,
   replyWindowFor,
   type Draft,
@@ -143,6 +145,7 @@ export async function convertLeadToClient(leadId: string): Promise<{ clientId: s
 export async function draftLeadReply(
   leadId: string,
   kind: LeadReplyKind,
+  reason?: DeclineReason,
 ): Promise<{ success: true; to: string; draft: Draft } | { success: false; error: string }> {
   const ctx = await getAgencyContext();
   if (!ctx) return { success: false, error: "Not a member of any agency" };
@@ -185,16 +188,26 @@ export async function draftLeadReply(
       ? acknowledgeDraft({ ...shared, window: replyWindowFor() })
       : kind === "book_call"
         ? bookCallDraft({ ...shared, bookingUrl: bookingUrl() })
-        : moreInfoDraft({ ...shared, editUrl });
+        : kind === "decline"
+          ? declineDraft({
+              ...shared,
+              reason: reason ?? "at_capacity",
+              calculatorUrl: buildPublicUrl("/price"),
+            })
+          : moreInfoDraft({ ...shared, editUrl });
 
   return { success: true, to: lead.contact_email, draft };
 }
 
 /** Which log slug each quick reply is filed under. */
-const REPLY_TEMPLATE: Record<LeadReplyKind, "lead_acknowledged" | "lead_more_info" | "lead_book_call"> = {
+const REPLY_TEMPLATE: Record<
+  LeadReplyKind,
+  "lead_acknowledged" | "lead_more_info" | "lead_book_call" | "lead_declined"
+> = {
   acknowledge: "lead_acknowledged",
   more_info: "lead_more_info",
   book_call: "lead_book_call",
+  decline: "lead_declined",
 };
 
 /**
@@ -263,7 +276,13 @@ export async function sendLeadReply(input: {
 
   // Only advance a lead that is still untouched — replying to a qualified
   // one should not drag it backwards down the pipeline.
-  if (lead.status === "new") {
+  // A decline is an answer, so the lead closes. The others only move it off
+  // "new" — a lead left at "new" after a reply gets replied to twice.
+  if (input.kind === "decline") {
+    if (lead.status !== "converted") {
+      await supabase.from("leads").update({ status: "lost" }).eq("id", input.leadId);
+    }
+  } else if (lead.status === "new") {
     await supabase.from("leads").update({ status: "contacted" }).eq("id", input.leadId);
   }
 

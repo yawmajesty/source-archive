@@ -42,7 +42,8 @@ export type EmailTemplate =
   | "portal_invite"
   | "approval_requested"
   | "daily_digest"
-  | "invoice_chase";
+  | "invoice_chase"
+  | "lead_declined";
 
 export interface OutboundEmail {
   agencyId: string;

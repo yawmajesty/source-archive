@@ -696,7 +696,7 @@ export interface Draft {
   body: string;
 }
 
-export type LeadReplyKind = "acknowledge" | "more_info" | "book_call";
+export type LeadReplyKind = "acknowledge" | "more_info" | "book_call" | "decline";
 
 /**
  * "We've got it, here's when we'll come back."
@@ -833,6 +833,104 @@ function linkify(escaped: string): string {
     const href = trailing ? match.slice(0, -trailing[0].length) : match;
     return `<a href="${href}" style="color:${ACCENT};">${href}</a>${trailing ? trailing[0] : ""}`;
   });
+}
+
+/**
+ * Why we are saying no.
+ *
+ * Three, because three is what actually happens, and because a no that
+ * explains itself is the one that gets a second enquiry later. "Not right
+ * now" with no reason reads as "not you", and a brand that thinks it was
+ * rejected does not come back when it is ready.
+ */
+export type DeclineReason = "too_early" | "at_capacity" | "not_a_fit";
+
+export const DECLINE_REASONS: Array<{ id: DeclineReason; label: string; detail: string }> = [
+  {
+    id: "too_early",
+    label: "Too early for them",
+    detail: "The brand isn't at a stage where we'd be any use yet. Points them at what to do first.",
+  },
+  {
+    id: "at_capacity",
+    label: "We're full",
+    detail: "Nothing wrong with the project — we haven't got the room. Invites them back with a date.",
+  },
+  {
+    id: "not_a_fit",
+    label: "Not what we do",
+    detail: "Outside what we take on, or the wrong shape of work. Says so plainly and offers a pointer.",
+  },
+];
+
+/**
+ * The decline itself, as a draft.
+ *
+ * Every version says the same three things in order: no, why, and what to do
+ * next. The third is the part that matters — a no with a next step is a
+ * favour, and a no without one is just a door closing.
+ */
+export function declineDraft(input: {
+  contactName: string;
+  companyName?: string | null;
+  isBrief: boolean;
+  reason: DeclineReason;
+  /** The free pricing calculator, which is the one useful thing we can always offer. */
+  calculatorUrl?: string | null;
+}): Draft {
+  const first = input.contactName.trim().split(/\s+/)[0];
+  const greeting = first ? `Hi ${first},` : "Hello,";
+  const what = input.isBrief ? "your brief" : "your enquiry";
+  const forCompany = input.companyName ? ` for ${input.companyName}` : "";
+  const calculator = input.calculatorUrl
+    ? `\n\nIn the meantime, our pricing calculator is free and might be useful for working out what ` +
+      `your numbers need to look like:\n${input.calculatorUrl}`
+    : "";
+
+  const BODIES: Record<DeclineReason, { subject: string; middle: string }> = {
+    too_early: {
+      subject: input.companyName ? `${input.companyName} — where we'd start` : "Where we'd start",
+      middle:
+        `We're not going to be the right people for you just yet, and we'd rather say so than take ` +
+        `your money for something that won't work.\n\n` +
+        `The honest version: at this stage the costs of sampling and minimum orders tend to swallow a ` +
+        `brand before it has proved anything. What usually comes first is narrowing it to one or two ` +
+        `products you're certain about, getting clear on who's buying them and at what price, and ` +
+        `testing that before committing to a production run.\n\n` +
+        `Come back to us when you've got that — genuinely. It's a much better conversation and we'd ` +
+        `be glad to have it.`,
+    },
+    at_capacity: {
+      subject: input.companyName ? `${input.companyName} — our timing, not your project` : "Our timing, not your project",
+      middle:
+        `This is about us rather than you: our development calendar is full and taking this on now ` +
+        `would mean doing it badly or doing it late. Neither is worth your money.\n\n` +
+        `There's nothing wrong with what you've sent. If your timeline has any give in it, tell us ` +
+        `when you'd need to start and we'll say honestly whether we can meet it — and if you'd like, ` +
+        `we'll come back to you ourselves when the calendar opens up.`,
+    },
+    not_a_fit: {
+      subject: input.companyName ? `${input.companyName} — not one for us` : "Not one for us",
+      middle:
+        `This one isn't a fit for what we do, so we're going to pass rather than stretch to it and ` +
+        `serve you badly.\n\n` +
+        `That's not a judgement on the project — it's about the kind of work we're set up for and ` +
+        `the factories we work with. If it would help, reply and tell us a bit more about what you ` +
+        `need; where we know somebody better suited, we'll happily point you at them.`,
+    },
+  };
+
+  const body = BODIES[input.reason];
+
+  return {
+    subject: body.subject,
+    body:
+      `${greeting}\n\n` +
+      `Thanks for sending ${what}${forCompany} over, and for thinking of us.\n\n` +
+      `${body.middle}` +
+      calculator +
+      `\n\nBest,\nSource Archive team`,
+  };
 }
 
 /**
