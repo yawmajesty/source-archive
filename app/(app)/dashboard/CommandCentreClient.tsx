@@ -14,6 +14,7 @@ import {
 import { quickAction } from "./command-actions";
 import { LeadReplyDialog } from "@/components/leads/LeadReplyDialog";
 import { ParkProjectDialog } from "@/components/dashboard/ParkDialog";
+import { Priorities } from "@/components/dashboard/Priorities";
 import { useSearchParams, useRouter } from "next/navigation";
 import { BriefReviewer } from "./BriefReviewer";
 
@@ -155,7 +156,7 @@ export function CommandCentreClient({
           onSent={() => dropItem(replying.rowId)}
         />
       )}
-      <div className="flex flex-wrap items-center gap-3 border-b border-[var(--sa-border)] px-6 py-3">
+      <div className="flex flex-wrap items-center gap-3 border-b border-[var(--sa-border)] px-4 py-3 sm:px-6">
         <div>
           <h1 className="text-[15px] font-semibold text-[var(--sa-text-primary)]">Command centre</h1>
           <p className="text-[11.5px] text-[var(--sa-text-tertiary)]">
@@ -165,6 +166,8 @@ export function CommandCentreClient({
           </p>
         </div>
       </div>
+
+      <Priorities />
 
       {error && (
         <p className="border-b border-[var(--sa-border)] px-6 py-2 text-[12.5px] text-red-500">{error}</p>
