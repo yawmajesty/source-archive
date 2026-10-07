@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { createReferenceSample, updateReferenceSample, listProductsForClient } from "./actions";
 import type { ReferenceSample, Factory, Client } from "@/lib/data";
 import { imageUrl as sizedImage } from "@/lib/image-url";
+import { Lightbox } from "@/components/shared/Lightbox";
 
 interface Props {
   samples: ReferenceSample[];
@@ -230,6 +231,7 @@ function ReferenceDetail({
   onClose: () => void;
   onUpdate: (updated: ReferenceSample) => void;
 }) {
+  const [viewing, setViewing] = useState<{ items: string[]; index: number } | null>(null);
   const [sample, setSample] = useState(initial);
   const [isPending, startTransition] = useTransition();
   const [agencyImages, setAgencyImages] = useState<string[]>(initial.agency_images ?? []);
@@ -307,11 +309,27 @@ function ReferenceDetail({
           <div>
             <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-2">Client photos</p>
             <div className="grid grid-cols-3 gap-1.5">
-              {sample.client_images.map((url) => (
-                <img loading="lazy" decoding="async" key={url} src={sizedImage(url, 240)} alt="" className="aspect-square rounded-lg object-cover w-full" />
+              {sample.client_images.map((url, i) => (
+                <button
+                  key={url}
+                  type="button"
+                  onClick={() => setViewing({ items: sample.client_images, index: i })}
+                  aria-label="View the full image"
+                  className="block w-full cursor-zoom-in"
+                >
+                  <img loading="lazy" decoding="async" src={sizedImage(url, 240)} alt="" className="aspect-square w-full rounded-lg object-cover" />
+                </button>
               ))}
             </div>
           </div>
+        )}
+
+        {viewing && (
+          <Lightbox
+            items={viewing.items.map((u) => ({ url: u }))}
+            startIndex={viewing.index}
+            onClose={() => setViewing(null)}
+          />
         )}
 
         <div className="border-t border-[var(--sa-border)] pt-4">
@@ -405,7 +423,14 @@ function ReferenceDetail({
             <div className="grid grid-cols-3 gap-1.5">
               {agencyImages.map((url) => (
                 <div key={url} className="group relative aspect-square">
-                  <img loading="lazy" decoding="async" src={sizedImage(url, 300)} alt="" className="w-full h-full object-cover rounded-lg" />
+                  <button
+                    type="button"
+                    onClick={() => setViewing({ items: agencyImages, index: agencyImages.indexOf(url) })}
+                    aria-label="View the full image"
+                    className="block h-full w-full cursor-zoom-in"
+                  >
+                    <img loading="lazy" decoding="async" src={sizedImage(url, 300)} alt="" className="h-full w-full rounded-lg object-cover" />
+                  </button>
                   <button
                     onClick={() => {
                       const updated = agencyImages.filter((u) => u !== url);

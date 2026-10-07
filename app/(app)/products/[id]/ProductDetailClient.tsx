@@ -21,6 +21,7 @@ import { uploadFile } from "@/lib/storage";
 import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem, PriceTier, ProductionVariant, ProductionSize, ProductPriceHistoryEntry } from "@/lib/mock-data";
 import { autoTagProduct, updateAutoTags, updateProductFields, deleteProductRow, createSampleForProduct, updateProductImages, updateProductDocuments, recordAgencyProductMedia } from "./actions";
 import { imageUrl as sizedImage } from "@/lib/image-url";
+import { Lightbox } from "@/components/shared/Lightbox";
 
 const STAGES: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
 const CURRENCIES = ["USD", "GBP", "EUR", "CNY"];
@@ -272,6 +273,7 @@ function ExcludeProductModal({
 }
 
 function MediaSection({ productId, initialImages }: { productId: string; initialImages: string[] }) {
+  const [viewing, setViewing] = useState<number | null>(null);
   const [images, setImages] = useState<string[]>(initialImages ?? []);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -322,7 +324,14 @@ function MediaSection({ productId, initialImages }: { productId: string; initial
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
           {images.map((url) => (
             <div key={url} className="group relative aspect-square rounded-xl overflow-hidden border border-[var(--sa-border)] bg-[var(--sa-bg)]">
-              <img loading="lazy" decoding="async" src={sizedImage(url, 300)} alt="" className="h-full w-full object-cover" />
+              <button
+                type="button"
+                onClick={() => setViewing(images.indexOf(url))}
+                aria-label="View the full image"
+                className="block h-full w-full cursor-zoom-in"
+              >
+                <img loading="lazy" decoding="async" src={sizedImage(url, 300)} alt="" className="h-full w-full object-cover" />
+              </button>
               <button
                 onClick={() => removeImage(url)}
                 className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-white hover:bg-red-500 transition-colors opacity-0 group-hover:opacity-100"
@@ -332,6 +341,13 @@ function MediaSection({ productId, initialImages }: { productId: string; initial
             </div>
           ))}
         </div>
+      )}
+      {viewing !== null && (
+        <Lightbox
+          items={images.map((u) => ({ url: u }))}
+          startIndex={viewing}
+          onClose={() => setViewing(null)}
+        />
       )}
       {images.length === 0 && (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--sa-border)] py-8 mb-3">
@@ -1322,6 +1338,7 @@ function AddSampleModal({
   onClose: () => void;
   onSaved: (sample: Sample) => void;
 }) {
+  const [viewing, setViewing] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -1414,7 +1431,14 @@ function AddSampleModal({
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   {images.map((url, i) => (
                     <div key={i} className="group relative aspect-square rounded-lg overflow-hidden border border-[var(--sa-border)]">
-                      <img loading="lazy" decoding="async" src={sizedImage(url, 300)} alt="" className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setViewing(i)}
+                        aria-label="View the full image"
+                        className="block h-full w-full cursor-zoom-in"
+                      >
+                        <img loading="lazy" decoding="async" src={sizedImage(url, 300)} alt="" className="h-full w-full object-cover" />
+                      </button>
                       <button onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
                         className="absolute top-1 right-1 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white">
                         <X size={10} />
@@ -1422,6 +1446,13 @@ function AddSampleModal({
                     </div>
                   ))}
                 </div>
+              )}
+              {viewing !== null && (
+                <Lightbox
+                  items={images.map((u) => ({ url: u }))}
+                  startIndex={viewing}
+                  onClose={() => setViewing(null)}
+                />
               )}
               <input ref={fileRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleUpload} />
               <button onClick={() => fileRef.current?.click()} disabled={uploading}
