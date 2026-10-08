@@ -561,6 +561,14 @@ function ProductDetailView({ product, files, client, agencyLabel, onClose }: {
             )}
           </div>
 
+          <PricingPanel
+            compositionTiers={product.composition_tiers ?? []}
+            volumeTiers={product.price_tiers ?? []}
+            quotedPrice={product.quoted_cost_usd ?? null}
+            sampleFee={product.sample_fee_usd ?? null}
+            moq={product.moq ?? null}
+          />
+
           {/* Feedback & updates */}
           <div className="px-6 py-4">
             <p className="text-[11px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--portal-text-muted)" }}>Updates & Feedback</p>
@@ -701,14 +709,6 @@ function ProductDetailView({ product, files, client, agencyLabel, onClose }: {
             )}
           </div>
         </div>
-
-          <PricingPanel
-            compositionTiers={product.composition_tiers ?? []}
-            volumeTiers={product.price_tiers ?? []}
-            quotedPrice={product.quoted_cost_usd ?? null}
-            sampleFee={product.sample_fee_usd ?? null}
-            moq={product.moq ?? null}
-          />
 
           {/* Product info */}
           <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--portal-border-subtle)" }}>
