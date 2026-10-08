@@ -10,7 +10,7 @@ import { addClientMember, removeClientMember, type ClientMember } from "../membe
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Lock, Globe, Package, ChevronRight, Calendar, Plus, Activity, Clock, Copy, Check, Trash2 } from "lucide-react";
+import { Activity, ArrowRight, Calendar, Check, ChevronRight, Clock, Copy, Globe, Lock, Package, Pencil, Plus, Trash2, X } from "lucide-react";
 import { createProjectForClient, toggleClientPortal } from "../actions";
 import { buildPublicUrl } from "@/lib/url";
 import { ResizablePanel } from "@/components/layout/ResizablePanel";
@@ -887,10 +887,14 @@ function ClientNameField({ client }: { client: Client }) {
       <>
         <button
           onClick={() => { setDraft(name); setEditing(true); }}
-          className="max-w-full truncate text-left text-[13px] font-semibold text-[var(--sa-text-primary)] hover:underline"
-          title="Click to rename"
+          className="group/name flex max-w-full items-center gap-1.5 text-left"
+          title="Rename this client"
         >
-          {name}
+          <span className="truncate text-[13px] font-semibold text-[var(--sa-text-primary)]">{name}</span>
+          <Pencil
+            size={11}
+            className="shrink-0 text-[var(--sa-text-tertiary)] opacity-60 transition-opacity group-hover/name:opacity-100"
+          />
         </button>
         {error && <p className="text-[11px] text-red-500">{error}</p>}
       </>
@@ -898,16 +902,31 @@ function ClientNameField({ client }: { client: Client }) {
   }
 
   return (
-    <input
-      autoFocus
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") commit();
-        if (e.key === "Escape") { setDraft(name); setEditing(false); }
-      }}
-      className="w-full rounded-md border border-[var(--sa-border)] bg-[var(--sa-window)] px-1.5 py-0.5 text-[13px] font-semibold text-[var(--sa-text-primary)] outline-none"
-    />
+    <div className="flex items-center gap-1">
+      <input
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") { setDraft(name); setEditing(false); }
+        }}
+        className="min-w-0 flex-1 rounded-md border border-[var(--sa-accent)] bg-[var(--sa-window)] px-1.5 py-0.5 text-[13px] font-semibold text-[var(--sa-text-primary)] outline-none"
+      />
+      <button
+        onClick={commit}
+        aria-label="Save the name"
+        className="shrink-0 rounded p-1 text-[var(--sa-accent)] hover:bg-[var(--sa-hover)]"
+      >
+        <Check size={12} strokeWidth={3} />
+      </button>
+      <button
+        onClick={() => { setDraft(name); setEditing(false); }}
+        aria-label="Cancel"
+        className="shrink-0 rounded p-1 text-[var(--sa-text-tertiary)] hover:bg-[var(--sa-hover)]"
+      >
+        <X size={12} />
+      </button>
+    </div>
   );
 }

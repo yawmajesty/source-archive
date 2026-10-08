@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, ExternalLink, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { InlineClientName } from "@/components/clients/InlineClientName";
 import { SharePortalModal } from "./SharePortalModal";
 import { createClient as createClientAction, createProjectForClient, deleteClientCascade } from "./actions";
 import type { Client, Project, Product } from "@/lib/data";
@@ -250,7 +251,7 @@ export function ClientsListClient({ clients, projects, products }: Props) {
                       {client.logo_initial}
                     </div>
                     <div>
-                      <p className="text-[14px] font-semibold text-[var(--sa-text-primary)]">{client.name}</p>
+                      <InlineClientName clientId={client.id} name={client.name} />
                       <p className="text-[11px] text-[var(--sa-text-tertiary)]">{client.industry} · {client.country}</p>
                     </div>
                   </div>
