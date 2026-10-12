@@ -323,10 +323,24 @@ export async function createInvoiceCheckout(invoiceId: string): Promise<
   try {
     session = await stripe.checkout.sessions.create({
       mode: "payment",
-      // Deliberately not pinned to ["card"]: naming the types opts the
-      // session out of dynamic payment methods, and Apple Pay, Google Pay
-      // and Link only appear through those. The set now comes from the
-      // Stripe Dashboard, so it can change without a deploy.
+      // Pinned back to card after live payments stopped completing.
+      //
+      // The timing is hard to argue with: the only live payment that ever
+      // succeeded landed at 11:44 UTC on 28 September, and the commit that
+      // removed this line went in at 12:00 the same day. Every attempt since
+      // has created a session and produced no payment intent.
+      //
+      // Removing it was meant to surface Apple Pay, which it does by handing
+      // the method list to the Dashboard's dynamic payment methods. On hosted
+      // Checkout, Apple Pay and Google Pay are wallets *within* the card
+      // method anyway, so pinning card keeps them — what it gives up is Link
+      // and the alternative methods, which is a trade worth making against
+      // not being paid.
+      //
+      // Correlation rather than proof: the decline reason in the Stripe
+      // Dashboard is what will confirm it. This restores the last
+      // configuration known to have taken money.
+      payment_method_types: ["card"],
       line_items: [
         {
           quantity: 1,
