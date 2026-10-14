@@ -24,6 +24,14 @@ export interface InvoiceRow {
   total: number;
   ageDays: number;
   client_inactive: boolean;
+  /**
+   * Declines the webhook recorded, newest first.
+   *
+   * Written onto the invoice's notes by the Stripe webhook because the
+   * reason a card was refused is the one thing you need and the one thing
+   * that used to live only in the Stripe dashboard.
+   */
+  failures: string[];
 }
 
 /**
@@ -68,6 +76,10 @@ export async function listInvoices(): Promise<InvoiceRow[]> {
       total: sumInvoice(items),
       ageDays: Math.floor((now - new Date(String(inv.created_at)).getTime()) / 86_400_000),
       client_inactive: inactive.has(String(inv.client_id)),
+      failures: String(inv.notes ?? "")
+        .split("\n")
+        .filter((l) => l.startsWith("[payment failed]"))
+        .map((l) => l.replace("[payment failed] ", "")),
     };
   });
 }

@@ -355,6 +355,11 @@ export async function createInvoiceCheckout(invoiceId: string): Promise<
         },
       ],
       customer_email: clientRow?.contact_email ?? undefined,
+      // Asked for, not optional. A cross-border card payment with no
+      // address gives the issuer nothing to check against, and an AVS
+      // mismatch it cannot resolve is one of the commonest reasons a
+      // perfectly good card is refused.
+      billing_address_collection: "required",
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: {
@@ -362,6 +367,16 @@ export async function createInvoiceCheckout(invoiceId: string): Promise<
         client_id: invoice.client_id,
         invoice_kind: invoice.invoice_kind ?? "sampling",
         deposit_percent: String(deposit),
+      },
+      // The same metadata on the payment intent, which is what a failure
+      // event carries. Without this the webhook sees a decline and has no
+      // way to tell which invoice it belonged to — the session's metadata
+      // does not travel to payment_intent.payment_failed.
+      payment_intent_data: {
+        metadata: {
+          invoice_id: invoice.id,
+          client_id: invoice.client_id,
+        },
       },
     });
   } catch (e: any) {
