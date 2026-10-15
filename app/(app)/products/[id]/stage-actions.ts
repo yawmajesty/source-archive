@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getAgencySupabase } from "@/lib/supabase-agency";
 import { getAgencyContext } from "@/lib/agency-data";
 import { can } from "@/lib/permissions";
-import { PRODUCT_STAGES } from "@/lib/stages";
+import { PRODUCT_STAGES, STAGE_LABEL, stagesForProduct, techpackBlocks } from "@/lib/stages";
 import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { sendAll, clientRecipients } from "@/lib/email/send";
 import { stageUpdateClient } from "@/lib/email/templates";
@@ -58,13 +58,43 @@ export async function changeProductStage(
   const supabase = await getAgencySupabase();
   const { data: product } = await supabase
     .from("products")
-    .select("id, name, stage, agency_id, project_id")
+    .select("id, name, stage, agency_id, project_id, needs_design, needs_techpack")
     .eq("id", productId)
     .maybeSingle();
   if (!product) return { success: false, error: "Product not found" };
 
   const from = (product as { stage: string | null }).stage ?? null;
   if (from === toStage) return { success: true, from, to: toStage };
+
+  const phases = product as { needs_design?: boolean | null; needs_techpack?: boolean | null };
+
+  // A product cannot enter a phase it never opted into. Without this the
+  // selector hides them and a stale page, or anything calling this action
+  // directly, could still put a product into "Tech pack" when it has none.
+  if (!stagesForProduct(phases).some((st) => st.id === toStage)) {
+    return { success: false, error: `This product doesn't have a "${STAGE_LABEL[toStage] ?? toStage}" phase` };
+  }
+
+  // The two signatures only mean something if the work downstream waits for
+  // them. A tech pack is the thing a sample is cut from, so cutting one
+  // before both sides have agreed the specification is the mistake this
+  // whole feature exists to prevent.
+  if (phases.needs_techpack) {
+    const { data: packRow } = await supabase
+      .from("product_techpacks")
+      .select("agency_signed_at, client_signed_at")
+      .eq("product_id", productId)
+      .is("superseded_at", null)
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const blocked = techpackBlocks(
+      phases,
+      packRow as { agency_signed_at: string | null; client_signed_at: string | null } | null,
+      toStage,
+    );
+    if (blocked) return { success: false, error: blocked };
+  }
 
   const { error: updateError } = await supabase
     .from("products")

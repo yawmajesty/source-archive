@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { changeProductStage } from "./stage-actions";
-import { PRODUCT_STAGES, STAGE_LABEL } from "@/lib/stages";
+import { STAGE_LABEL, stagesForProduct } from "@/lib/stages";
 
 /**
  * The designer's stage control, in the product page's right column.
@@ -12,11 +12,17 @@ import { PRODUCT_STAGES, STAGE_LABEL } from "@/lib/stages";
  * portal — so this is the one control that turns internal progress into
  * something the client can see without anyone writing an update by hand.
  */
-export function StageSelector({ productId, stage, canChange }: {
+export function StageSelector({ productId, stage, canChange, needsDesign, needsTechpack }: {
   productId: string;
   stage: string;
   canChange: boolean;
+  /** Which optional phases this product opted into. */
+  needsDesign?: boolean;
+  needsTechpack?: boolean;
 }) {
+  // A product cannot be moved into a phase it never signed up for, so the
+  // list it offers is the product's own, not the canonical one.
+  const stages = stagesForProduct({ needs_design: needsDesign, needs_techpack: needsTechpack });
   const [current, setCurrent] = useState(stage);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +41,7 @@ export function StageSelector({ productId, stage, canChange }: {
     setBusy(null);
   }
 
-  const currentIndex = PRODUCT_STAGES.findIndex((s) => s.id === current);
+  const currentIndex = stages.findIndex((s) => s.id === current);
 
   return (
     <div>
@@ -57,7 +63,7 @@ export function StageSelector({ productId, stage, canChange }: {
         </p>
       ) : (
         <div className="flex flex-col gap-1">
-          {PRODUCT_STAGES.map((s, i) => {
+          {stages.map((s, i) => {
             const isCurrent = s.id === current;
             const isPast = currentIndex >= 0 && i < currentIndex;
             return (

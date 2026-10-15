@@ -22,6 +22,7 @@ import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client
 import { autoTagProduct, updateAutoTags, updateProductFields, deleteProductRow, createSampleForProduct, updateProductImages, updateProductDocuments, recordAgencyProductMedia } from "./actions";
 import { imageUrl as sizedImage } from "@/lib/image-url";
 import { Lightbox } from "@/components/shared/Lightbox";
+import { TechPackPanel } from "@/components/products/TechPackPanel";
 
 const STAGES: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
 const CURRENCIES = ["USD", "GBP", "EUR", "CNY"];
@@ -2284,6 +2285,11 @@ export function ProductDetailClient({
           {/* Volume pricing tiers */}
           <VolumePricingCard kind="client" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
           <VolumePricingCard kind="internal" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
+          <TechPackPanel
+            productId={product.id}
+            needsDesign={Boolean(product.needs_design)}
+            needsTechpack={Boolean(product.needs_techpack)}
+          />
           <CompositionPricingCard kind="client" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
           <CompositionPricingCard kind="internal" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
 

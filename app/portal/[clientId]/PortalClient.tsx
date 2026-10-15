@@ -50,6 +50,7 @@ import type { PortalProject, PortalProduct } from "./page";
 import { imageUrl as sizedImage } from "@/lib/image-url";
 import { Lightbox } from "@/components/shared/Lightbox";
 import { PricingPanel } from "./shell/Pricing";
+import { TechPackSignOff } from "./shell/TechPackSignOff";
 
 function usePortalTheme() {
   const [dark, setDark] = useState(false);
@@ -560,6 +561,14 @@ function ProductDetailView({ product, files, client, agencyLabel, onClose }: {
               </button>
             )}
           </div>
+
+          {product.needs_techpack && (
+            <TechPackSignOff
+              productId={product.id}
+              clientId={client.id}
+              clientName={client.contact_name || client.name}
+            />
+          )}
 
           <PricingPanel
             compositionTiers={product.composition_tiers ?? []}
@@ -1976,6 +1985,8 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
               productId={selectedProduct.id}
               stage={selectedProduct.stage}
               canChange
+              needsDesign={selectedProduct.needs_design}
+              needsTechpack={selectedProduct.needs_techpack}
             />
           </div>
         </RailSection>

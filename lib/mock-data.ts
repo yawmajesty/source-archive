@@ -222,6 +222,9 @@ export interface Product {
   // What the RFQ sheet asks a factory to quote against (migration 040).
   // Style name, image, colour and the English note are name, images,
   // colorways and notes above.
+  // Optional phases this product opted into (migration 044).
+  needs_design?: boolean | null;
+  needs_techpack?: boolean | null;
   style_no?: string | null;
   size_range?: string | null;
   fabric?: string | null;

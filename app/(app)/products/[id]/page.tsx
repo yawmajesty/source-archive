@@ -86,6 +86,8 @@ export default async function ProductDetailPage({ params }: Props) {
           productId={id}
           stage={(product as { stage?: string }).stage ?? "brief"}
           canChange={ctx ? can(ctx.role, ctx.permissions, "stage.change") : false}
+          needsDesign={Boolean((product as { needs_design?: boolean }).needs_design)}
+          needsTechpack={Boolean((product as { needs_techpack?: boolean }).needs_techpack)}
         />
       }
       productionLog={

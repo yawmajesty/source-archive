@@ -46,6 +46,9 @@ export interface PortalProduct {
   expected_sample_date: string | null;
   sample_round: number;
   lead_time_days: number | null;
+  /** Which optional phases this product opted into, so the timeline matches. */
+  needs_design: boolean;
+  needs_techpack: boolean;
   price_tiers: { moq: number; unit_price_usd: number }[];
   /**
    * Client-facing composition prices only.
@@ -135,6 +138,8 @@ export default async function PortalPage({ params }: Props) {
             expected_sample_date: (product as any).expected_sample_date ?? null,
             sample_round: (product as any).sample_round ?? 1,
             lead_time_days: (product as any).lead_time_days ?? null,
+            needs_design: Boolean((product as any).needs_design),
+            needs_techpack: Boolean((product as any).needs_techpack),
             price_tiers: ((product as any).price_tiers ?? []) as { moq: number; unit_price_usd: number }[],
             composition_tiers: ((product as any).composition_tiers ?? []) as CompositionTier[],
             milestones: milestones.map((m) => ({
