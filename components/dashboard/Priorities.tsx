@@ -5,7 +5,8 @@ import { Plus, Check, X, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   listPriorities, addPriority, setPriorityDone, updatePriority, deletePriority, clearDonePriorities,
-  type Priority,
+  assignPriority, getPriorityOptions,
+  type Priority, type PriorityOptions,
 } from "@/app/(app)/dashboard/priorities-actions";
 
 // ─────────────────────────────────────────────────────────────
@@ -20,6 +21,14 @@ import {
 // tick is one you stop using.
 // ─────────────────────────────────────────────────────────────
 
+// A select that reads as a chip: the same control whether it is set or not,
+// so changing it is one click rather than a mode.
+const CHIP =
+  "max-w-[9rem] shrink-0 cursor-pointer truncate rounded-full border px-2 py-[3px] text-[10.5px] outline-none transition-colors";
+const CHIP_ON = "border-[var(--sa-accent)] bg-[var(--sa-accent-light)] text-[var(--sa-accent)]";
+const CHIP_OFF =
+  "border-[var(--sa-border)] bg-transparent text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-secondary)]";
+
 export function Priorities() {
   const [items, setItems] = useState<Priority[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,26 +38,53 @@ export function Priorities() {
   const [editing, setEditing] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Who and what a task can be pinned to. Loaded alongside the list so the
+  // first picker opens filled rather than empty.
+  const [options, setOptions] = useState<PriorityOptions>({ people: [], clients: [], products: [] });
+  // What the next task will be pinned to. Sticky on purpose: adding four
+  // tasks for one client should not mean choosing them four times.
+  const [pinTo, setPinTo] = useState<{ person: string; client: string; product: string }>({
+    person: "", client: "", product: "",
+  });
+  const [filterBy, setFilterBy] = useState<{ person: string; client: string }>({ person: "", client: "" });
+
   useEffect(() => {
     let live = true;
-    listPriorities().then((res) => {
+    Promise.all([listPriorities(), getPriorityOptions()]).then(([res, opts]) => {
       if (!live) return;
       setItems(res.items);
       setSetupNeeded(res.setupNeeded);
+      setOptions(opts);
       setLoading(false);
     });
     return () => { live = false; };
   }, []);
 
-  const open = items.filter((i) => !i.done);
-  const done = items.filter((i) => i.done);
+  const visible = items.filter(
+    (i) =>
+      (!filterBy.person || i.assignee_user_id === filterBy.person) &&
+      (!filterBy.client || i.client_id === filterBy.client),
+  );
+  const open = visible.filter((i) => !i.done);
+  const done = visible.filter((i) => i.done);
+
+  const nameOf = (id: string | null, from: Array<{ id: string; name: string }>) =>
+    id ? from.find((x) => x.id === id)?.name ?? null : null;
+  const productsForClient = (clientId: string) =>
+    options.products.filter((p) => p.client_id === clientId);
 
   async function add() {
     const text = draft.trim();
     if (!text) return;
     setDraft("");
     setError(null);
-    const res = await addPriority(text);
+    const person = options.people.find((p) => p.id === pinTo.person);
+    const res = await addPriority(text, {
+      assigneeUserId: pinTo.person || null,
+      assigneeName: person?.name ?? null,
+      clientId: pinTo.client || null,
+      productId: pinTo.product || null,
+    });
     if (!res.success) { setError(res.error); setDraft(text); return; }
     setItems((prev) => [...prev, res.item]);
     inputRef.current?.focus();
@@ -79,6 +115,35 @@ export function Priorities() {
     if (!res.success) { setItems(before); setError(res.error); }
   }
 
+  async function repin(item: Priority, patch: Partial<{ person: string; client: string; product: string }>) {
+    const before = items;
+    const person = patch.person !== undefined ? options.people.find((p) => p.id === patch.person) : undefined;
+    setItems((prev) =>
+      prev.map((i) =>
+        i.id !== item.id
+          ? i
+          : {
+              ...i,
+              ...(patch.person !== undefined
+                ? { assignee_user_id: patch.person || null, assignee_name: person?.name ?? null }
+                : {}),
+              ...(patch.client !== undefined
+                ? { client_id: patch.client || null, product_id: patch.client ? i.product_id : null }
+                : {}),
+              ...(patch.product !== undefined ? { product_id: patch.product || null } : {}),
+            },
+      ),
+    );
+    const res = await assignPriority(item.id, {
+      ...(patch.person !== undefined
+        ? { assigneeUserId: patch.person || null, assigneeName: person?.name ?? null }
+        : {}),
+      ...(patch.client !== undefined ? { clientId: patch.client || null } : {}),
+      ...(patch.product !== undefined ? { productId: patch.product || null } : {}),
+    });
+    if (!res.success) { setItems(before); setError(res.error); }
+  }
+
   async function clearDone() {
     const before = items;
     setItems((prev) => prev.filter((i) => !i.done));
@@ -106,6 +171,26 @@ export function Priorities() {
           <span className="tnum text-[11px] text-[var(--sa-text-tertiary)]">
             {open.length} open
           </span>
+        )}
+        {items.length > 3 && (
+          <>
+            <select
+              value={filterBy.person}
+              onChange={(e) => setFilterBy((v) => ({ ...v, person: e.target.value }))}
+              className={cn(CHIP, filterBy.person ? CHIP_ON : CHIP_OFF)}
+            >
+              <option value="">Everyone</option>
+              {options.people.map((pp) => <option key={pp.id} value={pp.id}>{pp.name}</option>)}
+            </select>
+            <select
+              value={filterBy.client}
+              onChange={(e) => setFilterBy((v) => ({ ...v, client: e.target.value }))}
+              className={cn(CHIP, filterBy.client ? CHIP_ON : CHIP_OFF)}
+            >
+              <option value="">All clients</option>
+              {options.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </>
         )}
         <div className="flex-1" />
         {done.length > 0 && (
@@ -163,6 +248,44 @@ export function Priorities() {
                   </button>
                 )}
 
+                {/* Pinned to whom and what. Selects rather than a modal: one
+                    click to change, and the row stays a row. */}
+                <span className="flex shrink-0 items-center gap-1">
+                  <select
+                    value={item.assignee_user_id ?? ""}
+                    onChange={(e) => repin(item, { person: e.target.value })}
+                    title="Who's doing this"
+                    className={cn(CHIP, item.assignee_user_id ? CHIP_ON : CHIP_OFF)}
+                  >
+                    <option value="">Nobody</option>
+                    {options.people.map((pp) => <option key={pp.id} value={pp.id}>{pp.name}</option>)}
+                  </select>
+
+                  <select
+                    value={item.client_id ?? ""}
+                    onChange={(e) => repin(item, { client: e.target.value })}
+                    title="Which client"
+                    className={cn(CHIP, item.client_id ? CHIP_ON : CHIP_OFF)}
+                  >
+                    <option value="">No client</option>
+                    {options.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+
+                  {item.client_id && productsForClient(item.client_id).length > 0 && (
+                    <select
+                      value={item.product_id ?? ""}
+                      onChange={(e) => repin(item, { product: e.target.value })}
+                      title="Which product"
+                      className={cn(CHIP, item.product_id ? CHIP_ON : CHIP_OFF)}
+                    >
+                      <option value="">Any product</option>
+                      {productsForClient(item.client_id).map((pr) => (
+                        <option key={pr.id} value={pr.id}>{pr.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </span>
+
                 <button
                   onClick={() => remove(item.id)}
                   aria-label="Remove"
@@ -174,7 +297,7 @@ export function Priorities() {
             ))}
           </div>
 
-          <div className="mt-1.5 flex items-center gap-2">
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <Plus size={13} className="shrink-0 text-[var(--sa-text-tertiary)]" />
             <input
               ref={inputRef}
@@ -182,8 +305,42 @@ export function Priorities() {
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") add(); }}
               placeholder={items.length === 0 ? "Type a priority and press Enter" : "Add another"}
-              className="min-w-0 flex-1 bg-transparent py-0.5 text-[13px] text-[var(--sa-text-primary)] outline-none placeholder:text-[var(--sa-text-tertiary)]"
+              className="min-w-[8rem] flex-1 bg-transparent py-0.5 text-[13px] text-[var(--sa-text-primary)] outline-none placeholder:text-[var(--sa-text-tertiary)]"
             />
+            {/* Sticky between adds: four tasks for one client should not mean
+                choosing that client four times. Typing and pressing Enter with
+                all three left blank still works, which is the common case. */}
+            <select
+              value={pinTo.person}
+              onChange={(e) => setPinTo((v) => ({ ...v, person: e.target.value }))}
+              title="Assign the next task to"
+              className={cn(CHIP, pinTo.person ? CHIP_ON : CHIP_OFF)}
+            >
+              <option value="">Who</option>
+              {options.people.map((pp) => <option key={pp.id} value={pp.id}>{pp.name}</option>)}
+            </select>
+            <select
+              value={pinTo.client}
+              onChange={(e) => setPinTo((v) => ({ ...v, client: e.target.value, product: "" }))}
+              title="For which client"
+              className={cn(CHIP, pinTo.client ? CHIP_ON : CHIP_OFF)}
+            >
+              <option value="">Client</option>
+              {options.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            {pinTo.client && productsForClient(pinTo.client).length > 0 && (
+              <select
+                value={pinTo.product}
+                onChange={(e) => setPinTo((v) => ({ ...v, product: e.target.value }))}
+                title="And which product"
+                className={cn(CHIP, pinTo.product ? CHIP_ON : CHIP_OFF)}
+              >
+                <option value="">Product</option>
+                {productsForClient(pinTo.client).map((pr) => (
+                  <option key={pr.id} value={pr.id}>{pr.name}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           {error && <p className="mt-1.5 text-[11.5px]" style={{ color: "var(--sa-danger)" }}>{error}</p>}
