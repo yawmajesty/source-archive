@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, Check, X, UserRound, Building2, Package } from "lucide-react";
+import { Plus, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   listPriorities, addPriority, setPriorityDone, updatePriority, deletePriority, clearDonePriorities,
@@ -24,57 +24,54 @@ import {
 /**
  * A chip you can change.
  *
- * A bare <select> was the first attempt and it looked wrong wherever it was
- * put: browsers draw their own arrow, ignore the border radius, and refuse
- * to size to their content, so every chip was the same fixed width with an
- * OS dropdown glued to one end.
+ * Third attempt, and the lesson from the first two is in the markup.
  *
- * So the visible chip is a span and the real <select> sits invisibly on top
- * of it. The control is still a native select — it keeps the keyboard
- * behaviour, and on a phone it still opens the system picker, which is far
- * better than anything a popover would do — but nothing about its
- * appearance is the browser's decision any more.
+ * A bare <select> cannot be styled: the browser draws its own arrow and
+ * will not size to content. So the chip is a span with the real select
+ * invisible on top — still native, still keyboard-navigable, still the
+ * system picker on a phone.
  *
- * Unset chips are the icon alone. Two words of placeholder on every row,
- * times three fields, was most of what made the board feel cluttered.
+ * The second attempt put an icon in each chip and the icons pushed past the
+ * pill. A 10px glyph has its own line box, and inside a span with two pixels
+ * of vertical padding there is nowhere for it to go. There are no icons now:
+ * a fixed height, overflow hidden, and text that cannot escape its own
+ * border. Short muted words when nothing is chosen, the name when something
+ * is, and the chip never changes height between the two.
  */
 function ChipSelect({
-  value, options, onChange, icon: Icon, placeholder, title,
+  value, options, onChange, empty, title,
 }: {
   value: string;
   options: Array<{ id: string; name: string }>;
   onChange: (next: string) => void;
-  icon: React.ElementType;
-  /** Shown instead of a name when nothing is chosen. */
-  placeholder: string;
+  /** Shown, muted, when nothing is chosen. Kept to one short word. */
+  empty: string;
   title: string;
 }) {
   const chosen = options.find((o) => o.id === value);
-  const on = Boolean(chosen);
 
   return (
     <span
-      className={cn(
-        "relative inline-flex shrink-0 items-center gap-1 rounded-full py-[2px] transition-colors",
-        on
-          ? "bg-[var(--sa-accent-light)] pl-1.5 pr-2 text-[var(--sa-accent)]"
-          : "px-1.5 text-[var(--sa-text-tertiary)] hover:bg-[var(--sa-hover)] hover:text-[var(--sa-text-secondary)]",
-      )}
       title={title}
-    >
-      <Icon size={10} strokeWidth={2} className="shrink-0" />
-      {on && (
-        <span className="max-w-[7.5rem] truncate text-[10.5px] font-medium leading-none">
-          {chosen?.name}
-        </span>
+      className={cn(
+        // A fixed height and hidden overflow are what keep the contents
+        // inside the border, whatever the text or the font does.
+        "relative inline-flex h-[18px] max-w-[6.5rem] shrink-0 items-center overflow-hidden rounded-[5px] px-1.5 transition-colors",
+        chosen
+          ? "bg-[var(--sa-accent-light)] text-[var(--sa-accent)]"
+          : "text-[var(--sa-text-tertiary)] hover:bg-[var(--sa-hover)] hover:text-[var(--sa-text-secondary)]",
       )}
+    >
+      <span className="truncate text-[10.5px] font-medium leading-none">
+        {chosen ? chosen.name : empty}
+      </span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
         aria-label={title}
-        className="absolute inset-0 w-full cursor-pointer appearance-none opacity-0"
+        className="absolute inset-0 h-full w-full cursor-pointer appearance-none border-0 bg-transparent p-0 opacity-0"
       >
-        <option value="">{placeholder}</option>
+        <option value="">{empty}</option>
         {options.map((o) => (
           <option key={o.id} value={o.id}>{o.name}</option>
         ))}
@@ -232,16 +229,14 @@ export function Priorities() {
               value={filterBy.person}
               options={options.people}
               onChange={(v) => setFilterBy((x) => ({ ...x, person: v }))}
-              icon={UserRound}
-              placeholder="Everyone"
+              empty="Everyone"
               title="Show one person's tasks"
             />
             <ChipSelect
               value={filterBy.client}
               options={options.clients}
               onChange={(v) => setFilterBy((x) => ({ ...x, client: v }))}
-              icon={Building2}
-              placeholder="All clients"
+              empty="All clients"
               title="Show one client's tasks"
             />
           </>
@@ -263,13 +258,12 @@ export function Priorities() {
         <>
           <div className="flex flex-col">
             {[...open, ...done].map((item) => (
-              <div key={item.id} className="group py-1">
-                <div className="flex items-start gap-2">
+              <div key={item.id} className="group flex items-center gap-2 py-[3px]">
                 <button
                   onClick={() => toggle(item)}
                   aria-label={item.done ? "Mark as not done" : "Mark as done"}
                   className={cn(
-                    "mt-[1px] flex h-[15px] w-[15px] shrink-0 items-center justify-center rounded-[4px] border transition-colors",
+                    "flex h-[15px] w-[15px] shrink-0 items-center justify-center rounded-[4px] border transition-colors",
                     item.done
                       ? "border-[var(--sa-accent)] bg-[var(--sa-accent)] text-white"
                       : "border-[var(--sa-border-strong)] hover:border-[var(--sa-accent)]",
@@ -293,7 +287,7 @@ export function Priorities() {
                   <button
                     onClick={() => setEditing(item.id)}
                     className={cn(
-                      "min-w-0 flex-1 text-left text-[13px] leading-snug transition-colors",
+                      "min-w-0 flex-1 truncate text-left text-[13px] leading-none transition-colors",
                       item.done
                         ? "text-[var(--sa-text-tertiary)] line-through"
                         : "text-[var(--sa-text-primary)]",
@@ -303,34 +297,22 @@ export function Priorities() {
                   </button>
                 )}
 
-                <button
-                  onClick={() => remove(item.id)}
-                  aria-label="Remove"
-                  className="shrink-0 rounded p-0.5 text-[var(--sa-text-tertiary)] opacity-0 transition-opacity hover:text-[var(--sa-danger)] focus-visible:opacity-100 group-hover:opacity-100"
-                >
-                  <X size={12} />
-                </button>
-                </div>
-
-                {/* On their own line, indented under the text.
-                    Across one row a checkbox, the task, three chips and a
-                    delete left the task itself a few characters wide in this
-                    column — and the chips are secondary to reading the line. */}
-                <span className="ml-[23px] mt-0.5 flex flex-wrap items-center gap-0.5">
+                {/* One row. The task text is what shrinks when space runs
+                    out — the chips are short and fixed, so truncating the
+                    line is better than wrapping the whole thing. */}
+                <span className="flex shrink-0 items-center gap-0.5">
                   <ChipSelect
                     value={item.assignee_user_id ?? ""}
                     options={options.people}
                     onChange={(v) => repin(item, { person: v })}
-                    icon={UserRound}
-                    placeholder="Nobody"
+                    empty="Assign"
                     title="Who's doing this"
                   />
                   <ChipSelect
                     value={item.client_id ?? ""}
                     options={options.clients}
                     onChange={(v) => repin(item, { client: v })}
-                    icon={Building2}
-                    placeholder="No client"
+                    empty="Client"
                     title="Which client"
                   />
                   {item.client_id && productsForClient(item.client_id).length > 0 && (
@@ -338,17 +320,24 @@ export function Priorities() {
                       value={item.product_id ?? ""}
                       options={productsForClient(item.client_id)}
                       onChange={(v) => repin(item, { product: v })}
-                      icon={Package}
-                      placeholder="Any product"
+                      empty="Product"
                       title="Which product"
                     />
                   )}
                 </span>
+
+                <button
+                  onClick={() => remove(item.id)}
+                  aria-label="Remove"
+                  className="shrink-0 rounded p-0.5 text-[var(--sa-text-tertiary)] opacity-0 transition-opacity hover:text-[var(--sa-danger)] focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <X size={12} />
+                </button>
               </div>
             ))}
           </div>
 
-          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <div className="mt-1 flex items-center gap-2">
             <Plus size={13} className="shrink-0 text-[var(--sa-text-tertiary)]" />
             <input
               ref={inputRef}
@@ -356,7 +345,7 @@ export function Priorities() {
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") add(); }}
               placeholder={items.length === 0 ? "Type a priority and press Enter" : "Add another"}
-              className="min-w-[8rem] flex-1 bg-transparent py-0.5 text-[13px] text-[var(--sa-text-primary)] outline-none placeholder:text-[var(--sa-text-tertiary)]"
+              className="min-w-0 flex-1 bg-transparent text-[13px] leading-none text-[var(--sa-text-primary)] outline-none placeholder:text-[var(--sa-text-tertiary)]"
             />
             {/* Sticky between adds: four tasks for one client should not mean
                 choosing that client four times. Typing and pressing Enter with
@@ -365,16 +354,14 @@ export function Priorities() {
               value={pinTo.person}
               options={options.people}
               onChange={(v) => setPinTo((x) => ({ ...x, person: v }))}
-              icon={UserRound}
-              placeholder="Nobody"
+              empty="Assign"
               title="Assign the next task to"
             />
             <ChipSelect
               value={pinTo.client}
               options={options.clients}
               onChange={(v) => setPinTo((x) => ({ ...x, client: v, product: "" }))}
-              icon={Building2}
-              placeholder="No client"
+              empty="Client"
               title="For which client"
             />
             {pinTo.client && productsForClient(pinTo.client).length > 0 && (
@@ -382,8 +369,7 @@ export function Priorities() {
                 value={pinTo.product}
                 options={productsForClient(pinTo.client)}
                 onChange={(v) => setPinTo((x) => ({ ...x, product: v }))}
-                icon={Package}
-                placeholder="Any product"
+                empty="Product"
                 title="And which product"
               />
             )}
