@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, Check, X, GripVertical } from "lucide-react";
+import { Plus, Check, X, UserRound, Building2, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   listPriorities, addPriority, setPriorityDone, updatePriority, deletePriority, clearDonePriorities,
@@ -21,13 +21,67 @@ import {
 // tick is one you stop using.
 // ─────────────────────────────────────────────────────────────
 
-// A select that reads as a chip: the same control whether it is set or not,
-// so changing it is one click rather than a mode.
-const CHIP =
-  "max-w-[9rem] shrink-0 cursor-pointer truncate rounded-full border px-2 py-[3px] text-[10.5px] outline-none transition-colors";
-const CHIP_ON = "border-[var(--sa-accent)] bg-[var(--sa-accent-light)] text-[var(--sa-accent)]";
-const CHIP_OFF =
-  "border-[var(--sa-border)] bg-transparent text-[var(--sa-text-tertiary)] hover:text-[var(--sa-text-secondary)]";
+/**
+ * A chip you can change.
+ *
+ * A bare <select> was the first attempt and it looked wrong wherever it was
+ * put: browsers draw their own arrow, ignore the border radius, and refuse
+ * to size to their content, so every chip was the same fixed width with an
+ * OS dropdown glued to one end.
+ *
+ * So the visible chip is a span and the real <select> sits invisibly on top
+ * of it. The control is still a native select — it keeps the keyboard
+ * behaviour, and on a phone it still opens the system picker, which is far
+ * better than anything a popover would do — but nothing about its
+ * appearance is the browser's decision any more.
+ *
+ * Unset chips are the icon alone. Two words of placeholder on every row,
+ * times three fields, was most of what made the board feel cluttered.
+ */
+function ChipSelect({
+  value, options, onChange, icon: Icon, placeholder, title,
+}: {
+  value: string;
+  options: Array<{ id: string; name: string }>;
+  onChange: (next: string) => void;
+  icon: React.ElementType;
+  /** Shown instead of a name when nothing is chosen. */
+  placeholder: string;
+  title: string;
+}) {
+  const chosen = options.find((o) => o.id === value);
+  const on = Boolean(chosen);
+
+  return (
+    <span
+      className={cn(
+        "relative inline-flex shrink-0 items-center gap-1 rounded-full py-[2px] transition-colors",
+        on
+          ? "bg-[var(--sa-accent-light)] pl-1.5 pr-2 text-[var(--sa-accent)]"
+          : "px-1.5 text-[var(--sa-text-tertiary)] hover:bg-[var(--sa-hover)] hover:text-[var(--sa-text-secondary)]",
+      )}
+      title={title}
+    >
+      <Icon size={10} strokeWidth={2} className="shrink-0" />
+      {on && (
+        <span className="max-w-[7.5rem] truncate text-[10.5px] font-medium leading-none">
+          {chosen?.name}
+        </span>
+      )}
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={title}
+        className="absolute inset-0 w-full cursor-pointer appearance-none opacity-0"
+      >
+        <option value="">{placeholder}</option>
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>{o.name}</option>
+        ))}
+      </select>
+    </span>
+  );
+}
 
 export function Priorities() {
   const [items, setItems] = useState<Priority[]>([]);
@@ -174,22 +228,22 @@ export function Priorities() {
         )}
         {items.length > 3 && (
           <>
-            <select
+            <ChipSelect
               value={filterBy.person}
-              onChange={(e) => setFilterBy((v) => ({ ...v, person: e.target.value }))}
-              className={cn(CHIP, filterBy.person ? CHIP_ON : CHIP_OFF)}
-            >
-              <option value="">Everyone</option>
-              {options.people.map((pp) => <option key={pp.id} value={pp.id}>{pp.name}</option>)}
-            </select>
-            <select
+              options={options.people}
+              onChange={(v) => setFilterBy((x) => ({ ...x, person: v }))}
+              icon={UserRound}
+              placeholder="Everyone"
+              title="Show one person's tasks"
+            />
+            <ChipSelect
               value={filterBy.client}
-              onChange={(e) => setFilterBy((v) => ({ ...v, client: e.target.value }))}
-              className={cn(CHIP, filterBy.client ? CHIP_ON : CHIP_OFF)}
-            >
-              <option value="">All clients</option>
-              {options.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+              options={options.clients}
+              onChange={(v) => setFilterBy((x) => ({ ...x, client: v }))}
+              icon={Building2}
+              placeholder="All clients"
+              title="Show one client's tasks"
+            />
           </>
         )}
         <div className="flex-1" />
@@ -209,7 +263,8 @@ export function Priorities() {
         <>
           <div className="flex flex-col">
             {[...open, ...done].map((item) => (
-              <div key={item.id} className="group flex items-start gap-2 py-1">
+              <div key={item.id} className="group py-1">
+                <div className="flex items-start gap-2">
                 <button
                   onClick={() => toggle(item)}
                   aria-label={item.done ? "Mark as not done" : "Mark as done"}
@@ -248,44 +303,6 @@ export function Priorities() {
                   </button>
                 )}
 
-                {/* Pinned to whom and what. Selects rather than a modal: one
-                    click to change, and the row stays a row. */}
-                <span className="flex shrink-0 items-center gap-1">
-                  <select
-                    value={item.assignee_user_id ?? ""}
-                    onChange={(e) => repin(item, { person: e.target.value })}
-                    title="Who's doing this"
-                    className={cn(CHIP, item.assignee_user_id ? CHIP_ON : CHIP_OFF)}
-                  >
-                    <option value="">Nobody</option>
-                    {options.people.map((pp) => <option key={pp.id} value={pp.id}>{pp.name}</option>)}
-                  </select>
-
-                  <select
-                    value={item.client_id ?? ""}
-                    onChange={(e) => repin(item, { client: e.target.value })}
-                    title="Which client"
-                    className={cn(CHIP, item.client_id ? CHIP_ON : CHIP_OFF)}
-                  >
-                    <option value="">No client</option>
-                    {options.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-
-                  {item.client_id && productsForClient(item.client_id).length > 0 && (
-                    <select
-                      value={item.product_id ?? ""}
-                      onChange={(e) => repin(item, { product: e.target.value })}
-                      title="Which product"
-                      className={cn(CHIP, item.product_id ? CHIP_ON : CHIP_OFF)}
-                    >
-                      <option value="">Any product</option>
-                      {productsForClient(item.client_id).map((pr) => (
-                        <option key={pr.id} value={pr.id}>{pr.name}</option>
-                      ))}
-                    </select>
-                  )}
-                </span>
-
                 <button
                   onClick={() => remove(item.id)}
                   aria-label="Remove"
@@ -293,6 +310,40 @@ export function Priorities() {
                 >
                   <X size={12} />
                 </button>
+                </div>
+
+                {/* On their own line, indented under the text.
+                    Across one row a checkbox, the task, three chips and a
+                    delete left the task itself a few characters wide in this
+                    column — and the chips are secondary to reading the line. */}
+                <span className="ml-[23px] mt-0.5 flex flex-wrap items-center gap-0.5">
+                  <ChipSelect
+                    value={item.assignee_user_id ?? ""}
+                    options={options.people}
+                    onChange={(v) => repin(item, { person: v })}
+                    icon={UserRound}
+                    placeholder="Nobody"
+                    title="Who's doing this"
+                  />
+                  <ChipSelect
+                    value={item.client_id ?? ""}
+                    options={options.clients}
+                    onChange={(v) => repin(item, { client: v })}
+                    icon={Building2}
+                    placeholder="No client"
+                    title="Which client"
+                  />
+                  {item.client_id && productsForClient(item.client_id).length > 0 && (
+                    <ChipSelect
+                      value={item.product_id ?? ""}
+                      options={productsForClient(item.client_id)}
+                      onChange={(v) => repin(item, { product: v })}
+                      icon={Package}
+                      placeholder="Any product"
+                      title="Which product"
+                    />
+                  )}
+                </span>
               </div>
             ))}
           </div>
@@ -310,36 +361,31 @@ export function Priorities() {
             {/* Sticky between adds: four tasks for one client should not mean
                 choosing that client four times. Typing and pressing Enter with
                 all three left blank still works, which is the common case. */}
-            <select
+            <ChipSelect
               value={pinTo.person}
-              onChange={(e) => setPinTo((v) => ({ ...v, person: e.target.value }))}
+              options={options.people}
+              onChange={(v) => setPinTo((x) => ({ ...x, person: v }))}
+              icon={UserRound}
+              placeholder="Nobody"
               title="Assign the next task to"
-              className={cn(CHIP, pinTo.person ? CHIP_ON : CHIP_OFF)}
-            >
-              <option value="">Who</option>
-              {options.people.map((pp) => <option key={pp.id} value={pp.id}>{pp.name}</option>)}
-            </select>
-            <select
+            />
+            <ChipSelect
               value={pinTo.client}
-              onChange={(e) => setPinTo((v) => ({ ...v, client: e.target.value, product: "" }))}
+              options={options.clients}
+              onChange={(v) => setPinTo((x) => ({ ...x, client: v, product: "" }))}
+              icon={Building2}
+              placeholder="No client"
               title="For which client"
-              className={cn(CHIP, pinTo.client ? CHIP_ON : CHIP_OFF)}
-            >
-              <option value="">Client</option>
-              {options.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            />
             {pinTo.client && productsForClient(pinTo.client).length > 0 && (
-              <select
+              <ChipSelect
                 value={pinTo.product}
-                onChange={(e) => setPinTo((v) => ({ ...v, product: e.target.value }))}
+                options={productsForClient(pinTo.client)}
+                onChange={(v) => setPinTo((x) => ({ ...x, product: v }))}
+                icon={Package}
+                placeholder="Any product"
                 title="And which product"
-                className={cn(CHIP, pinTo.product ? CHIP_ON : CHIP_OFF)}
-              >
-                <option value="">Product</option>
-                {productsForClient(pinTo.client).map((pr) => (
-                  <option key={pr.id} value={pr.id}>{pr.name}</option>
-                ))}
-              </select>
+              />
             )}
           </div>
 
