@@ -253,3 +253,57 @@ export async function uploadTechPackAsClient(input: {
   revalidatePath(`/products/${input.productId}`);
   return { success: true, version };
 }
+
+export interface ClientTechPack extends PortalTechPack {
+  product_id: string;
+  product_name: string;
+}
+
+/**
+ * Every tech pack across a client's products, newest first.
+ *
+ * The Files tab promised "tech packs will appear here" and showed
+ * portal_files, which these are not — they live in their own table because
+ * they are versioned and signed. So the promise was never kept.
+ *
+ * Superseded versions are included. A client looking for "the tech pack"
+ * in Files wants the current one, but one looking for what they signed in
+ * August wants the one from August.
+ */
+export async function listClientTechPacks(clientId: string): Promise<ClientTechPack[]> {
+  const supabase = getAgencyServiceSupabase();
+
+  // Ownership from the client end: their projects, then those projects'
+  // products, then packs against those products. Nothing trusts the
+  // client_id denormalised onto the pack.
+  const { data: projects } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("client_id", clientId);
+  const projectIds = ((projects ?? []) as Array<{ id: string }>).map((p) => p.id);
+  if (projectIds.length === 0) return [];
+
+  const { data: products } = await supabase
+    .from("products")
+    .select("id, name")
+    .in("project_id", projectIds);
+  const productRows = (products ?? []) as Array<{ id: string; name: string }>;
+  if (productRows.length === 0) return [];
+
+  const nameOf = new Map(productRows.map((p) => [p.id, p.name]));
+
+  const { data, error } = await supabase
+    .from("product_techpacks")
+    .select(
+      "id, product_id, version, title, change_note, file_url, file_name, uploaded_by, " +
+        "agency_signed_at, client_signed_at, client_signed_name, superseded_at, created_at",
+    )
+    .in("product_id", productRows.map((p) => p.id))
+    .order("created_at", { ascending: false });
+  if (error) return [];
+
+  return ((data ?? []) as unknown as ClientTechPack[]).map((row) => ({
+    ...row,
+    product_name: nameOf.get(row.product_id) ?? "A product",
+  }));
+}

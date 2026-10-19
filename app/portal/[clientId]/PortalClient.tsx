@@ -51,6 +51,8 @@ import { imageUrl as sizedImage } from "@/lib/image-url";
 import { Lightbox } from "@/components/shared/Lightbox";
 import { PricingPanel } from "./shell/Pricing";
 import { TechPackSignOff } from "./shell/TechPackSignOff";
+import { listClientTechPacks, type ClientTechPack } from "./techpack-actions";
+import { MAX_UPLOAD_BYTES } from "@/lib/storage";
 
 function usePortalTheme() {
   const [dark, setDark] = useState(false);
@@ -977,12 +979,95 @@ function FileRow({ file }: { file: PortalFile }) {
   );
 }
 
-function FilesSection({ files }: { files: PortalFile[] }) {
+/**
+ * A tech pack in the Files list.
+ *
+ * Carries the one thing a plain file row cannot say: whether this version
+ * is the one in force and whether it has been signed. A client hunting
+ * through Files for "the tech pack" is usually really asking which one is
+ * current, and a list of identically-named PDFs cannot answer that.
+ */
+function TechPackFileRow({ pack, superseded }: { pack: ClientTechPack; superseded?: boolean }) {
+  const signed = Boolean(pack.client_signed_at);
+  return (
+    <a
+      href={pack.file_url}
+      target="_blank"
+      rel="noreferrer"
+      className="flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors"
+      style={{
+        border: "1px solid var(--portal-border)",
+        background: superseded ? "transparent" : "var(--portal-surface-raised)",
+        opacity: superseded ? 0.7 : 1,
+      }}
+    >
+      <FileText size={14} className="shrink-0" style={{ color: "var(--portal-text-muted)" }} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[12.5px] font-medium" style={{ color: "var(--portal-text-primary)" }}>
+          {pack.product_name}
+        </span>
+        <span className="block truncate text-[11px]" style={{ color: "var(--portal-text-muted)" }}>
+          v{pack.version}
+          {pack.file_name ? ` · ${pack.file_name}` : ""}
+          {pack.uploaded_by === "client" ? " · sent by you" : ""}
+        </span>
+      </span>
+      <span
+        className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
+        style={
+          superseded
+            ? { background: "var(--portal-surface)", color: "var(--portal-text-muted)" }
+            : signed
+              ? { background: "rgba(16,185,129,0.12)", color: "#0E7C66" }
+              : { background: "rgba(245,158,11,0.14)", color: "#8A5A00" }
+        }
+      >
+        {superseded ? "Replaced" : signed ? "Signed" : "Needs signing"}
+      </span>
+    </a>
+  );
+}
+
+function FilesSection({ files, clientId }: { files: PortalFile[]; clientId: string }) {
   const clientFiles = files.filter((f) => f.source === "client");
   const agencyFiles = files.filter((f) => f.source === "agency");
 
+  // Tech packs are not portal_files — they live in their own table because
+  // they are versioned and carry signatures. The empty state below has been
+  // promising they would appear here, so they do.
+  const [packs, setPacks] = useState<ClientTechPack[]>([]);
+  useEffect(() => {
+    let live = true;
+    listClientTechPacks(clientId).then((rows) => { if (live) setPacks(rows); });
+    return () => { live = false; };
+  }, [clientId]);
+
+  const current = packs.filter((p) => !p.superseded_at);
+  const earlier = packs.filter((p) => p.superseded_at);
+
   return (
     <div className="flex flex-col gap-6">
+      {packs.length > 0 && (
+        <div className="rounded-xl p-5" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
+          <p className="mb-3 text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>
+            Tech packs
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {current.map((p) => <TechPackFileRow key={p.id} pack={p} />)}
+          </div>
+
+          {earlier.length > 0 && (
+            <details className="mt-2">
+              <summary className="cursor-pointer list-none text-[11.5px]" style={{ color: "var(--portal-text-muted)" }}>
+                {earlier.length} earlier version{earlier.length === 1 ? "" : "s"}
+              </summary>
+              <div className="mt-1.5 flex flex-col gap-1.5">
+                {earlier.map((p) => <TechPackFileRow key={p.id} pack={p} superseded />)}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
       <div className="rounded-xl p-5" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
         <p className="text-[13px] font-medium mb-3" style={{ color: "var(--portal-text-primary)" }}>Your uploads</p>
         {clientFiles.length === 0 ? (
@@ -995,7 +1080,7 @@ function FilesSection({ files }: { files: PortalFile[] }) {
       <div className="rounded-xl p-5" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
         <p className="text-[13px] font-medium mb-3" style={{ color: "var(--portal-text-primary)" }}>Shared by agency</p>
         {agencyFiles.length === 0 ? (
-          <p className="text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>Your agency will share files here — tech packs, QC reports, and other documents will appear here</p>
+          <p className="text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>Your agency will share files here — QC reports, certificates and other documents. Tech packs get their own section above.</p>
         ) : (
           agencyFiles.map((f) => <FileRow key={f.id} file={f} />)
         )}
@@ -1004,7 +1089,7 @@ function FilesSection({ files }: { files: PortalFile[] }) {
       <div className="rounded-xl p-8 text-center cursor-pointer group transition-colors" style={{ border: "2px dashed var(--portal-border)", background: "var(--portal-surface)" }}>
         <Upload size={22} strokeWidth={1.5} className="mx-auto mb-3 transition-colors" style={{ color: "var(--portal-text-muted)" }} />
         <p className="text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>Upload artwork or references</p>
-        <p className="mt-1 text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>Drop files here or click to browse · .ai .pdf .png .jpg .psd .zip .mov .mp4 · max 500 MB</p>
+        <p className="mt-1 text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>Drop files here or click to browse · .ai .pdf .png .jpg .psd .zip .mov .mp4 · max {Math.round(MAX_UPLOAD_BYTES / 1048576)} MB</p>
       </div>
     </div>
   );
@@ -2096,7 +2181,7 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
           </div>
         )}
 
-        {!selectedProduct && route === "files" && <FilesSection files={files} />}
+        {!selectedProduct && route === "files" && <FilesSection files={files} clientId={client.id} />}
 
         {!selectedProduct && route === "contracts" && (
           <>
