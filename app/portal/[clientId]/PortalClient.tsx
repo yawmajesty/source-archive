@@ -53,6 +53,7 @@ import { PricingPanel } from "./shell/Pricing";
 import { TechPackSignOff } from "./shell/TechPackSignOff";
 import { listClientTechPacks, type ClientTechPack } from "./techpack-actions";
 import { MAX_UPLOAD_BYTES } from "@/lib/storage";
+import { uploadPortalFile } from "./file-actions";
 
 function usePortalTheme() {
   const [dark, setDark] = useState(false);
@@ -1045,6 +1046,47 @@ function FilesSection({ files, clientId }: { files: PortalFile[]; clientId: stri
   const current = packs.filter((p) => !p.superseded_at);
   const earlier = packs.filter((p) => p.superseded_at);
 
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [mine, setMine] = useState<PortalFile[]>([]);
+
+  async function send(file: File) {
+    setUploading(true);
+    setUploadError(null);
+    const key = `${clientId}/${Date.now()}-${file.name.replace(/[^\w.-]+/g, "_")}`;
+    const up = await uploadFile("portal-files", key, file);
+    if (up.error || !up.url) {
+      setUploadError(up.error ?? "Upload failed");
+      setUploading(false);
+      return;
+    }
+    const res = await uploadPortalFile({
+      clientId,
+      fileUrl: up.url,
+      filePath: key,
+      filename: file.name,
+      sizeBytes: file.size,
+      contentType: file.type || null,
+    });
+    setUploading(false);
+    if (!res.success) { setUploadError(res.error); return; }
+    // Shown straight away rather than waiting for a reload — the file is
+    // theirs and they have just watched it go up.
+    setMine((prev) => [
+      {
+        id: `local-${Date.now()}`,
+        client_id: clientId,
+        project_id: null,
+        filename: file.name,
+        size_kb: Math.max(1, Math.round(file.size / 1024)),
+        source: "client",
+        uploaded_at: new Date().toISOString(),
+        file_url: up.url,
+      } as PortalFile,
+      ...prev,
+    ]);
+  }
+
   return (
     <div className="flex flex-col gap-6">
       {packs.length > 0 && (
@@ -1070,10 +1112,10 @@ function FilesSection({ files, clientId }: { files: PortalFile[]; clientId: stri
       )}
       <div className="rounded-xl p-5" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface)" }}>
         <p className="text-[13px] font-medium mb-3" style={{ color: "var(--portal-text-primary)" }}>Your uploads</p>
-        {clientFiles.length === 0 ? (
+        {[...mine, ...clientFiles].length === 0 ? (
           <p className="text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>You have not uploaded any files yet — use the area below to upload artwork, references, or specifications</p>
         ) : (
-          clientFiles.map((f) => <FileRow key={f.id} file={f} />)
+          [...mine, ...clientFiles].map((f) => <FileRow key={f.id} file={f} />)
         )}
       </div>
 
@@ -1086,11 +1128,36 @@ function FilesSection({ files, clientId }: { files: PortalFile[]; clientId: stri
         )}
       </div>
 
-      <div className="rounded-xl p-8 text-center cursor-pointer group transition-colors" style={{ border: "2px dashed var(--portal-border)", background: "var(--portal-surface)" }}>
+      {/* This was a styled div with a pointer cursor and no handler, so
+          every client who clicked it got nothing. It uploads now. */}
+      <label
+        className="group cursor-pointer rounded-xl p-8 text-center transition-colors"
+        style={{ border: "2px dashed var(--portal-border)", background: "var(--portal-surface)" }}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          const file = e.dataTransfer.files?.[0];
+          if (file) void send(file);
+        }}
+      >
         <Upload size={22} strokeWidth={1.5} className="mx-auto mb-3 transition-colors" style={{ color: "var(--portal-text-muted)" }} />
-        <p className="text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>Upload artwork or references</p>
-        <p className="mt-1 text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>Drop files here or click to browse · .ai .pdf .png .jpg .psd .zip .mov .mp4 · max {Math.round(MAX_UPLOAD_BYTES / 1048576)} MB</p>
-      </div>
+        <p className="text-[13px] font-medium" style={{ color: "var(--portal-text-primary)" }}>
+          {uploading ? "Uploading…" : "Upload artwork or references"}
+        </p>
+        <p className="mt-1 text-[11px]" style={{ color: "var(--portal-text-secondary)" }}>
+          Drop files here or click to browse · max {Math.round(MAX_UPLOAD_BYTES / 1048576)} MB
+        </p>
+        <input
+          type="file"
+          className="hidden"
+          disabled={uploading}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) void send(f); }}
+        />
+      </label>
+
+      {uploadError && (
+        <p className="text-[12px]" style={{ color: "#C0392B" }}>{uploadError}</p>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FileText, ImageIcon, Inbox, ExternalLink } from "lucide-react";
 import { imageUrl as sizedImage } from "@/lib/image-url";
 import { Lightbox } from "@/components/shared/Lightbox";
+import { ClientFiles } from "@/components/clients/ClientFiles";
 import type { ClientOrigin } from "@/app/(app)/clients/[id]/origin-actions";
 
 // ─────────────────────────────────────────────────────────────
@@ -35,9 +36,11 @@ function fileName(url: string): string {
 }
 
 export function ClientHome({
+  clientId,
   origin,
   photos,
 }: {
+  clientId: string;
   origin: ClientOrigin | null;
   /** Every product photo across the client's collections. */
   photos: Array<{ url: string; productName: string; productId: string }>;
@@ -168,6 +171,8 @@ export function ClientHome({
           </div>
         )}
       </section>
+
+      <ClientFiles clientId={clientId} />
 
       {/* ── Everything photographed since ── */}
       <section className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)]">

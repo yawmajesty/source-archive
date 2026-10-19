@@ -653,7 +653,7 @@ export function ClientsPageClient({ client, projectData, portalActivity, clientM
           ) : (
             <div key="home" className="flex h-full flex-col overflow-y-auto">
               <div className="px-4 pt-4 sm:px-5">
-                <ClientHome origin={origin ?? null} photos={photos ?? []} />
+                <ClientHome clientId={client.id} origin={origin ?? null} photos={photos ?? []} />
               </div>
               <PortalActivityPanel activity={portalActivity} client={client} portalEnabled={portalEnabled} />
             </div>

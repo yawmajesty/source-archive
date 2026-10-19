@@ -965,6 +965,13 @@ export interface PortalFile {
   size_kb: number;
   source: FileSource;
   uploaded_at: string;
+  // Where the file actually is. Absent until migration 047, which is why
+  // nothing could be uploaded or opened before it.
+  file_url?: string | null;
+  file_path?: string | null;
+  content_type?: string | null;
+  uploaded_by_name?: string | null;
+  note?: string | null;
 }
 
 const contracts: Contract[] = [
