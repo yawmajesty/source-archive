@@ -19,11 +19,52 @@ export interface UploadResult {
   error: string | null;
 }
 
+/**
+ * The project's upload ceiling, in bytes.
+ *
+ * Supabase enforces this per project, not per bucket — every bucket here
+ * has no limit of its own, so this one number governs all of them. Probed
+ * rather than assumed: a bucket limit of 50MB is accepted and 100MB comes
+ * back 413 EntityTooLarge, which is the same error an oversized upload
+ * produces.
+ *
+ * Raising it is a dashboard setting (Storage → Settings → Upload file size
+ * limit), so this reads from the environment: set NEXT_PUBLIC_MAX_UPLOAD_MB
+ * to match whatever it is changed to and the guard follows without a code
+ * change.
+ */
+export const MAX_UPLOAD_BYTES = (() => {
+  const configured = Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB);
+  const mb = Number.isFinite(configured) && configured > 0 ? configured : 50;
+  return Math.round(mb * 1024 * 1024);
+})();
+
+export function formatBytes(bytes: number): string {
+  if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(2)} GB`;
+  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} bytes`;
+}
+
 export async function uploadFile(
   bucket: string,
   path: string,
   file: File
 ): Promise<UploadResult> {
+  // Checked here rather than letting Supabase reject it. The server's answer
+  // is "The object exceeded the maximum allowed size", which does not say
+  // what the size was, what the limit is, or what to do — and by the time it
+  // arrives the whole file has been sent.
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return {
+      url: null,
+      error:
+        `That file is ${formatBytes(file.size)} and the limit is ${formatBytes(MAX_UPLOAD_BYTES)}. ` +
+        `Compressing the PDF usually does it — or the limit can be raised in Supabase under ` +
+        `Storage → Settings.`,
+    };
+  }
+
   const ticket = await createUploadTicket(bucket, path);
   if (ticket.error || !ticket.token) {
     console.error("[storage upload] authorization failed:", ticket.error);
