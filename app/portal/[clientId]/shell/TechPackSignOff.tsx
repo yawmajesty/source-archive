@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FileText, CheckCircle2, Upload } from "lucide-react";
+import { FileText, CheckCircle2, Upload, Maximize2, ExternalLink, Download, X } from "lucide-react";
 import { uploadFile } from "@/lib/storage";
 import { imageUrl as sizedImage } from "@/lib/image-url";
 import {
@@ -29,61 +29,131 @@ const PDF_EXT = /\.pdf(\?|$)/i;
  * A look at the actual document, not a filename.
  *
  * A tech pack is the thing being signed, so asking somebody to agree to it
- * from a link they have to open in another tab is asking them to sign
- * something they probably have not read.
+ * from a link they have to open elsewhere is asking them to sign something
+ * they probably have not read.
  *
- * PDFs go in an iframe, which is safe here because Supabase serves them as
- * application/pdf with no attachment disposition and supports range
- * requests — checked, because a 17MB pack would otherwise block the page.
- * The browser's own viewer streams the first page and fetches the rest when
- * it is scrolled.
+ * Three ways to read it, because one is never enough for a specification:
+ * inline for a glance, full screen for actually going through it, and a
+ * plain link for anyone who would rather have the file.
+ *
+ * PDFs go in an iframe, which is safe because Supabase serves them as
+ * application/pdf with no attachment disposition and honours range
+ * requests — a 17MB pack answered a Range header with a 206. The browser's
+ * own viewer streams the first page rather than blocking on the whole file.
  */
-function Preview({ url, name }: { url: string; name: string | null }) {
+function DocumentView({
+  url, name, full,
+}: {
+  url: string;
+  name: string | null;
+  /** Full screen gets the viewer's toolbar; inline does not need it. */
+  full?: boolean;
+}) {
   const isImage = IMAGE_EXT.test(url);
   const isPdf = PDF_EXT.test(url);
 
   if (isImage) {
     return (
-      <a href={url} target="_blank" rel="noreferrer" className="mt-2.5 block overflow-hidden rounded-xl"
-        style={{ border: "1px solid var(--portal-border)" }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          loading="lazy"
-          decoding="async"
-          src={sizedImage(url, 560, { resize: "contain", quality: 82 })}
-          alt={name ?? "Tech pack"}
-          className="block w-full"
-          style={{ background: "var(--portal-surface)" }}
-        />
-      </a>
+      <img
+        loading="lazy"
+        decoding="async"
+        src={full ? url : sizedImage(url, 760, { resize: "contain", quality: 84 })}
+        alt={name ?? "Tech pack"}
+        className={full ? "mx-auto block max-h-full max-w-full object-contain" : "block w-full"}
+        style={full ? undefined : { background: "var(--portal-surface)" }}
+      />
     );
   }
 
   if (isPdf) {
     return (
-      <div className="mt-2.5 overflow-hidden rounded-xl" style={{ border: "1px solid var(--portal-border)" }}>
-        <iframe
-          src={`${url}#view=FitH&toolbar=0`}
-          title={name ?? "Tech pack"}
-          loading="lazy"
-          className="block h-[420px] w-full"
-          style={{ background: "var(--portal-surface)" }}
-        />
-      </div>
+      <iframe
+        src={`${url}#view=FitH${full ? "" : "&toolbar=0"}`}
+        title={name ?? "Tech pack"}
+        loading="lazy"
+        className={full ? "h-full w-full" : "block h-[clamp(420px,62vh,780px)] w-full"}
+        style={{ background: "var(--portal-surface)" }}
+      />
     );
   }
 
   // Anything a browser will not draw — a spreadsheet, a zip of patterns.
   return (
     <a href={url} target="_blank" rel="noreferrer"
-      className="mt-2.5 flex items-center gap-2 rounded-xl px-3.5 py-3"
-      style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface-raised)" }}>
+      className="flex items-center gap-2 px-3.5 py-3"
+      style={{ background: "var(--portal-surface-raised)" }}>
       <FileText size={15} style={{ color: "var(--portal-text-muted)" }} />
       <span className="min-w-0 flex-1 truncate text-[12.5px]" style={{ color: "var(--portal-text-primary)" }}>
         {name ?? "Open the tech pack"}
       </span>
       <span className="shrink-0 text-[11px]" style={{ color: "var(--portal-brand)" }}>Open</span>
     </a>
+  );
+}
+
+/** The inline preview, with the ways out of it. */
+function Preview({ url, name }: { url: string; name: string | null }) {
+  const [expanded, setExpanded] = useState(false);
+  const readable = IMAGE_EXT.test(url) || PDF_EXT.test(url);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setExpanded(false); };
+    window.addEventListener("keydown", onKey);
+    // A document reader that leaves the page scrolling behind it is a
+    // document reader nobody can use on a phone.
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previous;
+    };
+  }, [expanded]);
+
+  return (
+    <>
+      <div className="mt-2.5 overflow-hidden rounded-xl" style={{ border: "1px solid var(--portal-border)" }}>
+        <DocumentView url={url} name={name} />
+      </div>
+
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+        {readable && (
+          <button onClick={() => setExpanded(true)}
+            className="flex items-center gap-1 text-[11.5px] font-medium hover:underline"
+            style={{ color: "var(--portal-brand)" }}>
+            <Maximize2 size={11} /> Read it full screen
+          </button>
+        )}
+        <a href={url} target="_blank" rel="noreferrer"
+          className="flex items-center gap-1 text-[11.5px] hover:underline"
+          style={{ color: "var(--portal-text-muted)" }}>
+          <ExternalLink size={11} /> Open in a new tab
+        </a>
+        <a href={url} download={name ?? undefined}
+          className="flex items-center gap-1 text-[11.5px] hover:underline"
+          style={{ color: "var(--portal-text-muted)" }}>
+          <Download size={11} /> Download
+        </a>
+      </div>
+
+      {expanded && (
+        <div className="fixed inset-0 z-[200] flex flex-col" style={{ background: "rgba(0,0,0,0.92)" }}>
+          <div className="flex shrink-0 items-center gap-3 px-4 py-2.5">
+            <p className="min-w-0 flex-1 truncate text-[13px] text-white/70">{name ?? "Tech pack"}</p>
+            <a href={url} target="_blank" rel="noreferrer"
+              className="shrink-0 text-[12px] text-white/60 hover:text-white">Open in a new tab</a>
+            <button onClick={() => setExpanded(false)} aria-label="Close"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white"
+              style={{ background: "rgba(255,255,255,0.14)" }}>
+              <X size={15} />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto px-2 pb-2">
+            <DocumentView url={url} name={name} full />
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -178,8 +248,9 @@ export function TechPackSignOff({
         </>
       ) : (
         <>
-          <div className="rounded-xl p-3.5" style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface-raised)" }}>
-            <div className="flex items-start gap-2.5">
+          <div>
+            <div className="flex items-start gap-2.5 rounded-xl p-3.5"
+              style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface-raised)" }}>
               <FileText size={15} className="mt-0.5 shrink-0" style={{ color: "var(--portal-text-muted)" }} />
               <div className="min-w-0 flex-1">
                 <a href={current.file_url} target="_blank" rel="noreferrer"
@@ -200,11 +271,6 @@ export function TechPackSignOff({
             </div>
 
             <Preview url={current.file_url} name={current.file_name} />
-
-            <a href={current.file_url} target="_blank" rel="noreferrer"
-              className="mt-1.5 inline-block text-[11px] hover:underline" style={{ color: "var(--portal-brand)" }}>
-              Open it full size
-            </a>
           </div>
 
           {current.client_signed_at ? (
