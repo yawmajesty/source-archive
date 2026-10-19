@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { FileText, CheckCircle2, Upload } from "lucide-react";
 import { uploadFile } from "@/lib/storage";
+import { imageUrl as sizedImage } from "@/lib/image-url";
 import {
   listTechPacksForPortal, signTechPackAsClient, uploadTechPackAsClient,
   type PortalTechPack,
@@ -20,6 +21,71 @@ import {
 // signatures rather than carrying them forward. Agreement to v2 is not
 // agreement to v3.
 // ─────────────────────────────────────────────────────────────
+
+const IMAGE_EXT = /\.(jpe?g|png|gif|webp|avif|heic|bmp|tiff?)(\?|$)/i;
+const PDF_EXT = /\.pdf(\?|$)/i;
+
+/**
+ * A look at the actual document, not a filename.
+ *
+ * A tech pack is the thing being signed, so asking somebody to agree to it
+ * from a link they have to open in another tab is asking them to sign
+ * something they probably have not read.
+ *
+ * PDFs go in an iframe, which is safe here because Supabase serves them as
+ * application/pdf with no attachment disposition and supports range
+ * requests — checked, because a 17MB pack would otherwise block the page.
+ * The browser's own viewer streams the first page and fetches the rest when
+ * it is scrolled.
+ */
+function Preview({ url, name }: { url: string; name: string | null }) {
+  const isImage = IMAGE_EXT.test(url);
+  const isPdf = PDF_EXT.test(url);
+
+  if (isImage) {
+    return (
+      <a href={url} target="_blank" rel="noreferrer" className="mt-2.5 block overflow-hidden rounded-xl"
+        style={{ border: "1px solid var(--portal-border)" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          loading="lazy"
+          decoding="async"
+          src={sizedImage(url, 560, { resize: "contain", quality: 82 })}
+          alt={name ?? "Tech pack"}
+          className="block w-full"
+          style={{ background: "var(--portal-surface)" }}
+        />
+      </a>
+    );
+  }
+
+  if (isPdf) {
+    return (
+      <div className="mt-2.5 overflow-hidden rounded-xl" style={{ border: "1px solid var(--portal-border)" }}>
+        <iframe
+          src={`${url}#view=FitH&toolbar=0`}
+          title={name ?? "Tech pack"}
+          loading="lazy"
+          className="block h-[420px] w-full"
+          style={{ background: "var(--portal-surface)" }}
+        />
+      </div>
+    );
+  }
+
+  // Anything a browser will not draw — a spreadsheet, a zip of patterns.
+  return (
+    <a href={url} target="_blank" rel="noreferrer"
+      className="mt-2.5 flex items-center gap-2 rounded-xl px-3.5 py-3"
+      style={{ border: "1px solid var(--portal-border)", background: "var(--portal-surface-raised)" }}>
+      <FileText size={15} style={{ color: "var(--portal-text-muted)" }} />
+      <span className="min-w-0 flex-1 truncate text-[12.5px]" style={{ color: "var(--portal-text-primary)" }}>
+        {name ?? "Open the tech pack"}
+      </span>
+      <span className="shrink-0 text-[11px]" style={{ color: "var(--portal-brand)" }}>Open</span>
+    </a>
+  );
+}
 
 function when(iso: string | null): string {
   if (!iso) return "";
@@ -132,6 +198,13 @@ export function TechPackSignOff({
                 )}
               </div>
             </div>
+
+            <Preview url={current.file_url} name={current.file_name} />
+
+            <a href={current.file_url} target="_blank" rel="noreferrer"
+              className="mt-1.5 inline-block text-[11px] hover:underline" style={{ color: "var(--portal-brand)" }}>
+              Open it full size
+            </a>
           </div>
 
           {current.client_signed_at ? (
@@ -188,13 +261,19 @@ export function TechPackSignOff({
             <div className="mt-3">
               <p className="mb-1 text-[10.5px]" style={{ color: "var(--portal-text-muted)" }}>Earlier versions</p>
               {older.map((p) => (
-                <div key={p.id} className="flex items-baseline gap-2 text-[11px]">
-                  <a href={p.file_url} target="_blank" rel="noreferrer" className="shrink-0 hover:underline"
-                    style={{ color: "var(--portal-brand)" }}>v{p.version}</a>
-                  <span className="min-w-0 flex-1 truncate" style={{ color: "var(--portal-text-muted)" }}>
-                    {p.client_signed_at ? `signed ${when(p.client_signed_at)}` : "not signed"}
-                  </span>
-                </div>
+                <details key={p.id} className="group">
+                  <summary className="flex cursor-pointer items-baseline gap-2 py-0.5 text-[11px] list-none">
+                    <span className="shrink-0 group-open:font-medium" style={{ color: "var(--portal-brand)" }}>
+                      v{p.version}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate" style={{ color: "var(--portal-text-muted)" }}>
+                      {p.client_signed_at ? `signed ${when(p.client_signed_at)}` : "not signed"}
+                    </span>
+                  </summary>
+                  {/* Inside a details element, so nothing is fetched until
+                      somebody asks to compare. */}
+                  <Preview url={p.file_url} name={p.file_name} />
+                </details>
               ))}
             </div>
           )}
