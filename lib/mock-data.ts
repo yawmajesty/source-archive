@@ -972,6 +972,9 @@ export interface PortalFile {
   content_type?: string | null;
   uploaded_by_name?: string | null;
   note?: string | null;
+  // What it is, and which product it belongs to (migration 048).
+  tag?: string | null;
+  product_id?: string | null;
 }
 
 const contracts: Contract[] = [

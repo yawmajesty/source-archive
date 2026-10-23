@@ -6,6 +6,7 @@ import { uploadFile, MAX_UPLOAD_BYTES } from "@/lib/storage";
 import {
   listClientFiles, shareFileWithClient, deleteSharedFile, type SharedFile,
 } from "@/app/(app)/clients/file-actions";
+import { FILE_TAG_LABEL } from "@/lib/portal-file-tags";
 
 // ─────────────────────────────────────────────────────────────
 // Files, both directions.
@@ -124,10 +125,16 @@ export function ClientFiles({ clientId }: { clientId: string }) {
                       {f.filename}
                     </span>
                   )}
-                  <span className="block truncate text-[11px] text-[var(--sa-text-tertiary)]">
-                    {size(f.size_kb)} · {when(f.uploaded_at)}
-                    {f.uploaded_by_name ? ` · ${f.uploaded_by_name}` : ""}
-                    {f.note ? ` · ${f.note}` : ""}
+                  <span className="flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--sa-text-tertiary)]">
+                    {f.tag && (
+                      <span className="rounded-full bg-[var(--sa-accent-light)] px-1.5 py-[1px] text-[10px] font-medium text-[var(--sa-accent)]">
+                        {FILE_TAG_LABEL[f.tag] ?? f.tag}
+                      </span>
+                    )}
+                    {f.product_name && <span className="truncate">{f.product_name}</span>}
+                    <span>{size(f.size_kb)} · {when(f.uploaded_at)}</span>
+                    {f.uploaded_by_name && <span className="truncate">{f.uploaded_by_name}</span>}
+                    {f.note && <span className="truncate italic">{f.note}</span>}
                   </span>
                 </span>
                 <button onClick={() => remove(f.id)} disabled={busy} aria-label="Remove"

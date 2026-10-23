@@ -33,6 +33,10 @@ export interface SharedFile {
   file_url: string | null;
   uploaded_by_name: string | null;
   note: string | null;
+  tag: string | null;
+  product_id: string | null;
+  /** Resolved for display, so the panel does not have to look it up. */
+  product_name?: string | null;
 }
 
 export async function listClientFiles(clientId: string): Promise<{ files: SharedFile[]; setupNeeded: boolean }> {
@@ -42,12 +46,23 @@ export async function listClientFiles(clientId: string): Promise<{ files: Shared
   const supabase = await getAgencySupabase();
   const { data, error } = await supabase
     .from("portal_files")
-    .select("id, filename, size_kb, source, uploaded_at, file_url, uploaded_by_name, note")
+    .select("id, filename, size_kb, source, uploaded_at, file_url, uploaded_by_name, note, tag, product_id")
     .eq("client_id", clientId)
     .order("uploaded_at", { ascending: false });
 
   if (error) return { files: [], setupNeeded: notSetUp(error) };
-  return { files: (data ?? []) as unknown as SharedFile[], setupNeeded: false };
+
+  const files = (data ?? []) as unknown as SharedFile[];
+
+  // One lookup for the products referenced, rather than one per file.
+  const ids = Array.from(new Set(files.map((f) => f.product_id).filter(Boolean))) as string[];
+  if (ids.length > 0) {
+    const { data: products } = await supabase.from("products").select("id, name").in("id", ids);
+    const nameOf = new Map(((products ?? []) as Array<{ id: string; name: string }>).map((p) => [p.id, p.name]));
+    for (const f of files) if (f.product_id) f.product_name = nameOf.get(f.product_id) ?? null;
+  }
+
+  return { files, setupNeeded: false };
 }
 
 export async function shareFileWithClient(input: {

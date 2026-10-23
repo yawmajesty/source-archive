@@ -54,6 +54,8 @@ import { TechPackSignOff } from "./shell/TechPackSignOff";
 import { listClientTechPacks, type ClientTechPack } from "./techpack-actions";
 import { MAX_UPLOAD_BYTES } from "@/lib/storage";
 import { uploadPortalFile } from "./file-actions";
+import { FileUploadPrompt, type UploadChoice } from "./shell/FileUploadPrompt";
+import { FILE_TAG_LABEL } from "@/lib/portal-file-tags";
 
 function usePortalTheme() {
   const [dark, setDark] = useState(false);
@@ -1029,7 +1031,14 @@ function TechPackFileRow({ pack, superseded }: { pack: ClientTechPack; supersede
   );
 }
 
-function FilesSection({ files, clientId }: { files: PortalFile[]; clientId: string }) {
+function FilesSection({
+  files, clientId, products,
+}: {
+  files: PortalFile[];
+  clientId: string;
+  /** Their own products, for tagging artwork and tech packs. */
+  products: Array<{ id: string; name: string; collection: string }>;
+}) {
   const clientFiles = files.filter((f) => f.source === "client");
   const agencyFiles = files.filter((f) => f.source === "agency");
 
@@ -1049,8 +1058,9 @@ function FilesSection({ files, clientId }: { files: PortalFile[]; clientId: stri
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [mine, setMine] = useState<PortalFile[]>([]);
+  const [pending, setPending] = useState<File | null>(null);
 
-  async function send(file: File) {
+  async function send(file: File, choice: UploadChoice) {
     setUploading(true);
     setUploadError(null);
     const key = `${clientId}/${Date.now()}-${file.name.replace(/[^\w.-]+/g, "_")}`;
@@ -1067,9 +1077,13 @@ function FilesSection({ files, clientId }: { files: PortalFile[]; clientId: stri
       filename: file.name,
       sizeBytes: file.size,
       contentType: file.type || null,
+      tag: choice.tag,
+      productId: choice.productId,
+      note: choice.note,
     });
     setUploading(false);
     if (!res.success) { setUploadError(res.error); return; }
+    setPending(null);
     // Shown straight away rather than waiting for a reload — the file is
     // theirs and they have just watched it go up.
     setMine((prev) => [
@@ -1082,6 +1096,9 @@ function FilesSection({ files, clientId }: { files: PortalFile[]; clientId: stri
         source: "client",
         uploaded_at: new Date().toISOString(),
         file_url: up.url,
+        tag: choice.tag,
+        product_id: choice.productId,
+        note: choice.note,
       } as PortalFile,
       ...prev,
     ]);
@@ -1115,7 +1132,23 @@ function FilesSection({ files, clientId }: { files: PortalFile[]; clientId: stri
         {[...mine, ...clientFiles].length === 0 ? (
           <p className="text-[12px]" style={{ color: "var(--portal-text-secondary)" }}>You have not uploaded any files yet — use the area below to upload artwork, references, or specifications</p>
         ) : (
-          [...mine, ...clientFiles].map((f) => <FileRow key={f.id} file={f} />)
+          [...mine, ...clientFiles].map((f) => (
+            <div key={f.id}>
+              <FileRow file={f} />
+              {(f.tag || f.note) && (
+                <p className="mb-1.5 ml-1 flex flex-wrap items-center gap-1.5 text-[11px]"
+                  style={{ color: "var(--portal-text-muted)" }}>
+                  {f.tag && (
+                    <span className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                      style={{ background: "var(--portal-surface-raised)", color: "var(--portal-text-secondary)" }}>
+                      {FILE_TAG_LABEL[f.tag] ?? f.tag}
+                    </span>
+                  )}
+                  {f.note}
+                </p>
+              )}
+            </div>
+          ))
         )}
       </div>
 
@@ -1137,7 +1170,7 @@ function FilesSection({ files, clientId }: { files: PortalFile[]; clientId: stri
         onDrop={(e) => {
           e.preventDefault();
           const file = e.dataTransfer.files?.[0];
-          if (file) void send(file);
+          if (file) setPending(file);
         }}
       >
         <Upload size={22} strokeWidth={1.5} className="mx-auto mb-3 transition-colors" style={{ color: "var(--portal-text-muted)" }} />
@@ -1151,9 +1184,24 @@ function FilesSection({ files, clientId }: { files: PortalFile[]; clientId: stri
           type="file"
           className="hidden"
           disabled={uploading}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) void send(f); }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) setPending(f);
+            // Cleared so picking the same file twice still opens the prompt.
+            e.target.value = "";
+          }}
         />
       </label>
+
+      {pending && (
+        <FileUploadPrompt
+          file={pending}
+          products={products}
+          busy={uploading}
+          onCancel={() => { setPending(null); setUploadError(null); }}
+          onConfirm={(choice) => void send(pending, choice)}
+        />
+      )}
 
       {uploadError && (
         <p className="text-[12px]" style={{ color: "#C0392B" }}>{uploadError}</p>
@@ -2248,7 +2296,15 @@ export function PortalClient({ client, locked, projects, contracts, files, agenc
           </div>
         )}
 
-        {!selectedProduct && route === "files" && <FilesSection files={files} clientId={client.id} />}
+        {!selectedProduct && route === "files" && (
+          <FilesSection
+            files={files}
+            clientId={client.id}
+            products={projects.flatMap((pr) =>
+              pr.products.map((pd) => ({ id: pd.id, name: pd.name, collection: pr.name })),
+            )}
+          />
+        )}
 
         {!selectedProduct && route === "contracts" && (
           <>
