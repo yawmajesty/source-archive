@@ -1,5 +1,8 @@
 import type { BriefProduct } from "./mock-data";
-import { imageToDataUrl, detectImageFormat, PAGE_H, MARGIN, CONTENT_W } from "./invoice-pdf";
+import {
+  imageToDataUrl, detectImageFormat, imageDimensions, fitWithin,
+  PAGE_H, MARGIN, CONTENT_W,
+} from "./invoice-pdf";
 import { imageUrl } from "./image-url";
 
 // ─────────────────────────────────────────────────────────────
@@ -51,9 +54,14 @@ export async function downloadBriefPDF(brief: BriefForPdf): Promise<void> {
   const productImages = await Promise.all(
     brief.products.map((p) =>
       Promise.all(
-        (p.moodboard_files ?? []).slice(0, 6).map((u) =>
-          imageToDataUrl(imageUrl(u, 150, { height: 150, resize: "contain", quality: 82 })),
-        ),
+        (p.moodboard_files ?? []).slice(0, 6).map(async (u) => {
+          const data = await imageToDataUrl(
+            imageUrl(u, 150, { height: 150, resize: "contain", quality: 82 }),
+          );
+          if (!data) return null;
+          // Measured here so the page can keep each photograph's own shape.
+          return { data, natural: await imageDimensions(data) };
+        }),
       ),
     ),
   );
@@ -191,7 +199,10 @@ export async function downloadBriefPDF(brief: BriefForPdf): Promise<void> {
 
   // ── One block per product ──
   brief.products.forEach((product, index) => {
-    const images = (productImages[index] ?? []).filter(Boolean) as string[];
+    const images = (productImages[index] ?? []).filter(Boolean) as Array<{
+      data: string;
+      natural: { width: number; height: number } | null;
+    }>;
 
     // A product is the unit somebody quotes from, so it does not get split
     // across a page break unless it genuinely cannot fit on one.
@@ -230,16 +241,23 @@ export async function downloadBriefPDF(brief: BriefForPdf): Promise<void> {
       y += 2.5;
       room(IMAGE_BOX_MM + 4);
       let x = MARGIN;
-      for (const data of images) {
+      for (const image of images) {
         if (x + IMAGE_BOX_MM > MARGIN + CONTENT_W) {
           y += IMAGE_BOX_MM + 3;
           room(IMAGE_BOX_MM + 4);
           x = MARGIN;
         }
+        // The frame stays square so the grid lines up; the photograph is
+        // fitted inside it at its own aspect ratio and centred. Forcing it
+        // to the frame is what squashed every tall shot.
+        const fitted = fitWithin(
+          { x: x + 0.6, y: y + 0.6, w: IMAGE_BOX_MM - 1.2, h: IMAGE_BOX_MM - 1.2 },
+          image.natural,
+        );
         doc.setDrawColor(RULE[0], RULE[1], RULE[2]);
         doc.rect(x, y, IMAGE_BOX_MM, IMAGE_BOX_MM);
         try {
-          doc.addImage(data, detectImageFormat(data), x + 0.6, y + 0.6, IMAGE_BOX_MM - 1.2, IMAGE_BOX_MM - 1.2);
+          doc.addImage(image.data, detectImageFormat(image.data), fitted.x, fitted.y, fitted.w, fitted.h);
         } catch {
           // One unreadable reference should not cost the whole document.
         }

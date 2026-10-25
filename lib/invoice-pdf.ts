@@ -167,6 +167,51 @@ export const PAGE_H = 297;
 export const MARGIN = 15;
 export const CONTENT_W = PAGE_W - MARGIN * 2;
 
+/**
+ * An image's real pixel dimensions.
+ *
+ * Needed because jsPDF's addImage takes a width and a height and will
+ * happily stretch a photograph to whatever is passed. Both PDF exports
+ * were passing a square, so a tall garment shot came out squashed.
+ *
+ * Decoded through an Image element rather than by reading header bytes:
+ * this only ever runs in a browser, and the browser already knows.
+ */
+export async function imageDimensions(
+  dataUrl: string,
+): Promise<{ width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
+/**
+ * The largest centred rectangle of this image's shape that fits the box.
+ *
+ * Returns the box itself when the dimensions cannot be read — a square is
+ * a guess, but a missing image is worse, and most uploads here are roughly
+ * square anyway.
+ */
+export function fitWithin(
+  box: { x: number; y: number; w: number; h: number },
+  natural: { width: number; height: number } | null,
+): { x: number; y: number; w: number; h: number } {
+  if (!natural || natural.width <= 0 || natural.height <= 0) return box;
+  const scale = Math.min(box.w / natural.width, box.h / natural.height);
+  const w = natural.width * scale;
+  const h = natural.height * scale;
+  return {
+    // Centred, so a column of mixed shapes still reads as a column.
+    x: box.x + (box.w - w) / 2,
+    y: box.y + (box.h - h) / 2,
+    w,
+    h,
+  };
+}
+
 export function detectImageFormat(dataUrl: string): "JPEG" | "PNG" | "WEBP" {
   if (dataUrl.startsWith("data:image/png")) return "PNG";
   if (dataUrl.startsWith("data:image/webp")) return "WEBP";
@@ -180,7 +225,10 @@ export async function downloadInvoicePDF(invoice: SavedInvoice, client: Client, 
     invoice.line_items.map(async (li) => {
       if (!li.image_url) return li;
       const dataUrl = await imageToDataUrl(li.image_url);
-      return dataUrl ? { ...li, image_url: dataUrl } : { ...li, image_url: null };
+      if (!dataUrl) return { ...li, image_url: null };
+      // Measured so the photograph keeps its own shape in the cell. It was
+      // being drawn into a square, which squashed anything not square.
+      return { ...li, image_url: dataUrl, _natural: await imageDimensions(dataUrl) };
     })
   );
 
@@ -324,7 +372,11 @@ export async function downloadInvoicePDF(invoice: SavedInvoice, client: Client, 
       const photoY = y + (rowH - photoSize) / 2;
       if (li.image_url) {
         try {
-          doc.addImage(li.image_url, detectImageFormat(li.image_url), photoX, photoY, photoSize, photoSize);
+          const fitted = fitWithin(
+            { x: photoX, y: photoY, w: photoSize, h: photoSize },
+            (li as { _natural?: { width: number; height: number } | null })._natural ?? null,
+          );
+          doc.addImage(li.image_url, detectImageFormat(li.image_url), fitted.x, fitted.y, fitted.w, fitted.h);
           doc.setDrawColor(229, 229, 229);
           doc.rect(photoX, photoY, photoSize, photoSize);
         } catch {
