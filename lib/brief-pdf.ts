@@ -1,8 +1,9 @@
 import type { BriefProduct } from "./mock-data";
 import {
-  imageToDataUrl, detectImageFormat, imageDimensions, fitWithin,
+  imageToDataUrl, detectImageFormat, imageDimensions,
   PAGE_H, MARGIN, CONTENT_W,
 } from "./invoice-pdf";
+import { layoutMoodboard } from "./moodboard-layout";
 import { imageUrl } from "./image-url";
 
 // ─────────────────────────────────────────────────────────────
@@ -45,8 +46,10 @@ export interface BriefForPdf {
   products: BriefProduct[];
 }
 
-/** 110 CSS px of image is about 29mm on the page; ask for twice that. */
-const IMAGE_BOX_MM = 38;
+/** How tall a row of references wants to be, and how tall it may become. */
+const ROW_TARGET_MM = 32;
+const ROW_MAX_MM = 48;
+const ROW_GAP_MM = 2.5;
 
 export async function downloadBriefPDF(brief: BriefForPdf): Promise<void> {
   // Every reference fetched as a data URL first: jsPDF cannot wait for a
@@ -56,7 +59,10 @@ export async function downloadBriefPDF(brief: BriefForPdf): Promise<void> {
       Promise.all(
         (p.moodboard_files ?? []).slice(0, 6).map(async (u) => {
           const data = await imageToDataUrl(
-            imageUrl(u, 150, { height: 150, resize: "contain", quality: 82 }),
+            // 800px: about 420dpi at the 48mm a row can reach, and still
+            // acceptable if one panoramic image spans the full width. Asking
+            // for the original would mean a megabyte per reference.
+            imageUrl(u, 400, { height: 400, resize: "contain", quality: 82 }),
           );
           if (!data) return null;
           // Measured here so the page can keep each photograph's own shape.
@@ -206,7 +212,7 @@ export async function downloadBriefPDF(brief: BriefForPdf): Promise<void> {
 
     // A product is the unit somebody quotes from, so it does not get split
     // across a page break unless it genuinely cannot fit on one.
-    const estimate = 34 + (product.description ? 18 : 0) + (images.length ? IMAGE_BOX_MM + 6 : 0);
+    const estimate = 34 + (product.description ? 18 : 0) + (images.length ? ROW_MAX_MM + 6 : 0);
     if (index === 0) { y += 4; rule(); } else { y += 3; }
     if (y + Math.min(estimate, PAGE_H - MARGIN * 2) > PAGE_H - MARGIN) {
       doc.addPage();
@@ -239,31 +245,41 @@ export async function downloadBriefPDF(brief: BriefForPdf): Promise<void> {
 
     if (images.length > 0) {
       y += 2.5;
-      room(IMAGE_BOX_MM + 4);
-      let x = MARGIN;
-      for (const image of images) {
-        if (x + IMAGE_BOX_MM > MARGIN + CONTENT_W) {
-          y += IMAGE_BOX_MM + 3;
-          room(IMAGE_BOX_MM + 4);
-          x = MARGIN;
+
+      // Laid out as a moodboard: rows of a common height and varying width,
+      // each justified to the page. Nothing cropped, nothing stretched, and
+      // no square frames around a tall shot — references are not uniform
+      // and pretending otherwise is what made the first two versions look
+      // wrong.
+      const { rows } = layoutMoodboard(
+        images.map((i) => (i.natural ? i.natural.width / i.natural.height : 1)),
+        CONTENT_W,
+        { targetHeight: ROW_TARGET_MM, maxHeight: ROW_MAX_MM, gap: ROW_GAP_MM },
+      );
+
+      for (const row of rows) {
+        const rowHeight = row[0]?.h ?? 0;
+        // A row is drawn whole or moved whole. Splitting one across a page
+        // break leaves half a moodboard at the bottom of a page.
+        room(rowHeight + 2);
+        for (const cell of row) {
+          const image = images[cell.index];
+          try {
+            doc.addImage(
+              image.data,
+              detectImageFormat(image.data),
+              MARGIN + cell.x,
+              y,
+              cell.w,
+              cell.h,
+            );
+          } catch {
+            // One unreadable reference should not cost the whole document.
+          }
         }
-        // The frame stays square so the grid lines up; the photograph is
-        // fitted inside it at its own aspect ratio and centred. Forcing it
-        // to the frame is what squashed every tall shot.
-        const fitted = fitWithin(
-          { x: x + 0.6, y: y + 0.6, w: IMAGE_BOX_MM - 1.2, h: IMAGE_BOX_MM - 1.2 },
-          image.natural,
-        );
-        doc.setDrawColor(RULE[0], RULE[1], RULE[2]);
-        doc.rect(x, y, IMAGE_BOX_MM, IMAGE_BOX_MM);
-        try {
-          doc.addImage(image.data, detectImageFormat(image.data), fitted.x, fitted.y, fitted.w, fitted.h);
-        } catch {
-          // One unreadable reference should not cost the whole document.
-        }
-        x += IMAGE_BOX_MM + 3;
+        y += rowHeight + ROW_GAP_MM;
       }
-      y += IMAGE_BOX_MM + 4;
+      y += 1.5;
     }
 
     y += 2;
