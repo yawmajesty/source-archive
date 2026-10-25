@@ -145,7 +145,7 @@ ${bodyContent}
 
 // Fetch a remote image and convert to a data URL so it embeds in the PDF
 // without depending on CORS / image-load timing.
-async function imageToDataUrl(url: string): Promise<string | null> {
+export async function imageToDataUrl(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, { mode: "cors", cache: "force-cache" });
     if (!res.ok) return null;
@@ -162,12 +162,12 @@ async function imageToDataUrl(url: string): Promise<string | null> {
 }
 
 // Page constants (A4 portrait, mm)
-const PAGE_W = 210;
-const PAGE_H = 297;
-const MARGIN = 15;
-const CONTENT_W = PAGE_W - MARGIN * 2;
+export const PAGE_W = 210;
+export const PAGE_H = 297;
+export const MARGIN = 15;
+export const CONTENT_W = PAGE_W - MARGIN * 2;
 
-function detectImageFormat(dataUrl: string): "JPEG" | "PNG" | "WEBP" {
+export function detectImageFormat(dataUrl: string): "JPEG" | "PNG" | "WEBP" {
   if (dataUrl.startsWith("data:image/png")) return "PNG";
   if (dataUrl.startsWith("data:image/webp")) return "WEBP";
   return "JPEG";

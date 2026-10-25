@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, CalendarCheck, CalendarPlus, Check, CheckCheck, Copy, ExternalLink, HelpCircle, Plus, Send, Trash2, XCircle } from "lucide-react";
+import { ArrowRight, CalendarCheck, CalendarPlus, Check, CheckCheck, Copy, ExternalLink, FileDown, HelpCircle, Plus, Send, Trash2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { updateLeadStatus, convertLeadToClient, createLead, deleteLead } from "./actions";
 import { LeadReplyDialog } from "@/components/leads/LeadReplyDialog";
@@ -176,6 +176,8 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
   const [deleting, setDeleting] = useState(false);
   const [replyKind, setReplyKind] = useState<LeadReplyKind | null>(null);
   const [bookedAt, setBookedAt] = useState<string | null>(lead.call_booked_at ?? null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const [ackNote, setAckNote] = useState<{ ok: boolean; text: string } | null>(null);
 
   function setStatus(status: string) {
@@ -370,6 +372,51 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
             <p className="text-[13px] text-[var(--sa-text-primary)] leading-relaxed whitespace-pre-line">{lead.message}</p>
           </div>
         )}
+
+        <div className="pt-2 border-t border-[var(--sa-border)]">
+          <button
+            onClick={async () => {
+              setPdfBusy(true);
+              setPdfError(null);
+              try {
+                const { downloadBriefPDF } = await import("@/lib/brief-pdf");
+                await downloadBriefPDF({
+                  companyName: lead.company_name,
+                  contactName: lead.contact_name,
+                  contactEmail: lead.contact_email,
+                  phone: lead.phone ?? null,
+                  website: lead.website ?? null,
+                  country: lead.country,
+                  industry: lead.industry,
+                  brandStage: lead.brand_stage ?? null,
+                  manufacturedBefore: lead.manufactured_before ?? null,
+                  howFoundUs: lead.how_found_us ?? null,
+                  budget: lead.estimated_budget,
+                  timeline: lead.timeline ?? null,
+                  message: lead.message,
+                  moodboardLinks: lead.moodboard_links ?? null,
+                  sustainability: lead.sustainability_requirements ?? null,
+                  submittedAt: lead.created_at,
+                  revisedAt: lead.revised_at ?? null,
+                  briefFiles: lead.brief_files ?? [],
+                  products: lead.brief_products ?? [],
+                });
+              } catch (err) {
+                setPdfError(err instanceof Error ? err.message : String(err));
+              }
+              setPdfBusy(false);
+            }}
+            disabled={pdfBusy}
+            className="flex w-full items-center justify-center gap-1.5 rounded-md border border-[var(--sa-border)] px-3 py-2 text-[12.5px] font-medium text-[var(--sa-text-primary)] transition-colors hover:bg-[var(--sa-hover)] disabled:opacity-50"
+          >
+            <FileDown size={12} /> {pdfBusy ? "Building the PDF…" : "Export the brief as a PDF"}
+          </button>
+          <p className="mt-1 text-[10.5px] leading-snug text-[var(--sa-text-tertiary)]">
+            The brand first, then a page per product with its references. For sending to the team or a
+            factory.
+          </p>
+          {pdfError && <p className="mt-1 text-[11px] text-red-500">{pdfError}</p>}
+        </div>
 
         {!isConverted && (
           <div className="pt-2 border-t border-[var(--sa-border)]">
