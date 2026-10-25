@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Package, DollarSign, Factory, CheckSquare,
   Users, Inbox, Folder, FolderOpen, Settings, Menu, X, LogOut, Layers, FileText, Sparkles, Calculator, Mail, Contact, Camera, DatabaseBackup, Receipt,
-  Star, ChevronRight, HardDrive,
+  Star, ChevronRight, HardDrive, PieChart,
 } from "lucide-react";
 import { useClerk } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
@@ -22,14 +22,19 @@ interface Props {
   userEmail?: string | null;
 }
 
+const FINANCE_NAV = [
+  { href: "/finance",      label: "Overview",     icon: PieChart },
+  { href: "/invoices",     label: "Invoices",     icon: Receipt },
+  { href: "/costs",        label: "Cost Tracker", icon: DollarSign },
+  { href: "/pricing-tool", label: "Pricing Tool", icon: Calculator },
+];
+
 const WORKSPACE_NAV = [
   { href: "/dashboard",  label: "Dashboard",    icon: LayoutDashboard },
   { href: "/clients",    label: "Clients",      icon: Users },
   { href: "/crm",        label: "CRM",          icon: Contact },
   { href: "/products",   label: "All Products", icon: Package },
   { href: "/tasks",      label: "Tasks",        icon: CheckSquare },
-  { href: "/costs",      label: "Cost Tracker", icon: DollarSign },
-  { href: "/invoices",   label: "Invoices",     icon: Receipt },
   { href: "/factories",  label: "Factories",    icon: Factory },
   { href: "/fabrics",    label: "Fabrics",      icon: Layers },
   { href: "/studio-plan", label: "Shoots & Marketing", icon: Camera },
@@ -37,7 +42,6 @@ const WORKSPACE_NAV = [
   { href: "/leads",       label: "Leads",        icon: Inbox },
   { href: "/references",  label: "References",   icon: Layers },
   { href: "/techpacks",   label: "Tech Packs",   icon: FileText },
-  { href: "/pricing-tool", label: "Pricing Tool", icon: Calculator },
   { href: "/emails",      label: "Emails",       icon: Mail },
   { href: "/settings/backups", label: "Backups", icon: DatabaseBackup },
   { href: "/settings/storage", label: "Storage", icon: HardDrive },
@@ -193,6 +197,17 @@ function SidebarContent({
           </div>
           <motion.div variants={staggerContainer} initial="hidden" animate="show">
             {WORKSPACE_NAV.map((item) => (
+              <NavItem key={item.href} {...item} isActive={isActive(item.href)} onClick={onNavClick} />
+            ))}
+          </motion.div>
+        </div>
+
+        <div className="mb-1 mt-3">
+          <div className="px-2.5 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--sa-text-tertiary)]">
+            Finance
+          </div>
+          <motion.div variants={staggerContainer} initial="hidden" animate="show">
+            {FINANCE_NAV.map((item) => (
               <NavItem key={item.href} {...item} isActive={isActive(item.href)} onClick={onNavClick} />
             ))}
           </motion.div>
