@@ -31,11 +31,11 @@ const RULE = [223, 223, 226] as const;
 
 export interface BriefForPdf {
   companyName: string;
-  contactName: string | null;
-  contactEmail: string | null;
-  phone: string | null;
+  // No contact name, email, phone or country. This document gets forwarded
+  // to factories and freelancers, and they need the brief, not a way to
+  // reach the client directly. The fields are absent from the type rather
+  // than merely unused, so nothing can put them back by accident.
   website: string | null;
-  country: string | null;
   industry: string | null;
   brandStage: string | null;
   manufacturedBefore: boolean | null;
@@ -213,11 +213,7 @@ export async function downloadBriefPDF(
   rule();
 
   facts([
-    ["Contact", brief.contactName],
-    ["Email", brief.contactEmail],
-    ["Phone", brief.phone],
     ["Website", brief.website],
-    ["Country", brief.country],
     ["Industry", brief.industry],
     ["Brand stage", brief.brandStage],
     ["Manufactured before", brief.manufacturedBefore == null ? null : brief.manufacturedBefore ? "Yes" : "No — first time"],

@@ -386,12 +386,10 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
               try {
                 const { downloadBriefPDF } = await import("@/lib/brief-pdf");
                 await downloadBriefPDF({
+                  // Deliberately not sent: contact name, email, phone and
+                  // country. The export is for the team and the factory.
                   companyName: lead.company_name,
-                  contactName: lead.contact_name,
-                  contactEmail: lead.contact_email,
-                  phone: lead.phone ?? null,
                   website: lead.website ?? null,
-                  country: lead.country,
                   industry: lead.industry,
                   brandStage: lead.brand_stage ?? null,
                   manufacturedBefore: lead.manufactured_before ?? null,
