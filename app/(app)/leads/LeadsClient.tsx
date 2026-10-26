@@ -178,6 +178,10 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
   const [bookedAt, setBookedAt] = useState<string | null>(lead.call_booked_at ?? null);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  // Attachments are fetched and rasterised before the PDF is written, which
+  // on a brief carrying a 26MB lookbook takes long enough that a button
+  // reading "Building the PDF…" looks stuck.
+  const [pdfStatus, setPdfStatus] = useState<string | null>(null);
   const [ackNote, setAckNote] = useState<{ ok: boolean; text: string } | null>(null);
 
   function setStatus(status: string) {
@@ -378,6 +382,7 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
             onClick={async () => {
               setPdfBusy(true);
               setPdfError(null);
+              setPdfStatus(null);
               try {
                 const { downloadBriefPDF } = await import("@/lib/brief-pdf");
                 await downloadBriefPDF({
@@ -394,22 +399,37 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
                   budget: lead.estimated_budget,
                   timeline: lead.timeline ?? null,
                   message: lead.message,
-                  moodboardLinks: lead.moodboard_links ?? null,
+                  // Typed links only. The file URLs fished out of this field
+                  // are rendered as pictures in the appendix instead, so
+                  // printing them here as raw text is just noise.
+                  moodboardLinks: cleanLinks.join("\n") || null,
                   sustainability: lead.sustainability_requirements ?? null,
                   submittedAt: lead.created_at,
                   revisedAt: lead.revised_at ?? null,
-                  briefFiles: lead.brief_files ?? [],
+                  briefFiles: allFiles,
                   products: lead.brief_products ?? [],
+                }, {
+                  onProgress: (done, total, label) => {
+                    setPdfStatus(
+                      done >= total
+                        ? "Writing the document…"
+                        : `Attachment ${done + 1} of ${total} — ${label}`,
+                    );
+                  },
                 });
               } catch (err) {
                 setPdfError(err instanceof Error ? err.message : String(err));
               }
               setPdfBusy(false);
+              setPdfStatus(null);
             }}
             disabled={pdfBusy}
             className="flex w-full items-center justify-center gap-1.5 rounded-md border border-[var(--sa-border)] px-3 py-2 text-[12.5px] font-medium text-[var(--sa-text-primary)] transition-colors hover:bg-[var(--sa-hover)] disabled:opacity-50"
           >
-            <FileDown size={12} /> {pdfBusy ? "Building the PDF…" : "Export the brief as a PDF"}
+            <FileDown size={12} />{" "}
+            <span className="min-w-0 truncate">
+              {pdfBusy ? (pdfStatus ?? "Building the PDF…") : "Export the brief as a PDF"}
+            </span>
           </button>
           <p className="mt-1 text-[10.5px] leading-snug text-[var(--sa-text-tertiary)]">
             The brand first, then a page per product with its references. For sending to the team or a

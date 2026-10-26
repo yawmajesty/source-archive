@@ -1,8 +1,13 @@
 import type { BriefProduct } from "./mock-data";
 import {
-  imageToDataUrl, detectImageFormat, imageDimensions,
+  imageToDataUrl, detectImageFormat, fitWithin,
   PAGE_H, MARGIN, CONTENT_W,
 } from "./invoice-pdf";
+import {
+  renderAttachments, isDisplayableImage, toJpeg,
+  MAX_PAGES_PER_DOC, MAX_APPENDIX_PAGES,
+  type Attachment, type AttachmentSource,
+} from "./attachment-images";
 import { layoutMoodboard } from "./moodboard-layout";
 import { imageUrl } from "./image-url";
 
@@ -51,26 +56,61 @@ const ROW_TARGET_MM = 32;
 const ROW_MAX_MM = 48;
 const ROW_GAP_MM = 2.5;
 
-export async function downloadBriefPDF(brief: BriefForPdf): Promise<void> {
+export interface BriefPdfOptions {
+  /** Called as each attachment is fetched, so a button can say what it is doing. */
+  onProgress?: (done: number, total: number, label: string) => void;
+}
+
+export async function downloadBriefPDF(
+  brief: BriefForPdf,
+  options: BriefPdfOptions = {},
+): Promise<void> {
   // Every reference fetched as a data URL first: jsPDF cannot wait for a
   // network image, and a half-loaded one silently becomes a blank box.
   const productImages = await Promise.all(
     brief.products.map((p) =>
       Promise.all(
-        (p.moodboard_files ?? []).slice(0, 6).map(async (u) => {
-          const data = await imageToDataUrl(
+        // Images only. Briefs put PDFs in this field too, and asking the
+        // image transform for one returns 400 — which is why two references
+        // on this brief were silently rendering as nothing. The PDFs are
+        // not lost: they go to the appendix and are rendered there.
+        (p.moodboard_files ?? []).filter(isDisplayableImage).slice(0, 6).map(async (u) => {
+          const fetched = await imageToDataUrl(
             // 800px: about 420dpi at the 48mm a row can reach, and still
             // acceptable if one panoramic image spans the full width. Asking
             // for the original would mean a megabyte per reference.
             imageUrl(u, 400, { height: 400, resize: "contain", quality: 82 }),
           );
-          if (!data) return null;
+          if (!fetched) return null;
+          // Re-encoded to JPEG for the same reason the appendix is: jsPDF
+          // stores a PNG by decoding it to a bitmap and deflating, which on
+          // one brief turned 4.6MB of pictures into a 30MB file.
           // Measured here so the page can keep each photograph's own shape.
-          return { data, natural: await imageDimensions(data) };
+          return await toJpeg(fetched, 800);
         }),
       ),
     ),
   );
+
+  // Attachments are turned into pages before jsPDF is even loaded: they are
+  // the slow part — one lookbook in storage is 26MB — and a half-fetched
+  // appendix would produce a document with blank pages in it.
+  const sources: AttachmentSource[] = [
+    ...brief.briefFiles.map((url) => ({ url })),
+    // A product's own references belong here too: at 32mm in the product
+    // block they are a reminder of what was meant, not something anybody
+    // can work from, and any PDFs among them have nowhere else to appear.
+    ...brief.products.flatMap((product, index) =>
+      (product.moodboard_files ?? []).map((url) => ({
+        url,
+        context: `${index + 1}. ${product.name || "Unnamed product"}`,
+      })),
+    ),
+  ];
+
+  const { attachments, truncated } = sources.length
+    ? await renderAttachments(sources, { onProgress: options.onProgress })
+    : { attachments: [] as Attachment[], truncated: false };
 
   const jspdfModule: Record<string, unknown> = await import("jspdf");
   const ctor =
@@ -91,7 +131,8 @@ export async function downloadBriefPDF(brief: BriefForPdf): Promise<void> {
     line: (a: number, b: number, c: number, d: number) => void;
     rect: (x: number, y: number, w: number, h: number, style?: string) => void;
     addImage: (d: string, f: string, x: number, y: number, w: number, h: number) => void;
-    addPage: () => void;
+    addPage: (format?: string, orientation?: "portrait" | "landscape") => void;
+    internal: { pageSize: { getWidth: () => number; getHeight: () => number } };
     splitTextToSize: (t: string, w: number) => string[];
     getNumberOfPages: () => number;
     setPage: (n: number) => void;
@@ -286,17 +327,111 @@ export async function downloadBriefPDF(brief: BriefForPdf): Promise<void> {
     rule();
   });
 
-  // ── Files they sent, as a list of names ──
-  if (brief.briefFiles.length > 0) {
-    room(14);
+  // ── Files they sent ──
+  //
+  // The list of names stays, because it is the only place a design file or
+  // an archive can be acknowledged at all, and because it reads as a
+  // contents page for the pages that follow.
+  if (attachments.length > 0) {
+    y += 2;
+    room(16);
     heading("Files they sent");
-    for (const url of brief.briefFiles) {
+    for (const attachment of attachments) {
       room(4.4);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8.5);
       muted();
-      doc.text(`• ${fileNameOf(url)}`, MARGIN, y);
+      const suffix = attachment.note
+        ? `  (${attachment.note})`
+        : attachment.pages.length > 1
+          ? `  (${attachment.pages.length} pages)`
+          : "";
+      const prefix = attachment.context ? `${attachment.context}  —  ` : "";
+      doc.text(
+        doc.splitTextToSize(`• ${prefix}${attachment.label}${suffix}`, CONTENT_W)[0] ?? "",
+        MARGIN,
+        y,
+      );
       y += 4.4;
+    }
+
+    if (truncated) {
+      y += 1;
+      doc.setFontSize(7.5);
+      doc.text(
+        `Long documents are shown to ${MAX_PAGES_PER_DOC} pages, and the appendix to ${MAX_APPENDIX_PAGES}, to keep this file small enough to email.`,
+        MARGIN,
+        y,
+      );
+      y += 4.4;
+    }
+  }
+
+  // ── The attachments themselves, one page each ──
+  //
+  // A page apiece rather than a grid: these are tech packs and lookbooks,
+  // and the point of putting them here is that somebody can read the
+  // measurements off them.
+  const renderable = attachments.filter((a) => a.pages.length > 0);
+  for (const attachment of renderable) {
+    for (const page of attachment.pages) {
+      // A landscape tech pack on a portrait sheet uses about half the paper,
+      // and these are the pages somebody reads measurements off. Turning the
+      // sheet instead makes the same drawing nearly twice the size.
+      const wide = !!page.natural && page.natural.width > page.natural.height * 1.15;
+      doc.addPage("a4", wide ? "landscape" : "portrait");
+      const sheetW = doc.internal.pageSize.getWidth();
+      const sheetH = doc.internal.pageSize.getHeight();
+      const contentW = sheetW - MARGIN * 2;
+      y = MARGIN;
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      muted();
+      const named = attachment.context
+        ? `${attachment.context}  —  ${attachment.label}`
+        : attachment.label;
+      const caption = page.pageCount && page.pageCount > 1
+        ? `${named}  ·  page ${page.page} of ${page.pageCount}`
+        : named;
+      doc.text(doc.splitTextToSize(caption, contentW)[0] ?? "", MARGIN, y);
+
+      // The box left under the caption and above the footer.
+      const top = MARGIN + 5;
+      const box = { x: MARGIN, y: top, w: contentW, h: sheetH - 13 - top };
+
+      // Never blown up past about 150dpi: a small logo stretched across A4
+      // is just a blurry logo, and it reads as a fault in the export.
+      const natural = page.natural;
+      const capped = natural
+        ? {
+            ...box,
+            w: Math.min(box.w, (natural.width / 150) * 25.4),
+            h: Math.min(box.h, (natural.height / 150) * 25.4),
+          }
+        : box;
+      // Keep it centred in the full box, not in the capped one.
+      const fitted = fitWithin({ ...box, w: capped.w, h: capped.h }, natural);
+      const placed = {
+        ...fitted,
+        x: box.x + (box.w - fitted.w) / 2,
+        y: box.y + (box.h - fitted.h) / 2,
+      };
+
+      try {
+        doc.addImage(
+          page.data,
+          detectImageFormat(page.data),
+          placed.x,
+          placed.y,
+          placed.w,
+          placed.h,
+        );
+      } catch {
+        doc.setFontSize(9);
+        muted();
+        doc.text("This page could not be drawn.", MARGIN, top + 8);
+      }
     }
   }
 
@@ -307,7 +442,12 @@ export async function downloadBriefPDF(brief: BriefForPdf): Promise<void> {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7.5);
     muted();
-    doc.text(`${brief.companyName}  ·  brief  ·  ${i} of ${pages}`, MARGIN, PAGE_H - 8);
+    // Appendix sheets may be landscape, so the baseline is read per page.
+    doc.text(
+      `${brief.companyName}  ·  brief  ·  ${i} of ${pages}`,
+      MARGIN,
+      doc.internal.pageSize.getHeight() - 8,
+    );
   }
 
   doc.save(fileName(brief.companyName));
