@@ -22,7 +22,7 @@ import { getAgencyServiceSupabase } from "./supabase-agency";
 
 // Buckets written by unauthenticated public surfaces: the client portal, the
 // public brief form, and the token-gated factory RFQ portal.
-const PUBLIC_BUCKETS = new Set(["product-media", "brief-attachments", "rfq-assets", "rfq-media", "moodboard-media", "brief-media"]);
+const PUBLIC_BUCKETS = new Set(["product-media", "brief-attachments", "rfq-assets", "rfq-media", "moodboard-media", "brief-media", "portal-files"]);
 
 // Buckets only signed-in agency staff may write to.
 const AUTHED_BUCKETS = new Set(["brand-assets", "brand-receipts", "shoot-media"]);
@@ -69,6 +69,18 @@ export async function createUploadTicket(bucket: string, path: string): Promise<
 
   // Keep the caller inside the bucket: no absolute paths, no traversal.
   if (!path || path.startsWith("/") || path.includes("..")) {
+    return reject("Invalid upload path.");
+  }
+
+  // portal-files is written from two places that both key by client — the
+  // client's own Files tab and the agency sharing a file back — and every
+  // key is "<client id>/<name>". Holding writers to that shape keeps a
+  // public, login-free bucket from becoming a file drop at any path
+  // somebody invents, without costing a database call.
+  //
+  // Deliberately not a UUID test: client ids here are "client-<timestamp>",
+  // all 27 of them, so a UUID rule would reject every real upload.
+  if (bucket === "portal-files" && !/^[A-Za-z0-9_-]{3,64}\/.+/.test(path)) {
     return reject("Invalid upload path.");
   }
 

@@ -83,6 +83,11 @@ export async function shareFileWithClient(input: {
 
   const supabase = await getAgencySupabase();
   const { error } = await supabase.from("portal_files").insert({
+    // portal_files.id has no database default — the table predates the
+    // sharing feature and its rows were always written with ids from the
+    // seed. Without this every insert fails on the not-null constraint,
+    // which is the other half of why no file has ever reached this table.
+    id: crypto.randomUUID(),
     agency_id: ctx.agency.id,
     client_id: input.clientId,
     project_id: null,
