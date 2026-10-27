@@ -43,7 +43,8 @@ export type EmailTemplate =
   | "approval_requested"
   | "daily_digest"
   | "invoice_chase"
-  | "lead_declined";
+  | "lead_declined"
+  | "techpack_studio_link";
 
 export interface OutboundEmail {
   agencyId: string;
