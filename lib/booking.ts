@@ -7,7 +7,9 @@
 // no deploy: set BOOKING_URL in Vercel and both emails follow.
 // ─────────────────────────────────────────────────────────────
 
-const FALLBACK = "https://calendar.app.google/UAsdV1EzyLyxAm338";
+const FALLBACK =
+  "https://calendar.google.com/calendar/appointments/schedules/" +
+  "AcZssZ3fJIHRJdA8eRf29NA-1MGjpjKJlr86HMO7dTDmzhbqpsQIA3TlOysDEtbG304ma-lehyLgv9sH";
 
 export function bookingUrl(): string {
   const configured = process.env.BOOKING_URL?.trim();
