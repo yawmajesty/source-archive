@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { FileText, Upload, Trash2, ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { uploadFile, MAX_UPLOAD_BYTES } from "@/lib/storage";
 import {
-  listClientFiles, shareFileWithClient, deleteSharedFile, type SharedFile,
+  listClientFiles, shareFilesWithClient, deleteSharedFile,
+  type SharedFile, type ShareableFile,
 } from "@/app/(app)/clients/file-actions";
-import { FILE_TAG_LABEL } from "@/lib/portal-file-tags";
+import { FILE_TAGS, FILE_TAG_LABEL } from "@/lib/portal-file-tags";
 
 // ─────────────────────────────────────────────────────────────
 // Files, both directions.
@@ -34,6 +35,10 @@ export function ClientFiles({ clientId }: { clientId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  const [tag, setTag] = useState("");
+  // "3 of 12" while a shoot goes up, because a silent button through forty
+  // images looks like it has hung.
+  const [progress, setProgress] = useState<string | null>(null);
 
   async function reload() {
     const res = await listClientFiles(clientId);
@@ -52,19 +57,41 @@ export function ClientFiles({ clientId }: { clientId: string }) {
     return () => { live = false; };
   }, [clientId]);
 
-  async function share(file: File) {
+  async function share(chosen: File[]) {
     setBusy(true);
     setError(null);
-    const key = `${clientId}/${Date.now()}-${file.name.replace(/[^\w.-]+/g, "_")}`;
-    const up = await uploadFile("portal-files", key, file);
-    if (up.error || !up.url) { setError(up.error ?? "Upload failed"); setBusy(false); return; }
-    const res = await shareFileWithClient({
-      clientId, fileUrl: up.url, filePath: key, filename: file.name,
-      sizeBytes: file.size, contentType: file.type || null, note: note || null,
+
+    // Sequential: a shoot is large, and forty parallel uploads is how the
+    // whole delivery fails instead of taking a little longer.
+    const uploaded: ShareableFile[] = [];
+    const failed: string[] = [];
+    for (const [i, file] of chosen.entries()) {
+      setProgress(chosen.length > 1 ? `${i + 1} of ${chosen.length}` : null);
+      const key = `${clientId}/${Date.now()}-${i}-${file.name.replace(/[^\w.-]+/g, "_")}`;
+      const up = await uploadFile("portal-files", key, file);
+      if (up.error || !up.url) { failed.push(`${file.name} — ${up.error ?? "upload failed"}`); continue; }
+      uploaded.push({
+        fileUrl: up.url, filePath: key, filename: file.name,
+        sizeBytes: file.size, contentType: file.type || null,
+      });
+    }
+    setProgress(null);
+
+    if (uploaded.length === 0) {
+      setBusy(false);
+      setError(failed[0] ?? "Upload failed");
+      return;
+    }
+
+    // One call, so the client gets one email about the delivery.
+    const res = await shareFilesWithClient({
+      clientId, files: uploaded, note: note || null, tag: tag || null,
     });
     setBusy(false);
     if (!res.success) { setError(res.error); return; }
     setNote("");
+    // Anything that did not make it is named rather than silently dropped.
+    setError(failed.length > 0 ? `Shared ${uploaded.length}. Could not upload: ${failed.join("; ")}` : null);
     await reload();
   }
 
@@ -150,11 +177,22 @@ export function ClientFiles({ clientId }: { clientId: string }) {
           <input value={note} onChange={(e) => setNote(e.target.value)}
             placeholder="A line about what it is (optional)"
             className="w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2.5 py-1.5 text-[12px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)]" />
+          <select value={tag} onChange={(e) => setTag(e.target.value)}
+            className="mt-1.5 w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2.5 py-1.5 text-[12px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)]">
+            <option value="">No label</option>
+            {FILE_TAGS.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
           <label className="mt-1.5 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-[var(--sa-border)] py-2 text-[11.5px] text-[var(--sa-text-secondary)] transition-colors hover:bg-[var(--sa-hover)]">
             <Upload size={12} />
-            {busy ? "Uploading…" : `Share a file · max ${Math.round(MAX_UPLOAD_BYTES / 1048576)} MB`}
-            <input type="file" className="hidden" disabled={busy}
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) share(f); }} />
+            {busy
+              ? progress ? `Uploading ${progress}…` : "Uploading…"
+              : `Share files · max ${Math.round(MAX_UPLOAD_BYTES / 1048576)} MB each`}
+            <input type="file" multiple className="hidden" disabled={busy}
+              onChange={(e) => {
+                const chosen = Array.from(e.target.files ?? []);
+                if (chosen.length > 0) share(chosen);
+                e.target.value = "";
+              }} />
           </label>
         </div>
 

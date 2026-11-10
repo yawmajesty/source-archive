@@ -31,6 +31,7 @@ export const FILE_TAGS: FileTag[] = [
   { id: "techpack",    label: "Tech pack",        scope: "product", hint: "The specification for one style" },
   { id: "measurements",label: "Measurements",     scope: "product", hint: "Size charts, grading, spec sheets" },
   { id: "reference",   label: "Reference",        scope: "product", hint: "A sample photo or a garment you like" },
+  { id: "photography", label: "Photography",      scope: "product", hint: "Finished product shots from a shoot" },
 
   // ── Neither ──
   { id: "other",       label: "Something else",   scope: "brand",   hint: "Anything that doesn't fit above" },

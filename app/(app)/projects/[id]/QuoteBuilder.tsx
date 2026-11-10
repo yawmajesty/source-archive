@@ -2,7 +2,7 @@
 
 import { useState, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, X, Send, CheckCircle2, FileText, Factory as FactoryIcon, Wallet, Download } from "lucide-react";
+import { Plus, Trash2, X, Send, CheckCircle2, FileText, Factory as FactoryIcon, Wallet, Download, Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Client, Product, Project, SavedInvoice, InvoiceLineItem, AgencySettings } from "@/lib/data";
 import { createProjectQuote, sendQuote, deleteQuote, markInvoicePaid, createBalanceInvoice } from "./actions";
@@ -16,10 +16,23 @@ const SERVICE_PRESETS: string[] = [
   "Quality control",
 ];
 
+// Photography is sold by the angle, not by the job: a ghost mannequin
+// shot of one garment from four sides is four shots. Ghost mannequin and
+// 3D are the same thing and are deliberately named as one line, because
+// two names for one service is how two different prices creep in.
+const PHOTO_PRESETS: Array<{ name: string; rate: number; unit: string }> = [
+  { name: "Product shots — ghost mannequin / 3D", rate: 45, unit: "angle" },
+  { name: "Product shots — flat lay",             rate: 25, unit: "angle" },
+];
+
 interface ServiceLine {
   id: string;
   name: string;
   amount: number;
+  /** Set on the priced presets: amount is then qty × unitPrice. */
+  qty?: number;
+  unitPrice?: number;
+  unit?: string;
 }
 
 interface Props {
@@ -73,7 +86,9 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
       const price = unitPrices[id] ?? 0;
       return s + qty * price;
     }
-    return s + (amounts[id] ?? 0);
+    // Sampling: a fee per unit, times however many units are being made.
+    // Two of a sample costs twice one of it.
+    return s + (amounts[id] ?? 0) * (qtys[id] ?? 1);
   }, 0);
   const servicesTotal = serviceLines.reduce((s, l) => s + (l.amount || 0), 0);
   const projectTotal = productsTotal + servicesTotal;
@@ -84,7 +99,9 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
     const withFees = products.filter((p) => (p.sample_fee_usd ?? 0) > 0);
     setSelected(new Set(withFees.map((p) => p.id)));
     setAmounts(Object.fromEntries(products.map((p) => [p.id, p.sample_fee_usd ?? 0])));
-    setQtys({});
+    // One of each unless told otherwise, so the sum is unchanged for
+    // anybody who never touches the quantity.
+    setQtys(Object.fromEntries(products.map((p) => [p.id, 1])));
     setUnitPrices({});
   }
 
@@ -124,6 +141,34 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
     setServiceLines((prev) => [...prev, { id: `svc-${svcIdRef.current}`, name, amount: 0 }]);
   }
 
+  /** A photography line starts at one angle, priced at our rate. */
+  function addPhotoService(preset: { name: string; rate: number; unit: string }) {
+    svcIdRef.current += 1;
+    setServiceLines((prev) => [
+      ...prev,
+      {
+        id: `svc-${svcIdRef.current}`,
+        name: preset.name,
+        qty: 1,
+        unitPrice: preset.rate,
+        unit: preset.unit,
+        amount: preset.rate,
+      },
+    ]);
+  }
+
+  /** Keeps amount and qty × unitPrice from ever disagreeing. */
+  function updatePricedService(id: string, patch: { qty?: number; unitPrice?: number }) {
+    setServiceLines((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        const qty = patch.qty ?? s.qty ?? 1;
+        const unitPrice = patch.unitPrice ?? s.unitPrice ?? 0;
+        return { ...s, qty, unitPrice, amount: qty * unitPrice };
+      }),
+    );
+  }
+
   function updateService(id: string, patch: Partial<ServiceLine>) {
     setServiceLines((prev) => prev.map((s) => s.id === id ? { ...s, ...patch } : s));
   }
@@ -151,13 +196,19 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
           image_url: firstImage,
         };
       }
+      const sampleQty = Math.max(1, qtys[id] ?? 1);
+      const sampleFee = amounts[id] ?? p.sample_fee_usd ?? 0;
       return {
         name: p.name,
         category: p.category,
         project_name: project.name,
-        amount_usd: amounts[id] ?? p.sample_fee_usd ?? 0,
+        amount_usd: sampleQty * sampleFee,
         expected_date: p.expected_sample_date ?? null,
         kind: "product",
+        // Only when there is more than one, so a single sample reads as a
+        // fee rather than as "1 × $150".
+        qty: sampleQty > 1 ? sampleQty : null,
+        unit_price_usd: sampleQty > 1 ? sampleFee : null,
       };
     });
     const serviceItems: InvoiceLineItem[] = serviceLines
@@ -168,7 +219,10 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
         project_name: project.name,
         amount_usd: l.amount,
         expected_date: null,
-        kind: "service",
+        kind: "service" as const,
+        // Photography shows its working on the invoice: "6 × $45.00".
+        qty: l.unitPrice != null && (l.qty ?? 0) > 1 ? l.qty : null,
+        unit_price_usd: l.unitPrice != null && (l.qty ?? 0) > 1 ? l.unitPrice : null,
       }));
     if (productItems.length === 0 && serviceItems.length === 0) return;
     setSaving(true);
@@ -311,19 +365,38 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                           {p.category || "—"}{(p.sample_round ?? 1) > 1 ? ` · R${p.sample_round}` : ""}
                         </p>
                       </div>
-                      {selected.has(p.id) && kind === "sampling" && (
-                        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                          <span className="text-[11px] text-[var(--sa-text-tertiary)]">$</span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={amounts[p.id] ?? 0}
-                            onChange={(e) => setAmounts((prev) => ({ ...prev, [p.id]: parseFloat(e.target.value) || 0 }))}
-                            className="rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[12px] font-mono outline-none w-24 text-right text-[var(--sa-text-primary)]"
-                          />
-                        </div>
-                      )}
+                      {selected.has(p.id) && kind === "sampling" && (() => {
+                        const sampleQty = qtys[p.id] ?? 1;
+                        const fee = amounts[p.id] ?? 0;
+                        return (
+                          <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={sampleQty}
+                              onChange={(e) => setQtys((prev) => ({ ...prev, [p.id]: Math.max(1, parseInt(e.target.value) || 1) }))}
+                              className="rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[12px] font-mono outline-none w-14 text-right text-[var(--sa-text-primary)]"
+                              title="How many of this sample"
+                            />
+                            <span className="text-[11px] text-[var(--sa-text-tertiary)]">×</span>
+                            <span className="text-[11px] text-[var(--sa-text-tertiary)]">$</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={fee}
+                              onChange={(e) => setAmounts((prev) => ({ ...prev, [p.id]: parseFloat(e.target.value) || 0 }))}
+                              className="rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[12px] font-mono outline-none w-20 text-right text-[var(--sa-text-primary)]"
+                            />
+                            {sampleQty > 1 && (
+                              <span className="font-mono text-[12px] font-semibold text-[var(--sa-text-primary)] w-20 text-right whitespace-nowrap">
+                                ${(sampleQty * fee).toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {selected.has(p.id) && kind === "production" && (() => {
                         const qty = qtys[p.id] ?? 0;
                         const unit = unitPrices[p.id] ?? 0;
@@ -379,6 +452,16 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                     <Plus size={10} /> {name}
                   </button>
                 ))}
+                {PHOTO_PRESETS.map((preset) => (
+                  <button
+                    key={preset.name}
+                    onClick={() => addPhotoService(preset)}
+                    className="flex items-center gap-1 rounded-full border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--sa-text-secondary)] hover:border-[var(--sa-accent)] hover:text-[var(--sa-accent)] transition-colors"
+                  >
+                    <Camera size={10} /> {preset.name.replace("Product shots — ", "")}
+                    <span className="text-[var(--sa-text-tertiary)]">${preset.rate}/{preset.unit}</span>
+                  </button>
+                ))}
                 <button
                   onClick={() => addService("")}
                   className="flex items-center gap-1 rounded-full border border-dashed border-[var(--sa-border)] px-2.5 py-1 text-[11px] font-medium text-[var(--sa-text-tertiary)] hover:border-[var(--sa-accent)] hover:text-[var(--sa-accent)] transition-colors"
@@ -391,7 +474,7 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                   {serviceLines.map((line, i) => (
                     <div
                       key={line.id}
-                      className={cn("flex items-center gap-2 px-3 py-2",
+                      className={cn("flex flex-wrap items-center gap-2 px-3 py-2",
                         i < serviceLines.length - 1 && "border-b border-[var(--sa-border)]"
                       )}
                     >
@@ -402,17 +485,43 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                         onChange={(e) => updateService(line.id, { name: e.target.value })}
                         className="flex-1 rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[12px] outline-none min-w-0 text-[var(--sa-text-primary)]"
                       />
-                      <div className="flex items-center gap-1 shrink-0">
-                        <span className="text-[11px] text-[var(--sa-text-tertiary)]">$</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={line.amount}
-                          onChange={(e) => updateService(line.id, { amount: parseFloat(e.target.value) || 0 })}
-                          className="rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[12px] font-mono outline-none w-24 text-right text-[var(--sa-text-primary)]"
-                        />
-                      </div>
+                      {line.unitPrice != null ? (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={line.qty ?? 1}
+                            onChange={(e) => updatePricedService(line.id, { qty: Math.max(1, parseInt(e.target.value) || 1) })}
+                            className="rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[12px] font-mono outline-none w-14 text-right text-[var(--sa-text-primary)]"
+                            title={`How many ${line.unit ?? "units"}s`}
+                          />
+                          <span className="text-[11px] text-[var(--sa-text-tertiary)]">× $</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={line.unitPrice}
+                            onChange={(e) => updatePricedService(line.id, { unitPrice: parseFloat(e.target.value) || 0 })}
+                            className="rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[12px] font-mono outline-none w-16 text-right text-[var(--sa-text-primary)]"
+                          />
+                          <span className="font-mono text-[12px] font-semibold text-[var(--sa-text-primary)] w-20 text-right whitespace-nowrap">
+                            ${line.amount.toFixed(2)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-[11px] text-[var(--sa-text-tertiary)]">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={line.amount}
+                            onChange={(e) => updateService(line.id, { amount: parseFloat(e.target.value) || 0 })}
+                            className="rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[12px] font-mono outline-none w-24 text-right text-[var(--sa-text-primary)]"
+                          />
+                        </div>
+                      )}
                       <button onClick={() => removeService(line.id)} className="p-1 rounded text-[var(--sa-text-tertiary)] hover:text-red-500">
                         <Trash2 size={12} />
                       </button>
