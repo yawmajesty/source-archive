@@ -313,18 +313,20 @@ function JobCard({
             </button>
           )}
           <div className="flex flex-col gap-2">
-            <input
-              value={who}
-              onChange={(e) => setWho(e.target.value)}
-              placeholder="Your name (optional)"
-              className={field}
-            />
-            <input
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={next === 1 ? "Anything we should know (optional)" : "What changed in this version (optional)"}
-              className={field}
-            />
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                value={who}
+                onChange={(e) => setWho(e.target.value)}
+                placeholder="Your name (optional)"
+                className={`${field} sm:w-40 sm:shrink-0`}
+              />
+              <input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder={next === 1 ? "Notes for us (optional)" : "What changed (optional)"}
+                className={field}
+              />
+            </div>
             <label
               className="flex cursor-pointer items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90"
               style={{ background: needsWork ? "var(--sa-accent)" : "var(--sa-text-tertiary)", opacity: busy ? 0.6 : 1 }}
@@ -414,15 +416,23 @@ function Section({ label, children }: { label: string; children: React.ReactNode
       <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--sa-text-tertiary)]">
         {label}
       </h2>
-      <div className="flex flex-col gap-3">{children}</div>
+      {/* items-start so an opened card grows on its own rather than
+          stretching every card in its row to match. */}
+      {/* grid-cols-1 is not redundant. A bare `grid` has no explicit columns,
+          so the implicit one is auto-sized and a wide card pushes straight
+          past the viewport; grid-cols-1 is minmax(0,1fr), which can shrink. */}
+      <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">{children}</div>
     </section>
   );
 }
 
 function Shell({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <main className="min-h-screen bg-[var(--sa-bg)] px-4 py-8 sm:px-6">
-      <div className="mx-auto max-w-2xl">
+    <main className="min-h-screen bg-[var(--sa-bg)] px-4 py-8 sm:px-6 lg:px-8">
+      {/* Wide enough to lay jobs out side by side on a desktop. A single
+          672px column made a studio with twelve packs scroll for a minute
+          to see what it had. */}
+      <div className="mx-auto w-full max-w-[1600px]">
         <header className="mb-5">
           <div className="text-[10px] font-semibold uppercase tracking-widest text-[var(--sa-text-tertiary)]">
             Source[Archive]

@@ -22,8 +22,10 @@ export function TechpacksShell({
   const waiting = board.jobs.filter((j) => j.status === "requested").length;
   const delivered = board.jobs.filter((j) => j.status === "delivered").length;
 
+  // Wide: five Kanban columns need about 1250px, and max-w-6xl made the
+  // board scroll sideways on a desktop that had the room for it.
   return (
-    <div className="mx-auto max-w-6xl p-4 sm:p-6">
+    <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6">
       <header className="mb-4">
         <h1 className="text-lg font-semibold text-[var(--sa-text-primary)]">Tech Packs</h1>
         <p className="mt-0.5 text-xs text-[var(--sa-text-secondary)]">

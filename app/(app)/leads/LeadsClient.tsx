@@ -61,9 +61,12 @@ function formatDate(d: string) {
 function Field({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null;
   return (
-    <div>
+    // min-w-0 and a wrapping rule, both needed. A grid item is min-width:auto
+    // by default, so one long email address sets the whole column's minimum
+    // width — which is how a 390px phone ended up rendering a 444px panel.
+    <div className="min-w-0">
       <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-0.5">{label}</p>
-      <p className="text-[13px] text-[var(--sa-text-primary)]">{value}</p>
+      <p className="text-[13px] text-[var(--sa-text-primary)] break-words">{value}</p>
     </div>
   );
 }
@@ -103,7 +106,10 @@ function AddLeadPanel({ onClose, onCreated }: { onClose: () => void; onCreated: 
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
       transition={{ duration: 0.2 }}
-      className="flex flex-col h-full min-h-0 bg-[var(--sa-window)] border-[var(--sa-border)] md:border-l"
+      // w-full min-w-0: this is a flex item, so it is min-width:auto by
+      // default and refuses to shrink below its content. On a phone that
+      // left it 444px wide inside a 390px column, clipped on the right.
+      className="flex w-full min-w-0 flex-col h-full min-h-0 bg-[var(--sa-window)] border-[var(--sa-border)] md:border-l"
     >
       <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--sa-border)]">
         <h2 className="text-[14px] font-semibold text-[var(--sa-text-primary)]">Add lead</h2>
@@ -230,7 +236,10 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
       transition={{ duration: 0.2 }}
-      className="flex flex-col h-full min-h-0 bg-[var(--sa-window)] border-[var(--sa-border)] md:border-l"
+      // w-full min-w-0: this is a flex item, so it is min-width:auto by
+      // default and refuses to shrink below its content. On a phone that
+      // left it 444px wide inside a 390px column, clipped on the right.
+      className="flex w-full min-w-0 flex-col h-full min-h-0 bg-[var(--sa-window)] border-[var(--sa-border)] md:border-l"
     >
       <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--sa-border)]">
         <div>
@@ -268,10 +277,11 @@ function LeadDetail({ lead: initial, onClose, onDelete }: { lead: Lead; onClose:
           <Field label="Country" value={lead.country} />
           <Field label="Industry" value={lead.industry} />
           {lead.website && (
-            <div className="col-span-2">
+            <div className="col-span-2 min-w-0">
               <p className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-0.5">Website</p>
-              <a href={lead.website} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[13px] text-[var(--sa-accent)] hover:underline">
-                {lead.website} <ExternalLink size={11} />
+              <a href={lead.website} target="_blank" rel="noreferrer" className="flex items-start gap-1 text-[13px] text-[var(--sa-accent)] hover:underline">
+                <span className="min-w-0 break-all">{lead.website}</span>
+                <ExternalLink size={11} className="mt-1 shrink-0" />
               </a>
             </div>
           )}
