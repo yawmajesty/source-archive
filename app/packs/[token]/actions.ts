@@ -3,7 +3,10 @@
 import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { notifyAgency } from "@/lib/email/portal-notify";
 import { buildPublicUrl } from "@/lib/url";
-import { ASK_LABEL, JOB_STATUSES, type JobStatus, type JobNote, type JobVersion } from "@/lib/techpack-jobs";
+import {
+  ASK_LABEL, JOB_STATUSES, cleanDate, isStudioRank,
+  type JobStatus, type JobNote, type JobVersion, type StudioRank,
+} from "@/lib/techpack-jobs";
 
 // ─────────────────────────────────────────────────────────────
 // The tech pack studio's standing link.
@@ -39,6 +42,10 @@ export interface StudioJob {
   revisionNote: string | null;
   revisionCount: number;
 
+  /** Theirs, not ours: when they expect to deliver, and their own order. */
+  studioEta: string | null;
+  studioRank: StudioRank | null;
+
   productId: string;
   productName: string;
   productImage: string | null;
@@ -58,8 +65,10 @@ export interface StudioBoard {
   /** Set when the link is unusable, so the page can say which. */
   problem: "unknown" | "revoked" | "setup" | null;
   setupMessage?: string;
-  /** False until 050 is run; the page then hides the conversation. */
+  /** False until the notes table exists; the page then hides the conversation. */
   canTalk: boolean;
+  /** False until 051 is run; the page then hides planning. */
+  canPlan: boolean;
 }
 
 async function studioFor(token: string) {
@@ -95,7 +104,7 @@ function spec(p: Record<string, unknown> | undefined): Array<[string, string]> {
 }
 
 export async function getStudioBoard(token: string): Promise<StudioBoard> {
-  const empty: StudioBoard = { studioName: "", jobs: [], problem: "unknown", canTalk: false };
+  const empty: StudioBoard = { studioName: "", jobs: [], problem: "unknown", canTalk: false, canPlan: false };
   if (!token) return empty;
 
   const supabase = getAgencyServiceSupabase();
@@ -106,7 +115,7 @@ export async function getStudioBoard(token: string): Promise<StudioBoard> {
       : empty;
   }
   if (!studio) return empty;
-  if (studio.revoked_at) return { studioName: studio.name, jobs: [], problem: "revoked", canTalk: false };
+  if (studio.revoked_at) return { studioName: studio.name, jobs: [], problem: "revoked", canTalk: false, canPlan: false };
 
   const { data: jobRows } = await supabase
     .from("techpack_jobs")
@@ -117,7 +126,7 @@ export async function getStudioBoard(token: string): Promise<StudioBoard> {
 
   const jobs = (jobRows ?? []) as Array<Record<string, unknown>>;
   if (jobs.length === 0) {
-    return { studioName: studio.name, jobs: [], problem: null, canTalk: true };
+    return { studioName: studio.name, jobs: [], problem: null, canTalk: true, canPlan: true };
   }
 
   const productIds = Array.from(new Set(jobs.map((j) => String(j.product_id))));
@@ -154,12 +163,16 @@ export async function getStudioBoard(token: string): Promise<StudioBoard> {
     change_note: string | null; created_at: string; uploaded_by: string;
   }>;
   const canTalk = !notesRes.error;
+  // select("*") returns whatever columns exist, so the presence of the key
+  // is the honest test for whether 051 has been run.
+  const canPlan = "studio_eta" in jobs[0];
   const notes = (notesRes.data ?? []) as Array<Record<string, unknown>>;
 
   return {
     studioName: studio.name,
     problem: null,
     canTalk,
+    canPlan,
     jobs: jobs.map((job) => {
       const productId = String(job.product_id);
       const product = products.get(productId);
@@ -176,6 +189,8 @@ export async function getStudioBoard(token: string): Promise<StudioBoard> {
         createdAt: String(job.created_at),
         revisionNote: (job.revision_note as string | null) ?? null,
         revisionCount: Number(job.revision_count ?? 0),
+        studioEta: (job.studio_eta as string | null) ?? null,
+        studioRank: isStudioRank(job.studio_rank) ? job.studio_rank : null,
         productId,
         productName: (product?.name as string | undefined) ?? "Unnamed product",
         productImage:
@@ -386,4 +401,108 @@ export async function deliverTechPack(input: {
   });
 
   return { success: true, version };
+}
+
+// ─────────────────────────────────────────────────────────────
+// The studio's own planning.
+//
+// Both of these write columns that are theirs. Neither touches due_date or
+// our priority, so a studio can keep its own list honest without editing
+// what we agreed — and the gap between the two is what tells us a pack is
+// going to be late before it is late.
+// ─────────────────────────────────────────────────────────────
+
+const NEEDS_051 =
+  "Planning needs a one-time database step — tell the team to run migrations/051_studio_workspace.sql.";
+
+function missingColumn(error: { code?: string; message: string }): boolean {
+  return error.code === "PGRST204" || /studio_eta|studio_rank/.test(error.message);
+}
+
+/** "I'll have it to you on the 20th." */
+export async function setStudioEta(input: {
+  token: string;
+  jobId: string;
+  eta: string | null;
+  authorName?: string | null;
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const { studio, job } = await jobForStudio(input.token, input.jobId);
+  if (!studio || !job) return { success: false, error: "Not allowed" };
+
+  const eta = input.eta === null || input.eta === "" ? null : cleanDate(input.eta);
+  if (input.eta && !eta) return { success: false, error: "That date didn't look right" };
+
+  const supabase = getAgencyServiceSupabase();
+
+  // Read the job again for the two things that decide whether this is
+  // worth an email: what they said last time, and what we asked for.
+  const { data: before } = await supabase
+    .from("techpack_jobs")
+    .select("studio_eta, due_date")
+    .eq("id", job.id)
+    .maybeSingle();
+  const previous = (before as { studio_eta: string | null } | null)?.studio_eta ?? null;
+  const dueDate = (before as { due_date: string | null } | null)?.due_date ?? null;
+
+  const { error } = await supabase
+    .from("techpack_jobs")
+    .update({ studio_eta: eta, studio_eta_set_at: new Date().toISOString() })
+    .eq("id", job.id);
+  if (error) return { success: false, error: missingColumn(error) ? NEEDS_051 : error.message };
+
+  if (!eta || eta === previous) return { success: true };
+
+  // Worth telling someone about when it is news: a first date, a date
+  // that has moved back, or a date past what we asked for. A studio
+  // pulling work forward does not need to generate an email.
+  const movedBack = previous != null && eta > previous;
+  const pastDue = dueDate != null && eta > dueDate;
+  if (previous == null || movedBack || pastDue) {
+    const { data: product } = await supabase
+      .from("products")
+      .select("name")
+      .eq("id", job.product_id)
+      .maybeSingle();
+    const name = (product as { name: string } | null)?.name ?? "a product";
+    const when = new Date(`${eta}T00:00:00Z`).toLocaleDateString("en-GB", {
+      day: "numeric", month: "long", timeZone: "UTC",
+    });
+
+    await notifyAgency({
+      agencyId: job.agency_id,
+      headline: pastDue
+        ? `${studio.name} expects ${name} on ${when} — after the date we asked for`
+        : `${studio.name} expects ${name} on ${when}`,
+      who: input.authorName?.trim() || studio.name,
+      quote: previous
+        ? `Moved from ${previous} to ${eta}.` + (dueDate ? ` We asked for ${dueDate}.` : "")
+        : `They expect to deliver on ${eta}.` + (dueDate ? ` We asked for ${dueDate}.` : ""),
+      url: buildPublicUrl(`/techpacks`),
+      linkLabel: "Open tech packs",
+      relatedType: "product",
+      relatedId: job.product_id,
+    });
+  }
+
+  return { success: true };
+}
+
+/** "This is what I'm on today." Their ordering, no email. */
+export async function setStudioRank(input: {
+  token: string;
+  jobId: string;
+  rank: StudioRank | null;
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const { studio, job } = await jobForStudio(input.token, input.jobId);
+  if (!studio || !job) return { success: false, error: "Not allowed" };
+
+  const rank = isStudioRank(input.rank) ? input.rank : null;
+
+  const supabase = getAgencyServiceSupabase();
+  const { error } = await supabase
+    .from("techpack_jobs")
+    .update({ studio_rank: rank })
+    .eq("id", job.id);
+  if (error) return { success: false, error: missingColumn(error) ? NEEDS_051 : error.message };
+  return { success: true };
 }

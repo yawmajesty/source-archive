@@ -90,6 +90,50 @@ export const ASK_LABEL: Record<string, string> = Object.fromEntries(
   ASK_OPTIONS.map((a) => [a.id, a.label]),
 );
 
+/**
+ * The studio's own ordering, which is theirs to set and ours only to read.
+ *
+ * Three buckets rather than a free ranking: a studio with fifteen packs
+ * open can answer "what are you on today" in one click, and a number they
+ * have to keep renumbering is a number they stop maintaining.
+ */
+export const STUDIO_RANKS = [
+  { id: "now",   label: "On it now", short: "Now",   tone: "var(--sa-accent)" },
+  { id: "next",  label: "Up next",   short: "Next",  tone: "var(--sa-warning)" },
+  { id: "later", label: "Later",     short: "Later", tone: "var(--sa-text-tertiary)" },
+] as const;
+
+export type StudioRank = (typeof STUDIO_RANKS)[number]["id"];
+
+export const STUDIO_RANK_LABEL: Record<string, string> =
+  Object.fromEntries(STUDIO_RANKS.map((r) => [r.id, r.label]));
+
+/** Sort order for the ranks; anything unranked falls to the bottom. */
+export const RANK_ORDER: Record<string, number> = { now: 0, next: 1, later: 3 };
+
+export function isStudioRank(value: unknown): value is StudioRank {
+  return typeof value === "string" && STUDIO_RANKS.some((r) => r.id === value);
+}
+
+/**
+ * A plain yyyy-mm-dd, or null. Dates arrive from a date input and go
+ * straight into a DATE column, so anything else is rejected here rather
+ * than by Postgres with an error nobody outside can act on.
+ */
+export function cleanDate(value: unknown): string | null {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const d = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? null : value;
+}
+
+/** Days between today and a date: negative is in the past. */
+export function daysUntil(date: string | null): number | null {
+  if (!date) return null;
+  const today = new Date();
+  const start = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.round((new Date(`${date}T00:00:00Z`).getTime() - start) / 86_400_000);
+}
+
 /** How late a job is, or null when nothing is due. */
 export function daysLate(dueDate: string | null, status: JobStatus): number | null {
   if (!dueDate) return null;

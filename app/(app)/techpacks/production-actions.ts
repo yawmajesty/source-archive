@@ -7,7 +7,8 @@ import { can } from "@/lib/permissions";
 import { sendAll } from "@/lib/email/send";
 import { buildPublicUrl } from "@/lib/url";
 import {
-  JOB_STATUSES, type JobStatus, type JobNote, type JobVersion,
+  JOB_STATUSES, isStudioRank,
+  type JobStatus, type JobNote, type JobVersion, type StudioRank,
 } from "@/lib/techpack-jobs";
 
 // ─────────────────────────────────────────────────────────────
@@ -26,7 +27,7 @@ import {
 // ─────────────────────────────────────────────────────────────
 
 const SETUP = "Tech pack jobs need a one-time database step — run migrations/049_techpack_studios.sql.";
-const SETUP_050 = "The studio conversation needs a one-time database step — run migrations/050_techpack_collaboration.sql.";
+const SETUP_050 = "The studio conversation needs a one-time database step — run migrations/051_studio_workspace.sql, which covers it.";
 
 function notSetUp(error: { code?: string; message: string }): boolean {
   return error.code === "PGRST205" || error.code === "PGRST204" || /techpack_(studios|jobs)/.test(error.message);
@@ -58,6 +59,10 @@ export interface ProductionJob {
 
   revisionNote: string | null;
   revisionCount: number;
+
+  /** The studio's own two fields: when they say it lands, and their order. */
+  studioEta: string | null;
+  studioRank: StudioRank | null;
 
   productId: string;
   productName: string;
@@ -193,6 +198,8 @@ export async function getProductionBoard(): Promise<ProductionBoard> {
         createdAt: String(j.created_at),
         revisionNote: (j.revision_note as string | null) ?? null,
         revisionCount: Number(j.revision_count ?? 0),
+        studioEta: (j.studio_eta as string | null) ?? null,
+        studioRank: isStudioRank(j.studio_rank) ? j.studio_rank : null,
         productId,
         productName: product?.name ?? "Unnamed product",
         productImage: firstImage(product?.images),

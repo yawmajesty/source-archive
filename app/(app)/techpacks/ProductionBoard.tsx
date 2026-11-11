@@ -5,10 +5,11 @@ import Link from "next/link";
 import {
   Plus, Mail, Ban, RotateCcw, Check, FileText, Copy, Search, X,
   LayoutGrid, Rows3, CalendarDays, Flame, MessageSquare, CornerUpLeft, Inbox,
+  CalendarClock,
 } from "lucide-react";
 import { imageUrl } from "@/lib/image-url";
 import {
-  BOARD_COLUMNS, STATUS_META, ASK_LABEL, daysLate,
+  BOARD_COLUMNS, STATUS_META, ASK_LABEL, STUDIO_RANKS, daysLate,
   type JobStatus, type JobNote,
 } from "@/lib/techpack-jobs";
 import {
@@ -80,6 +81,38 @@ function Late({ job }: { job: ProductionJob }) {
   );
 }
 
+/**
+ * What the studio says about this job — their own date and their own
+ * order, set on their link. Shown next to ours rather than instead of it,
+ * because the gap between the two is the early warning.
+ */
+function StudioPlan({ job, long }: { job: ProductionJob; long?: boolean }) {
+  const rank = STUDIO_RANKS.find((r) => r.id === job.studioRank);
+  const slip = job.dueDate && job.studioEta && job.studioEta > job.dueDate;
+  if (!rank && !job.studioEta) return null;
+  return (
+    <>
+      {rank && (
+        <span className="rounded-full border px-1.5 py-0.5 text-[9.5px] font-semibold"
+          style={{ borderColor: rank.tone, color: rank.tone }}>
+          {long ? `Studio: ${rank.label}` : rank.short}
+        </span>
+      )}
+      {job.studioEta && (
+        <span
+          className="inline-flex items-center gap-0.5"
+          style={{ color: slip ? "var(--sa-warning)" : undefined }}
+          title={slip ? "Later than the date we asked for" : "The date the studio gave"}
+        >
+          <CalendarClock size={9} />
+          {long ? "studio says " : ""}
+          {new Date(`${job.studioEta}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })}
+        </span>
+      )}
+    </>
+  );
+}
+
 // ── One job, as a card on the Kanban ──
 function JobCard({ job, onOpen }: { job: ProductionJob; onOpen: () => void }) {
   return (
@@ -114,6 +147,7 @@ function JobCard({ job, onOpen }: { job: ProductionJob; onOpen: () => void }) {
             <MessageSquare size={9} /> {job.noteCount}
           </span>
         )}
+        <StudioPlan job={job} />
         <Late job={job} />
         <span className="ml-auto">{job.ageDays}d</span>
       </div>
@@ -204,6 +238,7 @@ function JobPanel({
               <span>{job.studioName ?? "No studio"}</span>
               {job.dueDate && <span>due {new Date(job.dueDate).toLocaleDateString("en-GB", { day: "numeric", month: "long" })}</span>}
               <span>asked {job.ageDays}d ago</span>
+              <StudioPlan job={job} long />
             </div>
             <button
               onClick={() => run(() => setJobPriority(job.id, job.priority === "high" ? "normal" : "high"))}
@@ -441,6 +476,7 @@ function TableView({ jobs, onOpen }: { jobs: ProductionJob[]; onOpen: (j: Produc
             <th className={TH}>Status</th>
             <th className={`${TH} text-right`}>Ver</th>
             <th className={TH}>Due</th>
+            <th className={TH}>Studio says</th>
             <th className={`${TH} text-right`}>Age</th>
           </tr>
         </thead>
@@ -478,6 +514,11 @@ function TableView({ jobs, onOpen }: { jobs: ProductionJob[]; onOpen: (j: Produc
                 {daysLate(j.dueDate, j.status) != null && (
                   <span className="ml-1 font-semibold" style={{ color: "var(--sa-danger)" }}>late</span>
                 )}
+              </td>
+              <td className="whitespace-nowrap px-2.5 py-2">
+                <span className="inline-flex flex-wrap items-center gap-1 text-[10px] text-[var(--sa-text-tertiary)]">
+                  <StudioPlan job={j} />
+                </span>
               </td>
               <td className="px-2.5 py-2 text-right tabular-nums text-[var(--sa-text-tertiary)]">{j.ageDays}d</td>
             </tr>
@@ -639,8 +680,9 @@ export function ProductionBoard({ board }: { board: Board }) {
       {board.needsNotesSetup && (
         <div className="rounded-lg border border-[var(--sa-border)] bg-[var(--sa-hover)] p-3">
           <p className="text-[11px] leading-relaxed text-[var(--sa-text-secondary)]">
-            <strong className="font-semibold text-[var(--sa-text-primary)]">Comments and revisions need one database step.</strong>{" "}
-            Run migrations/050_techpack_collaboration.sql. Everything else on this page works without it.
+            <strong className="font-semibold text-[var(--sa-text-primary)]">Comments, revisions and studio dates need one database step.</strong>{" "}
+            Run migrations/051_studio_workspace.sql — it covers 050 too, and is safe to run twice.
+            Everything else on this page works without it.
           </p>
         </div>
       )}
