@@ -686,15 +686,18 @@ function JobTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)]">
-      <table className="w-full min-w-[860px] border-collapse">
+      <table className={`w-full border-collapse ${canPlan ? "min-w-[860px]" : "min-w-[620px]"}`}>
         <thead>
           <tr className="border-b border-[var(--sa-border)]">
             <th className={TH} style={{ width: 34 }} />
             <th className={TH}>Product</th>
             <th className={TH}>Status</th>
             <th className={TH}>We asked for</th>
-            <th className={TH}>You&apos;ll have it</th>
-            <th className={TH}>Your order</th>
+            {/* Two dead columns of dashes is worse than no columns, so the
+                studio's own fields appear with the database step that
+                creates them. */}
+            {canPlan && <th className={TH}>You&apos;ll have it</th>}
+            {canPlan && <th className={TH}>Your order</th>}
             <th className={`${TH} text-right`}>Versions</th>
             <th className={`${TH} text-right`}>Notes</th>
           </tr>
@@ -734,14 +737,18 @@ function JobTable({
                       <span className="ml-1.5 font-semibold" style={{ color: "var(--sa-danger)" }}>{late}d late</span>
                     )}
                   </td>
-                  <td className={`${TD} whitespace-nowrap`}>
-                    <EtaCell job={job} token={token} who={who} canPlan={canPlan}
-                      onChanged={(change) => patch(job.id, change)} />
-                  </td>
-                  <td className={TD}>
-                    <RankCell job={job} token={token} who={who} canPlan={canPlan}
-                      onChanged={(change) => patch(job.id, change)} />
-                  </td>
+                  {canPlan && (
+                    <td className={`${TD} whitespace-nowrap`}>
+                      <EtaCell job={job} token={token} who={who} canPlan={canPlan}
+                        onChanged={(change) => patch(job.id, change)} />
+                    </td>
+                  )}
+                  {canPlan && (
+                    <td className={TD}>
+                      <RankCell job={job} token={token} who={who} canPlan={canPlan}
+                        onChanged={(change) => patch(job.id, change)} />
+                    </td>
+                  )}
                   <td className={`${TD} text-right tabular-nums`}>
                     {job.currentVersion > 0 ? `v${job.currentVersion}` : "—"}
                   </td>
@@ -756,7 +763,7 @@ function JobTable({
                 </tr>
                 {expanded && (
                   <tr>
-                    <td colSpan={8} className="bg-[var(--sa-bg)] px-3 pb-4 pt-1">
+                    <td colSpan={canPlan ? 8 : 6} className="bg-[var(--sa-bg)] px-3 pb-4 pt-1">
                       <div className="mx-auto max-w-3xl">
                         <JobBody
                           job={job}
