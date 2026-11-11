@@ -73,6 +73,27 @@ function sortJobs(jobs: StudioJob[]): StudioJob[] {
   });
 }
 
+function Thumb({ job, size = 34 }: { job: StudioJob; size?: number }) {
+  if (!job.productImage) {
+    return (
+      <div
+        className="shrink-0 rounded border border-[var(--sa-border)] bg-[var(--sa-hover)]"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+  return (
+    <img
+      src={imageUrl(job.productImage, size, { height: size, resize: "cover" })}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      className="shrink-0 rounded border border-[var(--sa-border)] object-cover"
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
 function StatusChip({ job }: { job: StudioJob }) {
   const meta = STATUS_META[job.status];
   const done = job.status === "delivered" || job.status === "accepted";
@@ -538,17 +559,7 @@ function JobCard(props: {
       style={{ borderColor: job.studioRank === "now" ? "var(--sa-accent)" : "var(--sa-border)" }}
     >
       <div className="flex items-start gap-3">
-        {job.productImage ? (
-          <img
-            src={imageUrl(job.productImage, 56, { height: 56, resize: "cover" })}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="h-14 w-14 shrink-0 rounded-lg border border-[var(--sa-border)] object-cover"
-          />
-        ) : (
-          <div className="h-14 w-14 shrink-0 rounded-lg border border-[var(--sa-border)] bg-[var(--sa-hover)]" />
-        )}
+        <Thumb job={job} size={56} />
 
         <div className="min-w-0 flex-1">
           {job.clientName && (
@@ -721,6 +732,7 @@ function JobTable({
                   </td>
                   <td className={TD}>
                     <div className="flex min-w-0 items-center gap-2">
+                      <Thumb job={job} />
                       {job.priority === "high" && <Flame size={11} className="shrink-0" style={{ color: "var(--sa-danger)" }} />}
                       <div className="min-w-0">
                         <div className="truncate font-medium text-[var(--sa-text-primary)]">{job.productName}</div>
@@ -787,14 +799,32 @@ function JobTable({
   );
 }
 
-type Filter = "open" | "all" | "late" | "delivered";
+/**
+ * The tabs are the stages of the work, not a set of adjectives.
+ *
+ * "With you" stays first because it is the honest default — everything on
+ * their plate — but a studio holding twenty-eight packs needs to split
+ * that pile by what it has to do to each one: start it, finish it, or fix
+ * it. Priority and Late cut across those three rather than sitting
+ * inside them, which is why they are their own tabs.
+ */
+type Filter =
+  | "open" | "to_start" | "in_progress" | "changes"
+  | "priority" | "late" | "delivered" | "all";
 
-const FILTERS: Array<{ id: Filter; label: string }> = [
-  { id: "open", label: "With you" },
-  { id: "late", label: "Late" },
-  { id: "delivered", label: "Delivered" },
-  { id: "all", label: "Everything" },
+const FILTERS: Array<{ id: Filter; label: string; match: (j: StudioJob) => boolean }> = [
+  { id: "open",        label: "With you",      match: isOpen },
+  { id: "to_start",    label: "To start",      match: (j) => j.status === "requested" },
+  { id: "in_progress", label: "In progress",   match: (j) => j.status === "in_progress" },
+  { id: "changes",     label: "Changes asked", match: (j) => j.status === "revision_requested" },
+  { id: "priority",    label: "Priority",      match: (j) => j.priority === "high" && isOpen(j) },
+  { id: "late",        label: "Late",          match: (j) => daysLate(j.dueDate, j.status) != null },
+  { id: "delivered",   label: "Delivered",     match: (j) => j.status === "delivered" || j.status === "accepted" },
+  { id: "all",         label: "Everything",    match: () => true },
 ];
+
+const MATCH: Record<Filter, (j: StudioJob) => boolean> =
+  Object.fromEntries(FILTERS.map((f) => [f.id, f.match])) as Record<Filter, (j: StudioJob) => boolean>;
 
 export function StudioClient({ token, board }: { token: string; board: StudioBoard }) {
   const [jobs, setJobs] = useState(board.jobs);
@@ -828,6 +858,12 @@ export function StudioClient({ token, board }: { token: string; board: StudioBoa
     delivered: jobs.filter((j) => j.status === "delivered" || j.status === "accepted").length,
   }), [jobs]);
 
+  const tabCount = useMemo(() => {
+    const out = {} as Record<Filter, number>;
+    for (const f of FILTERS) out[f.id] = jobs.filter(f.match).length;
+    return out;
+  }, [jobs]);
+
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     const matches = (j: StudioJob) =>
@@ -836,14 +872,7 @@ export function StudioClient({ token, board }: { token: string; board: StudioBoa
       (j.clientName ?? "").toLowerCase().includes(q) ||
       (j.brief ?? "").toLowerCase().includes(q);
 
-    const byFilter = (j: StudioJob) => {
-      if (filter === "all") return true;
-      if (filter === "open") return isOpen(j);
-      if (filter === "late") return daysLate(j.dueDate, j.status) != null;
-      return j.status === "delivered" || j.status === "accepted";
-    };
-
-    return sortJobs(jobs.filter((j) => byFilter(j) && matches(j)));
+    return sortJobs(jobs.filter((j) => MATCH[filter](j) && matches(j)));
   }, [jobs, filter, query]);
 
   if (board.problem === "setup") {
@@ -888,23 +917,29 @@ export function StudioClient({ token, board }: { token: string; board: StudioBoa
         </div>
       }
     >
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="flex overflow-hidden rounded-lg border border-[var(--sa-border)]">
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setFilter(f.id)}
-              className="px-2.5 py-1.5 text-[11px] font-medium transition-colors"
-              style={{
-                background: filter === f.id ? "var(--sa-hover)" : "transparent",
-                color: filter === f.id ? "var(--sa-text-primary)" : "var(--sa-text-tertiary)",
-              }}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+      <div className="mb-2 -mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
+          {FILTERS.map((f) => {
+            const n = tabCount[f.id];
+            const on = filter === f.id;
+            return (
+              <button
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors"
+                style={{
+                  borderColor: on ? "var(--sa-accent)" : "var(--sa-border)",
+                  background: on ? "var(--sa-selected)" : "transparent",
+                  color: on ? "var(--sa-accent)" : n === 0 ? "var(--sa-text-tertiary)" : "var(--sa-text-secondary)",
+                }}
+              >
+                {f.label}
+                <span className="tabular-nums" style={{ opacity: n === 0 ? 0.5 : 1 }}>{n}</span>
+              </button>
+            );
+          })}
+      </div>
 
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="relative min-w-0 flex-1 sm:max-w-xs">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--sa-text-tertiary)]" />
           <input
