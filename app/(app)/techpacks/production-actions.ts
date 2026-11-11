@@ -6,13 +6,17 @@ import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { can } from "@/lib/permissions";
 import { sendAll } from "@/lib/email/send";
 import { buildPublicUrl } from "@/lib/url";
+import {
+  JOB_STATUSES, type JobStatus, type JobNote, type JobVersion,
+} from "@/lib/techpack-jobs";
 
 // ─────────────────────────────────────────────────────────────
 // Outsourced tech packs, from our side.
 //
-// Two things live here: who we outsource to, and what we have asked them
-// for. The board this feeds is the point of the feature — knowing a pack
-// has been sitting with a studio for three weeks is worth more than the
+// Who we outsource to, what we have asked them for, and the conversation
+// around it. The board this feeds is the point of the feature — knowing a
+// pack has been sitting with a studio for three weeks, or that they have
+// been waiting on a logo from us for five days, is worth more than the
 // upload link itself.
 //
 // Reads and writes go through the service-role client with an explicit
@@ -22,9 +26,14 @@ import { buildPublicUrl } from "@/lib/url";
 // ─────────────────────────────────────────────────────────────
 
 const SETUP = "Tech pack jobs need a one-time database step — run migrations/049_techpack_studios.sql.";
+const SETUP_050 = "The studio conversation needs a one-time database step — run migrations/050_techpack_collaboration.sql.";
 
 function notSetUp(error: { code?: string; message: string }): boolean {
   return error.code === "PGRST205" || error.code === "PGRST204" || /techpack_(studios|jobs)/.test(error.message);
+}
+
+function notesMissing(error: { code?: string; message: string }): boolean {
+  return error.code === "PGRST205" || /techpack_job_notes|revision_count|revision_note|started_at|priority/.test(error.message);
 }
 
 export interface Studio {
@@ -38,37 +47,64 @@ export interface Studio {
 
 export interface ProductionJob {
   id: string;
-  status: string;
+  status: JobStatus;
+  priority: "high" | "normal";
   brief: string | null;
   dueDate: string | null;
+  startedAt: string | null;
   deliveredAt: string | null;
+  acceptedAt: string | null;
   createdAt: string;
+
+  revisionNote: string | null;
+  revisionCount: number;
+
   productId: string;
   productName: string;
+  productImage: string | null;
+  productCategory: string | null;
+
   clientId: string | null;
   clientName: string | null;
   studioId: string | null;
   studioName: string | null;
+
+  versions: JobVersion[];
   currentVersion: number;
   latestFileUrl: string | null;
-  /** Days since we asked. The number that makes a board worth looking at. */
+
+  /** Unresolved things the studio has asked us for. */
+  openRequests: number;
+  noteCount: number;
+  /** Days since we asked, which is what makes a board worth looking at. */
   ageDays: number;
 }
 
 export interface ProductionBoard {
   allowed: boolean;
   needsSetup: boolean;
+  needsNotesSetup: boolean;
   setupMessage: string;
   studios: Studio[];
   jobs: ProductionJob[];
-  /** For the "ask for a pack" form. */
-  products: Array<{ id: string; name: string; clientId: string | null; clientName: string | null }>;
+  products: Array<{
+    id: string;
+    name: string;
+    clientId: string | null;
+    clientName: string | null;
+    category: string | null;
+    image: string | null;
+  }>;
 }
 
 const EMPTY: ProductionBoard = {
-  allowed: false, needsSetup: false, setupMessage: SETUP,
+  allowed: false, needsSetup: false, needsNotesSetup: false, setupMessage: SETUP,
   studios: [], jobs: [], products: [],
 };
+
+function firstImage(images: unknown): string | null {
+  return Array.isArray(images) && images.length > 0 ? String(images[0]) : null;
+}
 
 export async function getProductionBoard(): Promise<ProductionBoard> {
   const ctx = await getAgencyContext();
@@ -90,17 +126,15 @@ export async function getProductionBoard(): Promise<ProductionBoard> {
   const studioRows = (studioRes.data ?? []) as Array<{
     id: string; name: string; contact_email: string | null; token: string; revoked_at: string | null;
   }>;
-  const jobRows = (jobRes.data ?? []) as Array<{
-    id: string; status: string; brief: string | null; due_date: string | null; delivered_at: string | null;
-    created_at: string; product_id: string; client_id: string | null; studio_id: string | null;
-  }>;
+  const jobRows = (jobRes.data ?? []) as Array<Record<string, unknown>>;
 
-  // Every product that belongs to this agency, for the picker and for names.
   const { data: productRows } = await supabase
     .from("products")
-    .select("id, name, project_id")
+    .select("id, name, project_id, category, images")
     .eq("agency_id", agencyId);
-  const products = (productRows ?? []) as Array<{ id: string; name: string; project_id: string | null }>;
+  const products = (productRows ?? []) as Array<{
+    id: string; name: string; project_id: string | null; category: string | null; images: unknown;
+  }>;
 
   const [{ data: projectRows }, { data: clientRows }] = await Promise.all([
     supabase.from("projects").select("id, client_id").eq("agency_id", agencyId),
@@ -112,64 +146,104 @@ export async function getProductionBoard(): Promise<ProductionBoard> {
   const clientName = new Map(
     ((clientRows ?? []) as Array<{ id: string; name: string }>).map((c) => [c.id, c.name]),
   );
-  const productName = new Map(products.map((p) => [p.id, p.name]));
+  const productById = new Map(products.map((p) => [p.id, p]));
 
   const { data: packRows } = await supabase
     .from("product_techpacks")
-    .select("product_id, version, file_url")
+    .select("product_id, version, file_url, file_name, change_note, created_at, uploaded_by")
     .eq("agency_id", agencyId)
     .order("version", { ascending: false });
-  const packs = (packRows ?? []) as Array<{ product_id: string; version: number; file_url: string }>;
-  const latest = new Map<string, { version: number; file_url: string }>();
-  for (const p of packs) if (!latest.has(p.product_id)) latest.set(p.product_id, p);
+  const packs = (packRows ?? []) as Array<{
+    product_id: string; version: number; file_url: string; file_name: string | null;
+    change_note: string | null; created_at: string; uploaded_by: string;
+  }>;
+
+  // Notes are optional until 050 is run, so a missing table degrades to
+  // "no conversation yet" rather than an empty board.
+  const notesRes = await supabase
+    .from("techpack_job_notes")
+    .select("job_id, asks_for, resolved_at")
+    .eq("agency_id", agencyId);
+  const needsNotesSetup = !!notesRes.error && notesMissing(notesRes.error);
+  const notes = (notesRes.data ?? []) as Array<{ job_id: string; asks_for: string | null; resolved_at: string | null }>;
 
   const studioName = new Map(studioRows.map((s) => [s.id, s.name]));
   const now = Date.now();
 
+  const jobs: ProductionJob[] = jobRows
+    .filter((j) => String(j.status) !== "cancelled")
+    .map((j) => {
+      const productId = String(j.product_id);
+      const product = productById.get(productId);
+      const clientId =
+        (j.client_id as string | null) ??
+        (product?.project_id ? clientOfProject.get(product.project_id) ?? null : null);
+      const mine = packs.filter((p) => p.product_id === productId);
+      const jobNotes = notes.filter((n) => n.job_id === String(j.id));
+
+      return {
+        id: String(j.id),
+        status: (JOB_STATUSES.includes(j.status as JobStatus) ? j.status : "requested") as JobStatus,
+        priority: j.priority === "high" ? "high" : "normal",
+        brief: (j.brief as string | null) ?? null,
+        dueDate: (j.due_date as string | null) ?? null,
+        startedAt: (j.started_at as string | null) ?? null,
+        deliveredAt: (j.delivered_at as string | null) ?? null,
+        acceptedAt: (j.accepted_at as string | null) ?? null,
+        createdAt: String(j.created_at),
+        revisionNote: (j.revision_note as string | null) ?? null,
+        revisionCount: Number(j.revision_count ?? 0),
+        productId,
+        productName: product?.name ?? "Unnamed product",
+        productImage: firstImage(product?.images),
+        productCategory: product?.category ?? null,
+        clientId,
+        clientName: clientId ? clientName.get(clientId) ?? null : null,
+        studioId: (j.studio_id as string | null) ?? null,
+        studioName: j.studio_id ? studioName.get(String(j.studio_id)) ?? null : null,
+        versions: mine.map((p) => ({
+          version: p.version,
+          fileName: p.file_name,
+          fileUrl: p.file_url,
+          changeNote: p.change_note,
+          createdAt: p.created_at,
+          uploadedBy: p.uploaded_by,
+        })),
+        currentVersion: mine[0]?.version ?? 0,
+        latestFileUrl: mine[0]?.file_url ?? null,
+        openRequests: jobNotes.filter((n) => n.asks_for && !n.resolved_at).length,
+        noteCount: jobNotes.length,
+        ageDays: Math.max(0, Math.floor((now - new Date(String(j.created_at)).getTime()) / 86_400_000)),
+      };
+    });
+
   return {
     allowed: true,
     needsSetup: false,
-    setupMessage: SETUP,
+    needsNotesSetup,
+    setupMessage: needsNotesSetup ? SETUP_050 : SETUP,
     studios: studioRows.map((s) => ({
       id: s.id,
       name: s.name,
       contactEmail: s.contact_email,
       token: s.token,
       revokedAt: s.revoked_at,
-      openJobs: jobRows.filter((j) => j.studio_id === s.id && j.status === "requested").length,
+      openJobs: jobs.filter((j) => j.studioId === s.id && j.status !== "accepted").length,
     })),
-    jobs: jobRows
-      .filter((j) => j.status !== "cancelled")
-      .map((j) => {
-        const clientId = j.client_id ?? clientOfProject.get(j.product_id ?? "") ?? null;
-        const current = latest.get(j.product_id);
+    jobs,
+    products: products
+      .map((p) => {
+        const clientId = p.project_id ? clientOfProject.get(p.project_id) ?? null : null;
         return {
-          id: j.id,
-          status: j.status,
-          brief: j.brief,
-          dueDate: j.due_date,
-          deliveredAt: j.delivered_at,
-          createdAt: j.created_at,
-          productId: j.product_id,
-          productName: productName.get(j.product_id) ?? "Unnamed product",
+          id: p.id,
+          name: p.name,
           clientId,
           clientName: clientId ? clientName.get(clientId) ?? null : null,
-          studioId: j.studio_id,
-          studioName: j.studio_id ? studioName.get(j.studio_id) ?? null : null,
-          currentVersion: current?.version ?? 0,
-          latestFileUrl: current?.file_url ?? null,
-          ageDays: Math.max(0, Math.floor((now - new Date(j.created_at).getTime()) / 86_400_000)),
+          category: p.category,
+          image: firstImage(p.images),
         };
-      }),
-    products: products.map((p) => {
-      const clientId = p.project_id ? clientOfProject.get(p.project_id) ?? null : null;
-      return {
-        id: p.id,
-        name: p.name,
-        clientId,
-        clientName: clientId ? clientName.get(clientId) ?? null : null,
-      };
-    }).sort((a, b) => (a.clientName ?? "").localeCompare(b.clientName ?? "") || a.name.localeCompare(b.name)),
+      })
+      .sort((a, b) => (a.clientName ?? "").localeCompare(b.clientName ?? "") || a.name.localeCompare(b.name)),
   };
 }
 
@@ -228,61 +302,81 @@ export async function setStudioRevoked(
   return { success: true };
 }
 
-export async function requestTechPack(input: {
+/**
+ * Ask a studio for packs on several products at once.
+ *
+ * One product at a time was the first version and it was wrong: a
+ * collection goes out as a collection, and twelve trips through the same
+ * form to send twelve styles is the kind of thing that stops a feature
+ * being used at all.
+ */
+export async function requestTechPacks(input: {
   studioId: string;
-  productId: string;
+  productIds: string[];
   brief?: string | null;
   dueDate?: string | null;
-}): Promise<{ success: true } | { success: false; error: string }> {
+  priority?: "high" | "normal";
+}): Promise<{ success: true; created: number } | { success: false; error: string }> {
   const { error: denied, ctx } = await writable();
   if (denied || !ctx) return { success: false, error: denied ?? "Not allowed" };
-  if (!input.productId) return { success: false, error: "Pick a product" };
   if (!input.studioId) return { success: false, error: "Pick a studio" };
+
+  const wanted = Array.from(new Set(input.productIds.filter(Boolean)));
+  if (wanted.length === 0) return { success: false, error: "Pick at least one product" };
 
   const supabase = getAgencyServiceSupabase();
 
-  // The product must be ours. A product id from the browser is not proof.
-  const { data: product } = await supabase
+  // The products must be ours. Ids from a browser are not proof, and one
+  // query settles it for the whole batch.
+  const { data: owned } = await supabase
     .from("products")
-    .select("id, name, project_id, agency_id")
-    .eq("id", input.productId)
+    .select("id, project_id")
     .eq("agency_id", ctx.agency.id)
-    .maybeSingle();
-  const prod = product as { id: string; name: string; project_id: string | null } | null;
-  if (!prod) return { success: false, error: "That product could not be found" };
+    .in("id", wanted);
+  const mine = (owned ?? []) as Array<{ id: string; project_id: string | null }>;
+  if (mine.length === 0) return { success: false, error: "Those products could not be found" };
 
-  let clientId: string | null = null;
-  if (prod.project_id) {
-    const { data: project } = await supabase
-      .from("projects")
-      .select("client_id")
-      .eq("id", prod.project_id)
-      .maybeSingle();
-    clientId = (project as { client_id: string | null } | null)?.client_id ?? null;
-  }
+  const projectIds = Array.from(new Set(mine.map((p) => p.project_id).filter(Boolean) as string[]));
+  const { data: projectRows } = projectIds.length
+    ? await supabase.from("projects").select("id, client_id").in("id", projectIds)
+    : { data: [] as Array<{ id: string; client_id: string | null }> };
+  const clientOfProject = new Map(
+    ((projectRows ?? []) as Array<{ id: string; client_id: string | null }>).map((p) => [p.id, p.client_id]),
+  );
 
   const { data: studio } = await supabase
     .from("techpack_studios")
-    .select("id, name, contact_email")
+    .select("id")
     .eq("id", input.studioId)
     .eq("agency_id", ctx.agency.id)
     .maybeSingle();
-  const st = studio as { id: string; name: string; contact_email: string | null } | null;
-  if (!st) return { success: false, error: "That studio could not be found" };
+  if (!studio) return { success: false, error: "That studio could not be found" };
 
-  const { error } = await supabase.from("techpack_jobs").insert({
+  const base = mine.map((p) => ({
     id: `tpj-${crypto.randomUUID().replace(/-/g, "")}`,
     agency_id: ctx.agency.id,
-    studio_id: st.id,
-    product_id: prod.id,
-    client_id: clientId,
+    studio_id: input.studioId,
+    product_id: p.id,
+    client_id: p.project_id ? clientOfProject.get(p.project_id) ?? null : null,
     brief: input.brief?.trim()?.slice(0, 2000) || null,
     due_date: input.dueDate || null,
-  });
+  }));
+
+  // priority arrived with 050. Asking for packs is the point of the whole
+  // feature and must not stop working because a later migration has not
+  // been run yet, so a rejection naming that column is retried without it.
+  const withPriority = input.priority === "high"
+    ? base.map((row) => ({ ...row, priority: "high" }))
+    : base;
+
+  let { error } = await supabase.from("techpack_jobs").insert(withPriority);
+  if (error && /priority/.test(error.message)) {
+    ({ error } = await supabase.from("techpack_jobs").insert(base));
+  }
   if (error) return { success: false, error: notSetUp(error) ? SETUP : error.message };
 
   revalidatePath("/techpacks");
-  return { success: true };
+  return { success: true, created: mine.length };
 }
 
 export async function setJobStatus(
@@ -302,6 +396,157 @@ export async function setJobStatus(
 
   revalidatePath("/techpacks");
   return { success: true };
+}
+
+export async function setJobPriority(
+  jobId: string,
+  priority: "high" | "normal",
+): Promise<{ success: true } | { success: false; error: string }> {
+  const { error: denied, ctx } = await writable();
+  if (denied || !ctx) return { success: false, error: denied ?? "Not allowed" };
+
+  const supabase = getAgencyServiceSupabase();
+  const { error } = await supabase
+    .from("techpack_jobs")
+    .update({ priority: priority === "high" ? "high" : null })
+    .eq("id", jobId)
+    .eq("agency_id", ctx.agency.id);
+  if (error) return { success: false, error: notesMissing(error) ? SETUP_050 : error.message };
+
+  revalidatePath("/techpacks");
+  return { success: true };
+}
+
+/**
+ * Send a delivered pack back for changes.
+ *
+ * The pack itself is not touched: the studio answers with a new version,
+ * and product_techpacks already supersedes the old one when it lands. All
+ * this records is that we asked, what we asked for, and how many times.
+ */
+export async function requestRevision(input: {
+  jobId: string;
+  note: string;
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const { error: denied, ctx } = await writable();
+  if (denied || !ctx) return { success: false, error: denied ?? "Not allowed" };
+
+  const note = input.note.trim().slice(0, 2000);
+  if (!note) return { success: false, error: "Say what needs changing" };
+
+  const supabase = getAgencyServiceSupabase();
+  const { data: jobRow } = await supabase
+    .from("techpack_jobs")
+    .select("id, revision_count, studio_id, product_id")
+    .eq("id", input.jobId)
+    .eq("agency_id", ctx.agency.id)
+    .maybeSingle();
+  const job = jobRow as { id: string; revision_count: number | null; studio_id: string | null; product_id: string } | null;
+  if (!job) return { success: false, error: "That job could not be found" };
+
+  const { error } = await supabase
+    .from("techpack_jobs")
+    .update({
+      status: "revision_requested",
+      revision_note: note,
+      revision_count: Number(job.revision_count ?? 0) + 1,
+      delivered_at: null,
+    })
+    .eq("id", job.id)
+    .eq("agency_id", ctx.agency.id);
+  if (error) return { success: false, error: notesMissing(error) ? SETUP_050 : error.message };
+
+  // The ask goes in the thread too, so the studio reads it where they read
+  // everything else rather than only as a status.
+  await supabase.from("techpack_job_notes").insert({
+    id: `tjn-${crypto.randomUUID().replace(/-/g, "")}`,
+    agency_id: ctx.agency.id,
+    job_id: job.id,
+    author: "agency",
+    author_name: ctx.agency.name ?? "Source Archive",
+    body: note,
+  });
+
+  await emailStudio(job.studio_id, ctx.agency.id, "A tech pack needs changes", note);
+
+  revalidatePath("/techpacks");
+  return { success: true };
+}
+
+export async function addAgencyNote(input: {
+  jobId: string;
+  body: string;
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const { error: denied, ctx } = await writable();
+  if (denied || !ctx) return { success: false, error: denied ?? "Not allowed" };
+
+  const body = input.body.trim().slice(0, 4000);
+  if (!body) return { success: false, error: "Nothing to say" };
+
+  const supabase = getAgencyServiceSupabase();
+  const { data: job } = await supabase
+    .from("techpack_jobs")
+    .select("id, studio_id")
+    .eq("id", input.jobId)
+    .eq("agency_id", ctx.agency.id)
+    .maybeSingle();
+  if (!job) return { success: false, error: "That job could not be found" };
+
+  const { error } = await supabase.from("techpack_job_notes").insert({
+    id: `tjn-${crypto.randomUUID().replace(/-/g, "")}`,
+    agency_id: ctx.agency.id,
+    job_id: input.jobId,
+    author: "agency",
+    author_name: ctx.agency.name ?? "Source Archive",
+    body,
+  });
+  if (error) return { success: false, error: notesMissing(error) ? SETUP_050 : error.message };
+
+  revalidatePath("/techpacks");
+  return { success: true };
+}
+
+/** Mark something the studio asked us for as supplied. */
+export async function resolveRequest(
+  noteId: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+  const { error: denied, ctx } = await writable();
+  if (denied || !ctx) return { success: false, error: denied ?? "Not allowed" };
+
+  const supabase = getAgencyServiceSupabase();
+  const { error } = await supabase
+    .from("techpack_job_notes")
+    .update({ resolved_at: new Date().toISOString() })
+    .eq("id", noteId)
+    .eq("agency_id", ctx.agency.id);
+  if (error) return { success: false, error: notesMissing(error) ? SETUP_050 : error.message };
+
+  revalidatePath("/techpacks");
+  return { success: true };
+}
+
+export async function getJobThread(jobId: string): Promise<JobNote[]> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return [];
+  if (!can(ctx.role, ctx.permissions, "product.edit")) return [];
+
+  const supabase = getAgencyServiceSupabase();
+  const { data, error } = await supabase
+    .from("techpack_job_notes")
+    .select("id, author, author_name, body, asks_for, resolved_at, created_at")
+    .eq("agency_id", ctx.agency.id)
+    .eq("job_id", jobId)
+    .order("created_at");
+  if (error) return [];
+  return ((data ?? []) as Array<Record<string, unknown>>).map((n) => ({
+    id: String(n.id),
+    author: n.author === "studio" ? "studio" : "agency",
+    authorName: (n.author_name as string | null) ?? null,
+    body: String(n.body),
+    asksFor: (n.asks_for as string | null) ?? null,
+    resolvedAt: (n.resolved_at as string | null) ?? null,
+    createdAt: String(n.created_at),
+  }));
 }
 
 /** Email the studio their link, rather than making somebody copy and paste it. */
@@ -346,4 +591,40 @@ export async function emailStudioLink(
   ]);
 
   return { success: true };
+}
+
+/** Best-effort nudge. A studio with no address on file simply isn't emailed. */
+async function emailStudio(
+  studioId: string | null,
+  agencyId: string,
+  subject: string,
+  body: string,
+): Promise<void> {
+  if (!studioId) return;
+  try {
+    const supabase = getAgencyServiceSupabase();
+    const { data } = await supabase
+      .from("techpack_studios")
+      .select("name, contact_email, token, revoked_at")
+      .eq("id", studioId)
+      .eq("agency_id", agencyId)
+      .maybeSingle();
+    const studio = data as { name: string; contact_email: string | null; token: string; revoked_at: string | null } | null;
+    if (!studio?.contact_email || studio.revoked_at) return;
+
+    const url = buildPublicUrl(`/packs/${studio.token}`);
+    await sendAll([
+      {
+        agencyId,
+        to: studio.contact_email,
+        toName: studio.name,
+        template: "techpack_studio_link",
+        subject: `${subject} — Source Archive`,
+        html: `<p>Hi ${studio.name},</p><p>${body}</p><p><a href="${url}">Open your tech pack list</a></p><p>Best,<br/>Source Archive team</p>`,
+        text: `Hi ${studio.name},\n\n${body}\n\n${url}\n\nBest,\nSource Archive team`,
+      },
+    ]);
+  } catch (err) {
+    console.error("[techpacks] could not email the studio:", err);
+  }
 }
