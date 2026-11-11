@@ -125,7 +125,7 @@ export function FinanceClient({ report }: { report: FinanceReport }) {
   const widest = useMemo(() => Math.max(1, ...report.buckets.map((b) => b.amount)), [report.buckets]);
 
   return (
-    <div className="mx-auto max-w-6xl p-4 sm:p-6">
+    <div className="mx-auto h-full w-full max-w-6xl overflow-y-auto p-4 sm:p-6">
       <header className="mb-5">
         <h1 className="text-lg font-semibold text-[var(--sa-text-primary)]">Finance</h1>
         <p className="mt-0.5 text-xs text-[var(--sa-text-secondary)]">

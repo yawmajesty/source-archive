@@ -22,25 +22,43 @@ export function TechpacksShell({
   const waiting = board.jobs.filter((j) => j.status === "requested").length;
   const delivered = board.jobs.filter((j) => j.status === "delivered").length;
 
-  // Wide: five Kanban columns need about 1250px, and max-w-6xl made the
-  // board scroll sideways on a desktop that had the room for it.
+  // The app shell gives every page a fixed-height column with overflow
+  // hidden, so a page that does not scroll itself is simply clipped. Header
+  // and tabs stay put; only the content below them scrolls. Wide because
+  // five Kanban columns need about 1250px.
   return (
-    <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6">
-      <header className="mb-4">
-        <h1 className="text-lg font-semibold text-[var(--sa-text-primary)]">Tech Packs</h1>
-        <p className="mt-0.5 text-xs text-[var(--sa-text-secondary)]">
-          What studios are drawing for us, and what clients have asked us for.
-        </p>
-      </header>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="shrink-0 px-4 pt-4 sm:px-6 sm:pt-6">
+        <div className="mx-auto w-full max-w-[1600px]">
+          <header className="mb-4">
+            <h1 className="text-lg font-semibold text-[var(--sa-text-primary)]">Tech Packs</h1>
+            <p className="mt-0.5 text-xs text-[var(--sa-text-secondary)]">
+              What studios are drawing for us, and what clients have asked us for.
+            </p>
+          </header>
 
-      <div className="mb-4 flex gap-1 overflow-x-auto border-b border-[var(--sa-border)]">
-        <Tab active={tab === "production"} onClick={() => setTab("production")}
-          label="In production" badge={delivered > 0 ? delivered : waiting || undefined} />
-        <Tab active={tab === "requests"} onClick={() => setTab("requests")}
-          label="Client requests" badge={submissions.length || undefined} />
+          <div className="flex gap-1 overflow-x-auto border-b border-[var(--sa-border)]">
+            <Tab active={tab === "production"} onClick={() => setTab("production")}
+              label="In production" badge={delivered > 0 ? delivered : waiting || undefined} />
+            <Tab active={tab === "requests"} onClick={() => setTab("requests")}
+              label="Client requests" badge={submissions.length || undefined} />
+          </div>
+        </div>
       </div>
 
-      {tab === "production" ? <ProductionBoard board={board} /> : <TechpacksClient submissions={submissions} />}
+      {tab === "production" ? (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6">
+            <ProductionBoard board={board} />
+          </div>
+        </div>
+      ) : (
+        // The requests view is its own full-height list/detail split, so it
+        // takes the space and does its own scrolling inside.
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <TechpacksClient submissions={submissions} />
+        </div>
+      )}
     </div>
   );
 }
