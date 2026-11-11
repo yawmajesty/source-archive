@@ -13,6 +13,12 @@ const isPublicRoute = createRouteMatcher([
   "/brief(.*)",
   "/enquire(.*)",
   "/techpack(.*)",
+  // The studio's standing link. There is no login by design: the
+  // unguessable token in the URL is the whole credential, and every
+  // action behind it re-reads that token and re-checks that the job
+  // being acted on belongs to that studio. Without this line Clerk
+  // bounced an outside studio to a sign-in page it can never pass.
+  "/packs(.*)",
   "/factory(.*)",
   "/cost-sheet(.*)",   // factory cost breakdown, protected by its own token
   "/for-brands(.*)",
