@@ -382,8 +382,212 @@ export async function requestTechPacks(input: {
   }
   if (error) return { success: false, error: notSetUp(error) ? SETUP : error.message };
 
+  // Tell them it has landed. The board is a pull; an email is the push,
+  // and a studio that has to remember to check a link is a studio that
+  // starts three days late.
+  await emailStudio(
+    input.studioId,
+    ctx.agency.id,
+    mine.length === 1 ? "A tech pack to draw" : `${mine.length} tech packs to draw`,
+    input.dueDate
+      ? `${mine.length === 1 ? "A new style is" : `${mine.length} new styles are`} on your list, wanted by ` +
+        `${new Date(`${input.dueDate}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}.`
+      : `${mine.length === 1 ? "A new style is" : `${mine.length} new styles are`} on your list.`,
+  );
+
   revalidatePath("/techpacks");
+  for (const p of mine) revalidatePath(`/products/${p.id}`);
   return { success: true, created: mine.length };
+}
+
+// ── The same work, reached from a product page ───────────────
+//
+// Asking for a pack from the board means knowing to go to the board.
+// Most of the time the thought arrives while somebody is looking at the
+// style itself, so the same three decisions — who draws it, by when, and
+// anything they should know — are offered there too, against this one
+// product. Everything below exists to make that panel possible; the
+// board remains the place to see all of it at once.
+
+export interface StudioOption {
+  id: string;
+  name: string;
+  hasEmail: boolean;
+}
+
+/** Just enough to fill a picker. */
+export async function listStudioOptions(): Promise<StudioOption[]> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return [];
+  if (!can(ctx.role, ctx.permissions, "product.edit")) return [];
+
+  const supabase = getAgencyServiceSupabase();
+  const { data, error } = await supabase
+    .from("techpack_studios")
+    .select("id, name, contact_email, revoked_at")
+    .eq("agency_id", ctx.agency.id)
+    .order("created_at");
+  if (error) return [];
+
+  return ((data ?? []) as Array<{ id: string; name: string; contact_email: string | null; revoked_at: string | null }>)
+    .filter((row) => !row.revoked_at)
+    .map((row) => ({ id: row.id, name: row.name, hasEmail: Boolean(row.contact_email) }));
+}
+
+export interface ProductJobSummary {
+  id: string;
+  status: JobStatus;
+  priority: "high" | "normal";
+  dueDate: string | null;
+  /** The studio's own date, once 051 is in. Null until then. */
+  studioEta: string | null;
+  deliveredAt: string | null;
+  createdAt: string;
+  studioId: string | null;
+  studioName: string | null;
+}
+
+/**
+ * The live request for this one product, if there is one.
+ *
+ * The newest wins. A product asked for twice is usually a re-request
+ * after a cancellation, and the one that matters is the current one.
+ */
+export async function getJobForProduct(productId: string): Promise<ProductJobSummary | null> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return null;
+  if (!can(ctx.role, ctx.permissions, "product.edit")) return null;
+
+  const supabase = getAgencyServiceSupabase();
+  const { data, error } = await supabase
+    .from("techpack_jobs")
+    .select("*")
+    .eq("agency_id", ctx.agency.id)
+    .eq("product_id", productId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) return null;
+
+  const row = ((data ?? []) as Array<Record<string, unknown>>)[0];
+  if (!row) return null;
+
+  let studioName: string | null = null;
+  if (row.studio_id) {
+    const { data: studio } = await supabase
+      .from("techpack_studios")
+      .select("name")
+      .eq("id", String(row.studio_id))
+      .eq("agency_id", ctx.agency.id)
+      .maybeSingle();
+    studioName = (studio as { name: string } | null)?.name ?? null;
+  }
+
+  return {
+    id: String(row.id),
+    status: (JOB_STATUSES.includes(row.status as JobStatus) ? row.status : "requested") as JobStatus,
+    priority: row.priority === "high" ? "high" : "normal",
+    dueDate: row.due_date ? String(row.due_date) : null,
+    // studio_eta arrives with 051. Its absence is not an error here.
+    studioEta: typeof row.studio_eta === "string" ? row.studio_eta : null,
+    deliveredAt: row.delivered_at ? String(row.delivered_at) : null,
+    createdAt: String(row.created_at),
+    studioId: row.studio_id ? String(row.studio_id) : null,
+    studioName,
+  };
+}
+
+/**
+ * Move the deadline.
+ *
+ * Pulling a date forward is the version worth an email — a studio that
+ * finds out on the day is a studio that misses it. Pushing it back is
+ * good news and can wait for them to look.
+ */
+export async function setJobDueDate(input: {
+  jobId: string;
+  dueDate: string | null;
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const { error: denied, ctx } = await writable();
+  if (denied || !ctx) return { success: false, error: denied ?? "Not allowed" };
+
+  const next = input.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(input.dueDate) ? input.dueDate : null;
+  if (input.dueDate && !next) return { success: false, error: "That date didn't look right" };
+
+  const supabase = getAgencyServiceSupabase();
+  const { data: before } = await supabase
+    .from("techpack_jobs")
+    .select("due_date, studio_id, product_id")
+    .eq("id", input.jobId)
+    .eq("agency_id", ctx.agency.id)
+    .maybeSingle();
+  const prev = before as { due_date: string | null; studio_id: string | null; product_id: string } | null;
+  if (!prev) return { success: false, error: "That request could not be found" };
+
+  const { error } = await supabase
+    .from("techpack_jobs")
+    .update({ due_date: next })
+    .eq("id", input.jobId)
+    .eq("agency_id", ctx.agency.id);
+  if (error) return { success: false, error: error.message };
+
+  const pulledForward = next != null && prev.due_date != null && next < prev.due_date;
+  if (pulledForward) {
+    await emailStudio(
+      prev.studio_id,
+      ctx.agency.id,
+      "A deadline has moved forward",
+      `We've brought a tech pack deadline forward to ` +
+        `${new Date(`${next}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}. ` +
+        `If that isn't workable, say so and we'll sort something out.`,
+    );
+  }
+
+  revalidatePath("/techpacks");
+  revalidatePath(`/products/${prev.product_id}`);
+  return { success: true };
+}
+
+/** Hand an unassigned request to a studio, or move it to a different one. */
+export async function setJobStudio(input: {
+  jobId: string;
+  studioId: string;
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const { error: denied, ctx } = await writable();
+  if (denied || !ctx) return { success: false, error: denied ?? "Not allowed" };
+
+  const supabase = getAgencyServiceSupabase();
+  const { data: studio } = await supabase
+    .from("techpack_studios")
+    .select("id")
+    .eq("id", input.studioId)
+    .eq("agency_id", ctx.agency.id)
+    .maybeSingle();
+  if (!studio) return { success: false, error: "That studio could not be found" };
+
+  const { data, error } = await supabase
+    .from("techpack_jobs")
+    .update({ studio_id: input.studioId })
+    .eq("id", input.jobId)
+    .eq("agency_id", ctx.agency.id)
+    .select("product_id, due_date")
+    .maybeSingle();
+  if (error) return { success: false, error: error.message };
+  const row = data as { product_id: string; due_date: string | null } | null;
+  if (!row) return { success: false, error: "That request could not be found" };
+
+  await emailStudio(
+    input.studioId,
+    ctx.agency.id,
+    "A tech pack to draw",
+    row.due_date
+      ? `A style has been put on your list, wanted by ` +
+        `${new Date(`${row.due_date}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}.`
+      : "A style has been put on your list.",
+  );
+
+  revalidatePath("/techpacks");
+  revalidatePath(`/products/${row.product_id}`);
+  return { success: true };
 }
 
 export async function setJobStatus(

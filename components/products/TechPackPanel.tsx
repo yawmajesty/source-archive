@@ -7,6 +7,7 @@ import {
   listTechPacks, addTechPackVersion, signTechPackAsAgency, unsignTechPackAsAgency,
   setProductPhases, type TechPack,
 } from "@/app/(app)/products/[id]/techpack-actions";
+import { StudioRequest } from "./StudioRequest";
 
 // ─────────────────────────────────────────────────────────────
 // Tech packs on our side.
@@ -117,6 +118,18 @@ export function TechPackPanel({
 
       {needsTechpack && (
         <div className="border-t border-[var(--sa-border)] px-4 py-3">
+          {/* Who's drawing it, and by when. Above the versions because the
+              deadline is decided before there is anything to upload. */}
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--sa-text-tertiary)]">
+            Out to a studio
+          </p>
+          <StudioRequest productId={productId} />
+
+          <div className="my-3 border-t border-[var(--sa-border)]" />
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--sa-text-tertiary)]">
+            The pack itself
+          </p>
+
           {loading ? (
             <p className="text-[12px] text-[var(--sa-text-tertiary)]">Loading…</p>
           ) : (

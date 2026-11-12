@@ -12,6 +12,7 @@
 
 import { STAGE_LABEL } from "@/lib/stages";
 import { imageUrl } from "@/lib/image-url";
+import type { PriceChangeLine } from "@/lib/price-notify";
 
 const INK = "#1D1D1F";
 const MUTED = "#6E6E73";
@@ -1294,5 +1295,59 @@ export function invoiceChaseDraft(input: {
       `If it's already gone out at your end, ignore this and let us know so we can mark it off. ` +
       `And if it's a timing thing, just tell us when works — we'd rather know than chase.\n\n` +
       `Best,\nSource Archive team`,
+  };
+}
+
+// ── A price that has moved ────────────────────────────────────
+//
+// A price change the client finds out about when the invoice arrives is
+// the fastest way to lose one. This is the email that stops that, and it
+// is deliberately sent by hand: not every edit is news, and the person
+// who made the change is the only one who knows whether it is.
+
+export function priceChanged(input: {
+  productName: string;
+  clientName: string;
+  changes: PriceChangeLine[];
+  note?: string | null;
+  portalUrl: string;
+}): Built {
+  const rows = input.changes
+    .map(
+      (c) =>
+        `<div style="margin-bottom:11px;">
+           <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:${MUTED};">${esc(c.label)}</div>
+           <div style="font-size:15px;color:${INK};line-height:1.5;">
+             <span style="color:${MUTED};text-decoration:line-through;">${esc(c.before)}</span>
+             <span style="color:${MUTED};">&nbsp;&rarr;&nbsp;</span>
+             <strong style="font-weight:600;">${esc(c.after)}</strong>
+           </div>
+         </div>`,
+    )
+    .join("");
+
+  return {
+    subject: `${input.productName} — the price has changed`,
+    html: shell(
+      h1(`A price change on ${input.productName}`) +
+        p("We've updated the pricing on this style. Here's what moved:") +
+        `<div style="border-top:1px solid ${RULE};margin-top:16px;padding-top:14px;">${rows}</div>` +
+        (input.note
+          ? `<div style="border-left:2px solid ${RULE};padding:2px 0 2px 12px;margin:14px 0;font-size:14px;line-height:1.6;color:${MUTED};">${esc(input.note)}</div>`
+          : "") +
+        p("Your portal always shows the current numbers. If this doesn't look right, reply to this email and we'll go through it with you.") +
+        `<div style="margin-top:16px;">${button(input.portalUrl, "See it in your portal")}</div>` +
+        signoff(),
+      "You're getting this because you're working with Source Archive.",
+    ),
+    text:
+      `A price change on ${input.productName}.\n\n` +
+      `We've updated the pricing on this style. Here's what moved:\n\n` +
+      input.changes.map((c) => `${c.label}: ${c.before} -> ${c.after}`).join("\n") +
+      (input.note ? `\n\n${input.note}` : "") +
+      `\n\nYour portal always shows the current numbers. If this doesn't look right, ` +
+      `reply to this email and we'll go through it with you.\n\n` +
+      `See it in your portal: ${input.portalUrl}` +
+      SIGNOFF_TEXT,
   };
 }

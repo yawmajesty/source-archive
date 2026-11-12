@@ -3,8 +3,9 @@ export const dynamic = 'force-dynamic';
 import { notFound } from "next/navigation";
 import {
   getProduct, getFactory, getMilestones, getUpdates, getSamples, getCosts,
-  getProject, getClient, getFactories, getProductPriceHistory,
+  getProject, getClient, getFactories, getProductPriceHistory, getTasks,
 } from "@/lib/data";
+import { getJobForProduct, type ProductJobSummary } from "@/app/(app)/techpacks/production-actions";
 import { ProductDetailClient } from "./ProductDetailClient";
 import { ProductionLogPanel } from "./ProductionLogPanel";
 import { StageSelector } from "./StageSelector";
@@ -31,7 +32,7 @@ export default async function ProductDetailPage({ params }: Props) {
   const product = await getProduct(id);
   if (!product) notFound();
 
-  const [factory, milestones, updates, samples, costs, project, factories, priceHistory] = await Promise.all([
+  const [factory, milestones, updates, samples, costs, project, factories, priceHistory, tasks] = await Promise.all([
     getFactory(product.factory_id ?? ""),
     getMilestones(id),
     getUpdates(id),
@@ -40,7 +41,14 @@ export default async function ProductDetailPage({ params }: Props) {
     getProject(product.project_id),
     getFactories(),
     getProductPriceHistory(id),
+    getTasks({ productId: id }),
   ]);
+
+  // The outsourced tech pack request, for the Dates card. Its absence is
+  // ordinary — most products are never sent out — and so is a workspace
+  // where the tables don't exist yet.
+  let techpackJob: ProductJobSummary | null = null;
+  try { techpackJob = await getJobForProduct(id); } catch { techpackJob = null; }
 
   const client = project
     ? (await getClient(project.client_id))
@@ -81,6 +89,8 @@ export default async function ProductDetailPage({ params }: Props) {
       client={client}
       factories={factories}
       priceHistory={priceHistory}
+      tasks={tasks}
+      techpackJob={techpackJob}
       stageSelector={
         <StageSelector
           productId={id}

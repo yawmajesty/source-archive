@@ -12,17 +12,20 @@ import {
 } from "lucide-react";
 import { StageTrack } from "@/components/shared/StageTrack";
 import { StatusBadge, SampleStatusBadge } from "@/components/shared/StatusBadge";
-import { MilestoneItem } from "@/components/shared/MilestoneItem";
 import { UpdateItem } from "@/components/shared/UpdateItem";
 import { TrafficDot } from "@/components/shared/TrafficLight";
 import { cn } from "@/lib/utils";
 import { createTask } from "../../tasks/actions";
 import { uploadFile } from "@/lib/storage";
-import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem, PriceTier, CompositionTier, ProductionVariant, ProductionSize, ProductPriceHistoryEntry } from "@/lib/mock-data";
+import type { Product, Factory, Milestone, Update, Sample, Cost, Project, Client, Stage, BomItem, DocumentItem, PriceTier, CompositionTier, ProductionVariant, ProductionSize, ProductPriceHistoryEntry, Task } from "@/lib/mock-data";
 import { autoTagProduct, updateAutoTags, updateProductFields, deleteProductRow, createSampleForProduct, updateProductImages, updateProductDocuments, recordAgencyProductMedia } from "./actions";
 import { imageUrl as sizedImage } from "@/lib/image-url";
 import { Lightbox } from "@/components/shared/Lightbox";
 import { TechPackPanel } from "@/components/products/TechPackPanel";
+import { PriceChangeNotice } from "@/components/products/PriceChangeNotice";
+import { pricesDiffer } from "@/lib/price-notify";
+import { ProductDates } from "@/components/products/ProductDates";
+import type { ProductJobSummary } from "@/app/(app)/techpacks/production-actions";
 
 const STAGES: Stage[] = ["brief", "sourcing", "sampling", "approved", "production", "qc", "shipped"];
 const CURRENCIES = ["USD", "GBP", "EUR", "CNY"];
@@ -38,6 +41,10 @@ interface Props {
   project: Project | null;
   client: Client | null;
   priceHistory: ProductPriceHistoryEntry[];
+  /** Tasks hung on this product — the Dates card treats the dated ones as its own. */
+  tasks: Task[];
+  /** The outsourced tech pack request, if there is one. */
+  techpackJob: ProductJobSummary | null;
   /** Rendered at the end of the main column — the production log release desk. */
   productionLog?: React.ReactNode;
   /** Rendered at the top of the right column — the stage control. */
@@ -710,67 +717,53 @@ function CollapsibleSection({
   );
 }
 
-function QuickAddTask({ projectId, productId, onClose }: { projectId: string; productId: string; onClose: () => void }) {
-  const router = useRouter();
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const titleRef = useRef<HTMLInputElement>(null);
-  const dueDateRef = useRef<HTMLInputElement>(null);
-  const assignedRef = useRef<HTMLInputElement>(null);
-
-  const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] placeholder:text-[var(--sa-text-tertiary)] outline-none focus:border-[var(--sa-accent)] transition-colors";
-
-  async function handleSave() {
-    const title = titleRef.current?.value.trim();
-    if (!title) { setError("Title is required"); return; }
-    setSaving(true);
-    const assigned = assignedRef.current?.value.trim() || "Unassigned";
-    const initials = assigned.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
-    const res = await createTask({
-      project_id: projectId,
-      product_id: productId,
-      title,
-      status: "todo",
-      assigned_to: assigned,
-      assigned_initials: initials,
-      due_date: dueDateRef.current?.value || null,
-      notes: "",
-    });
-    setSaving(false);
-    if (!res.success) { setError(res.error); return; }
-    router.refresh();
-    onClose();
-  }
-
+/**
+ * A heading in the sidebar that folds a run of cards away.
+ *
+ * The right-hand column had grown to eleven stacked panels, four of them
+ * tier editors that are empty on most styles. Rather than a card inside a
+ * card — which reads as a mistake — this is a plain row of text with a
+ * chevron, so what it hides keeps its own shape when opened.
+ */
+function SidebarGroup({
+  title, summary, defaultOpen = false, children,
+}: {
+  title: string;
+  summary: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.96 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.96 }}
-      className="relative z-10 w-full max-w-sm rounded-2xl bg-[var(--sa-window)] border border-[var(--sa-border)] shadow-2xl"
-    >
-      <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--sa-border)]">
-        <h2 className="text-[14px] font-semibold text-[var(--sa-text-primary)]">Add Task</h2>
-        <button onClick={onClose} className="rounded-lg p-1 hover:bg-[var(--sa-hover)]"><X size={15} className="text-[var(--sa-text-tertiary)]" /></button>
-      </div>
-      <div className="px-5 py-4 space-y-3">
-        <div><label className="block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">Title *</label>
-          <input ref={titleRef} autoFocus className={inputCls} placeholder="e.g. Book freight forwarder" /></div>
-        <div className="grid grid-cols-2 gap-3">
-          <div><label className="block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">Due date</label>
-            <input ref={dueDateRef} type="date" className={inputCls} /></div>
-          <div><label className="block text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)] mb-1">Assigned to</label>
-            <input ref={assignedRef} className={inputCls} placeholder="Your name" /></div>
-        </div>
-        {error && <p className="text-[12px] text-red-500">{error}</p>}
-      </div>
-      <div className="flex gap-2 px-5 py-4 border-t border-[var(--sa-border)]">
-        <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--sa-border)] py-2 text-[13px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors">Cancel</button>
-        <button onClick={handleSave} disabled={saving} className="flex-1 rounded-lg bg-[var(--sa-accent)] py-2 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-60 transition-opacity">
-          {saving ? "Saving…" : "Add Task"}
-        </button>
-      </div>
-    </motion.div>
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-[var(--sa-hover)]"
+      >
+        <motion.div animate={{ rotate: open ? 0 : -90 }} transition={{ duration: 0.18 }} className="shrink-0">
+          <ChevronDown size={12} className="text-[var(--sa-text-tertiary)]" />
+        </motion.div>
+        <span className="text-[12px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">
+          {title}
+        </span>
+        {!open && (
+          <span className="ml-auto truncate text-[10.5px] text-[var(--sa-text-tertiary)]">{summary}</span>
+        )}
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18, ease: "easeInOut" }}
+            className="overflow-hidden"
+          >
+            <div className="mt-2 space-y-3">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -812,8 +805,13 @@ function supplierCostForMoq(product: Product, moq: number): number | null {
  * while a quantity is a consequence.
  */
 function CompositionPricingCard({
-  product, onSaved, kind,
-}: { product: Product; onSaved: (p: Partial<Product>) => void; kind: "client" | "internal" }) {
+  product, onSaved, kind, onClientPriceChanged,
+}: {
+  product: Product;
+  onSaved: (p: Partial<Product>) => void;
+  kind: "client" | "internal";
+  onClientPriceChanged: (fields: string[]) => void;
+}) {
   const field = kind === "client" ? "composition_tiers" : "internal_composition_tiers";
   const title = kind === "client" ? "Composition pricing (client)" : "Composition pricing (internal)";
   const subtitle = kind === "client" ? "Shown in their portal when set" : "Supplier costs — internal only";
@@ -866,8 +864,10 @@ function CompositionPricingCard({
       );
       return;
     }
+    const movedForClient = kind === "client" && source.length > 0 && pricesDiffer(source, parsed);
     onSaved(updates);
     setEditing(false);
+    if (movedForClient) onClientPriceChanged(["composition_tiers"]);
   }
 
   const inputCls =
@@ -1010,7 +1010,12 @@ function CompositionPricingCard({
   );
 }
 
-function VolumePricingCard({ product, onSaved, kind }: { product: Product; onSaved: (p: Partial<Product>) => void; kind: "client" | "internal" }) {
+function VolumePricingCard({ product, onSaved, kind, onClientPriceChanged }: {
+  product: Product;
+  onSaved: (p: Partial<Product>) => void;
+  kind: "client" | "internal";
+  onClientPriceChanged: (fields: string[]) => void;
+}) {
   const field = kind === "client" ? "price_tiers" : "internal_price_tiers";
   const title = kind === "client" ? "Volume pricing (client)" : "Volume pricing (internal)";
   const subtitle = kind === "client" ? "Shown to client when set" : "Supplier costs — internal only";
@@ -1056,8 +1061,12 @@ function VolumePricingCard({ product, onSaved, kind }: { product: Product; onSav
       setSaveError(res.error);
       return;
     }
+    // Tiers appearing for the first time are new information, not a
+    // change to something they were already quoted.
+    const movedForClient = kind === "client" && source.length > 0 && pricesDiffer(source, parsed);
     onSaved(updates);
     setEditing(false);
+    if (movedForClient) onClientPriceChanged(["price_tiers"]);
   }
 
   const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-2.5 py-1.5 text-[12px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors font-mono";
@@ -1306,7 +1315,12 @@ function PriceHistoryCard({ history }: { history: ProductPriceHistoryEntry[] }) 
   );
 }
 
-function PricingCard({ product, onSaved }: { product: Product; onSaved: (p: Partial<Product>) => void }) {
+function PricingCard({ product, onSaved, onClientPriceChanged }: {
+  product: Product;
+  onSaved: (p: Partial<Product>) => void;
+  /** Fired when a figure the client can see has actually moved. */
+  onClientPriceChanged: (fields: string[]) => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -1344,8 +1358,18 @@ function PricingCard({ product, onSaved }: { product: Product; onSaved: (p: Part
     const res = await updateProductFields(product.id, updates as Record<string, unknown>);
     setSaving(false);
     if (!res.success) { setSaveError(res.error); return; }
+    // Of everything on this card, only the quoted price reaches the
+    // client. Target cost, sample cost and order quantity are ours.
+    //
+    // Setting a price for the first time is not a price change — there is
+    // nothing the client could already have been told — so the prompt
+    // only appears when there was a figure there before.
+    const movedForClient =
+      product.quoted_cost_usd != null &&
+      pricesDiffer(product.quoted_cost_usd, updates.quoted_cost_usd);
     onSaved(updates);
     setEditing(false);
+    if (movedForClient) onClientPriceChanged(["quoted_cost_usd"]);
   }
 
   const inputCls = "w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-2.5 py-1.5 text-[12px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors font-mono";
@@ -1811,6 +1835,8 @@ export function ProductDetailClient({
   project,
   client,
   priceHistory,
+  tasks,
+  techpackJob,
   productionLog,
   stageSelector,
 }: Props) {
@@ -1822,6 +1848,9 @@ export function ProductDetailClient({
   const [showExcludeModal, setShowExcludeModal] = useState(false);
   const [excludeSaving, setExcludeSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Which client-facing price fields were just saved, if any. Set by the
+  // pricing cards and cleared when the prompt is answered or dismissed.
+  const [priceNotice, setPriceNotice] = useState<string[] | null>(null);
 
   async function setProductionExclusion(reason: string | null) {
     setExcludeSaving(true);
@@ -1839,7 +1868,6 @@ export function ProductDetailClient({
   }
   const [localUpdates, setLocalUpdates] = useState(updates);
   const [newUpdate, setNewUpdate] = useState("");
-  const [showAddTask, setShowAddTask] = useState(false);
   const [localSamples, setLocalSamples] = useState(samples);
   const [showAddSample, setShowAddSample] = useState(false);
   const [localBom, setLocalBom] = useState<BomItem[]>(() => (product as any).bom_data ?? product.bom ?? []);
@@ -2279,41 +2307,57 @@ export function ProductDetailClient({
 
           {stageSelector}
 
-          {/* Pricing */}
-          <PricingCard product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
+          {/* Dates — what the Milestones list became. The old one read a
+              table nothing could write to, so it said "No milestones" on
+              every product in the system. This one gathers the dates the
+              product really has and lets you add your own. */}
+          <ProductDates
+            productId={product.id}
+            projectId={project?.id ?? null}
+            expectedSampleDate={product.expected_sample_date ?? null}
+            samples={localSamples}
+            milestones={milestones}
+            tasks={tasks}
+            job={techpackJob}
+            canEdit={Boolean(project)}
+          />
 
-          {/* Volume pricing tiers */}
-          <VolumePricingCard kind="client" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
-          <VolumePricingCard kind="internal" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
+          {/* Pricing */}
+          <PricingCard product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} onClientPriceChanged={setPriceNotice} />
+
           <TechPackPanel
             productId={product.id}
             needsDesign={Boolean(product.needs_design)}
             needsTechpack={Boolean(product.needs_techpack)}
           />
-          <CompositionPricingCard kind="client" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
-          <CompositionPricingCard kind="internal" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} />
+          {/* The four tier editors, folded away. They're empty on most
+              styles, and four empty panels in a 320px column is why this
+              sidebar had stopped being readable. */}
+          <SidebarGroup
+            title="Price tiers"
+            summary={(() => {
+              const parts: string[] = [];
+              const cv = product.price_tiers?.length ?? 0;
+              const cc = product.composition_tiers?.length ?? 0;
+              const iv = product.internal_price_tiers?.length ?? 0;
+              const ic = product.internal_composition_tiers?.length ?? 0;
+              if (cv + cc > 0) parts.push(`${cv + cc} for the client`);
+              if (iv + ic > 0) parts.push(`${iv + ic} of ours`);
+              return parts.length > 0 ? parts.join(" · ") : "none set";
+            })()}
+            defaultOpen={
+              (product.price_tiers?.length ?? 0) > 0 ||
+              (product.composition_tiers?.length ?? 0) > 0
+            }
+          >
+            <VolumePricingCard kind="client" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} onClientPriceChanged={setPriceNotice} />
+            <CompositionPricingCard kind="client" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} onClientPriceChanged={setPriceNotice} />
+            <VolumePricingCard kind="internal" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} onClientPriceChanged={setPriceNotice} />
+            <CompositionPricingCard kind="internal" product={product} onSaved={(updates) => setProduct((p) => ({ ...p, ...updates }))} onClientPriceChanged={setPriceNotice} />
+          </SidebarGroup>
 
           {/* Price history */}
           <PriceHistoryCard history={priceHistory} />
-
-          {/* Milestones */}
-          <section className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-bg)]">
-            <div className="flex items-center justify-between px-4 py-3 panel-border-b">
-              <span className="text-[12px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">
-                Milestones
-              </span>
-              <span className="text-[11px] text-[var(--sa-text-tertiary)]">
-                {milestones.filter((m) => m.completed_at).length}/{milestones.length}
-              </span>
-            </div>
-            <div className="px-4 py-2 divide-y divide-[var(--sa-border)]">
-              {milestones.length === 0 ? (
-                <p className="py-4 text-[12px] text-center text-[var(--sa-text-tertiary)]">No milestones</p>
-              ) : (
-                milestones.map((m) => <MilestoneItem key={m.id} milestone={m} />)
-              )}
-            </div>
-          </section>
 
           {/* Updates */}
           <section className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-bg)]">
@@ -2352,18 +2396,6 @@ export function ProductDetailClient({
             </div>
           </section>
 
-          {/* Quick add task */}
-          <section className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-bg)]">
-            <div className="flex items-center justify-between px-4 py-3 panel-border-b">
-              <span className="text-[12px] font-semibold uppercase tracking-wider text-[var(--sa-text-secondary)]">Tasks</span>
-              <button onClick={() => setShowAddTask(true)} className="flex items-center gap-1 text-[11px] text-[var(--sa-accent)] hover:opacity-70 transition-opacity">
-                <Plus size={11} strokeWidth={2.5} /> Add
-              </button>
-            </div>
-            <p className="px-4 py-3 text-[12px] text-[var(--sa-text-tertiary)]">
-              Tasks linked to this product appear on the Task board.
-            </p>
-          </section>
 
           {/* Notes */}
           {product.notes && (
@@ -2376,6 +2408,13 @@ export function ProductDetailClient({
       </div>
 
       <AnimatePresence>
+        {priceNotice && (
+          <PriceChangeNotice
+            productId={product.id}
+            fields={priceNotice}
+            onClose={() => setPriceNotice(null)}
+          />
+        )}
         {showAddMaterial && (
           <AddMaterialModal
             productId={product.id}
@@ -2391,17 +2430,6 @@ export function ProductDetailClient({
             onClose={() => setShowAddSample(false)}
             onSaved={(s) => setLocalSamples((prev) => [...prev, s])}
           />
-        )}
-        {showAddTask && project && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setShowAddTask(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-            <QuickAddTask
-              projectId={project.id}
-              productId={product.id}
-              onClose={() => setShowAddTask(false)}
-            />
-          </div>
         )}
         {showEdit && (
           <EditProductDrawer

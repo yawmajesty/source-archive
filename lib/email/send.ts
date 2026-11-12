@@ -44,7 +44,8 @@ export type EmailTemplate =
   | "daily_digest"
   | "invoice_chase"
   | "lead_declined"
-  | "techpack_studio_link";
+  | "techpack_studio_link"
+  | "price_changed_client";
 
 export interface OutboundEmail {
   agencyId: string;
