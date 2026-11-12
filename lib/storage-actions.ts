@@ -1,7 +1,8 @@
 "use server";
 
 import { auth } from "@clerk/nextjs/server";
-import { getAgencyServiceSupabase } from "./supabase-agency";
+import { getAgencyServiceSupabase, getAgencySupabase } from "./supabase-agency";
+import { getAgencyContext } from "./agency-data";
 
 // ─────────────────────────────────────────────────────────────
 // Upload authorization.
@@ -25,7 +26,7 @@ import { getAgencyServiceSupabase } from "./supabase-agency";
 const PUBLIC_BUCKETS = new Set(["product-media", "brief-attachments", "rfq-assets", "rfq-media", "moodboard-media", "brief-media", "portal-files"]);
 
 // Buckets only signed-in agency staff may write to.
-const AUTHED_BUCKETS = new Set(["brand-assets", "brand-receipts", "shoot-media"]);
+const AUTHED_BUCKETS = new Set(["brand-assets", "brand-receipts", "shoot-media", "cost-receipts"]);
 
 // Storage object keys reject characters that browsers and S3-style backends
 // disagree about. The common real-world offender is macOS screenshots, which
@@ -89,7 +90,36 @@ export async function createUploadTicket(bucket: string, path: string): Promise<
     if (!userId) return reject("You must be signed in to upload this file.");
   }
 
-  const key = sanitizeKey(path);
+  // cost-receipts holds pictures of money leaving the business, so it is the
+  // one private bucket uploaded to from the browser. Two things are decided
+  // here rather than taken on trust:
+  //
+  //   · The agency folder. The caller names "<cost id>/<file>" and the
+  //     agency prefix is prepended from the session, so a member of one
+  //     agency cannot write into another's folder by naming it.
+  //   · That the expense exists and is theirs. The read goes through the
+  //     RLS-bound client, so a member without `cost.view` sees no row and
+  //     gets no token — the same answer the costs page gives them.
+  let want = path;
+  if (bucket === "cost-receipts") {
+    const shape = /^([A-Za-z0-9_-]{3,64})\/(.+)$/.exec(path);
+    if (!shape) return reject("Invalid upload path.");
+
+    const ctx = await getAgencyContext();
+    if (!ctx) return reject("You must be signed in to upload this file.");
+
+    const db = await getAgencySupabase();
+    const { data: cost } = await db
+      .from("costs")
+      .select("id")
+      .eq("id", shape[1])
+      .maybeSingle();
+    if (!cost) return reject("That entry no longer exists.");
+
+    want = `${ctx.agency.id}/${path}`;
+  }
+
+  const key = sanitizeKey(want);
   if (!key) return reject("Invalid upload path.");
 
   const supabase = getAgencyServiceSupabase();

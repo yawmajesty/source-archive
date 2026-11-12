@@ -2,8 +2,9 @@
 
 import { useState, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
-import { Plus, ChevronDown, ChevronRight, ArrowDownLeft, ArrowUpRight, Pencil, Trash2, RotateCcw, Eye, EyeOff } from "lucide-react";
+import { Plus, ChevronDown, ChevronRight, ArrowDownLeft, ArrowUpRight, Pencil, Trash2, RotateCcw, Eye, EyeOff, Paperclip } from "lucide-react";
 import { softDeleteCost, restoreCost, createCost, updateCost } from "./actions";
+import { CostReceipts, StagedReceipts, uploadReceipts } from "@/components/costs/CostReceipts";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +20,12 @@ interface Props {
   clients: Client[];
   projects: Project[];
   products: Product[];
+  /**
+   * Which entries have a receipt attached. Worked out once on the server
+   * from a single storage listing — the alternative is one request per row,
+   * and this table runs to hundreds of rows.
+   */
+  receiptCostIds: string[];
 }
 
 function formatDate(d: string) {
@@ -252,7 +259,7 @@ function PLView({ costs, projects, clients, products }: { costs: Cost[]; project
   );
 }
 
-export function CostsPageClient({ costs, clients, projects, products }: Props) {
+export function CostsPageClient({ costs, clients, projects, products, receiptCostIds }: Props) {
   const router = useRouter();
   const [view, setView] = useState<"costs" | "pl">("costs");
   const [filterProject, setFilterProject] = useState<string>("all");
@@ -266,6 +273,9 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
   const [deleteReason, setDeleteReason] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [receiptsFor, setReceiptsFor] = useState<Cost | null>(null);
+
+  const hasReceipt = useMemo(() => new Set(receiptCostIds), [receiptCostIds]);
 
   const deletedCount = costs.filter((c) => c.deleted_at).length;
 
@@ -443,9 +453,9 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
         <div className="px-6 pb-6">
           <div className="rounded-xl border border-[var(--sa-border)] overflow-hidden bg-[var(--sa-window)]">
             {/* Col headers — desktop only */}
-            <div className="hidden sm:grid grid-cols-[24px_120px_1fr_1fr_100px_110px_80px_60px_32px] gap-3 px-4 py-2 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
-              {["", "Date", "Product", "Category", "Description", "Amount", "Billable", "Paid by", ""].map((h) => (
-                <span key={h} className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)]">{h}</span>
+            <div className="hidden sm:grid grid-cols-[24px_120px_1fr_1fr_100px_110px_80px_60px_28px_60px] gap-3 px-4 py-2 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
+              {["", "Date", "Product", "Category", "Description", "Amount", "Billable", "Paid by", "", ""].map((h, i) => (
+                <span key={i} className="text-[10px] uppercase tracking-wide font-semibold text-[var(--sa-text-tertiary)]">{h}</span>
               ))}
             </div>
 
@@ -493,6 +503,13 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
                             <span className={cn("font-mono font-semibold", cost.direction === "in" ? "text-[var(--sa-success)]" : "text-[var(--sa-text-primary)]", isDeleted && "line-through")}>
                               {cost.direction === "in" ? "+" : ""}${cost.amount_gbp.toLocaleString("en-US", { maximumFractionDigits: 0 })}
                             </span>
+                            <button
+                              onClick={() => setReceiptsFor(cost)}
+                              className={cn("p-1 rounded", hasReceipt.has(cost.id) ? "text-[var(--sa-accent)]" : "text-[var(--sa-text-tertiary)]")}
+                              title={hasReceipt.has(cost.id) ? "See the receipt" : "Attach a receipt"}
+                            >
+                              <Paperclip size={12} />
+                            </button>
                             {!isDeleted && (
                               <>
                                 <button onClick={() => setEditingCost(cost)} className="p-1 rounded text-[var(--sa-text-tertiary)] hover:text-[var(--sa-accent)]" title="Edit">
@@ -529,7 +546,7 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
                         </div>
                       </div>
                       {/* Desktop row */}
-                      <div className="hidden sm:grid grid-cols-[24px_120px_1fr_1fr_100px_110px_80px_60px_60px] gap-3 items-center px-4 py-2.5 text-[12px]">
+                      <div className="hidden sm:grid grid-cols-[24px_120px_1fr_1fr_100px_110px_80px_60px_28px_60px] gap-3 items-center px-4 py-2.5 text-[12px]">
                         <span>
                           {cost.direction === "in"
                             ? <ArrowDownLeft size={13} className="text-[var(--sa-success)]" />
@@ -557,6 +574,25 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
                         </span>
                         <span>{cost.billable_to_client ? <span className="text-[11px] text-[var(--sa-success)] font-medium">Yes</span> : <span className="text-[11px] text-[var(--sa-text-tertiary)]">No</span>}</span>
                         <span className="truncate text-[var(--sa-text-secondary)]">{cost.paid_by}</span>
+                        {/* Receipts. Lit when there is one, because "did we
+                            keep the invoice for that?" is the question this
+                            table gets asked at year end — and faint until
+                            hovered when there isn't, so an empty column
+                            doesn't read as a row of missing paperwork. */}
+                        <span className="flex items-center justify-center">
+                          <button
+                            onClick={() => setReceiptsFor(cost)}
+                            className={cn(
+                              "flex items-center justify-center rounded p-1 transition-all",
+                              hasReceipt.has(cost.id)
+                                ? "text-[var(--sa-accent)] hover:bg-[var(--sa-hover)]"
+                                : "text-[var(--sa-text-tertiary)] opacity-0 group-hover:opacity-100 hover:text-[var(--sa-accent)] hover:bg-[var(--sa-hover)]",
+                            )}
+                            title={hasReceipt.has(cost.id) ? "See the receipt" : "Attach a receipt"}
+                          >
+                            <Paperclip size={12} />
+                          </button>
+                        </span>
                         <span className="flex items-center justify-end gap-0.5">
                           {!isDeleted ? (
                             <>
@@ -649,6 +685,28 @@ export function CostsPageClient({ costs, clients, projects, products }: Props) {
               />
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Receipts */}
+      <Dialog open={!!receiptsFor} onOpenChange={(open) => { if (!open) setReceiptsFor(null); }}>
+        <DialogContent className="max-w-md bg-[var(--sa-window)]">
+          <DialogHeader>
+            <DialogTitle className="text-[var(--sa-text-primary)]">Receipt</DialogTitle>
+          </DialogHeader>
+          {receiptsFor && (
+            <div className="grid min-w-0 gap-3 pt-1">
+              <div className="rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[12px]">
+                <p className="font-medium text-[var(--sa-text-primary)]">{receiptsFor.description || "(no description)"}</p>
+                <p className="mt-0.5 text-[11px] text-[var(--sa-text-tertiary)]">
+                  {formatDate(receiptsFor.date_paid)} · {receiptsFor.direction === "in" ? "+" : ""}${receiptsFor.amount_gbp.toLocaleString("en-US", { maximumFractionDigits: 0 })} · {receiptsFor.paid_by}
+                </p>
+              </div>
+              {/* Keyed on the entry so switching rows without closing the
+                  dialog reloads the list instead of showing the last one. */}
+              <CostReceipts key={receiptsFor.id} costId={receiptsFor.id} />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -762,6 +820,10 @@ function AddCostForm({ projects, products, clients, onClose }: {
   const [costType, setCostType] = useState<"cogs" | "operating">("operating");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Held back rather than uploaded as they are picked: the upload is
+  // authorized against the expense, and cancelling this form should not
+  // leave files in storage with nothing pointing at them.
+  const [receiptFiles, setReceiptFiles] = useState<File[]>([]);
 
   const filteredProducts = products.filter((p) => !projectId || p.project_id === projectId);
 
@@ -778,8 +840,9 @@ function AddCostForm({ projects, products, clients, onClose }: {
     const fx = parseFloat(fxRate) || defaultFx[currency] || 1;
     const amtGbp = Math.round(amt * fx * 100) / 100;
 
+    const costId = "cost-" + Date.now();
     const res = await createCost({
-      id: "cost-" + Date.now(),
+      id: costId,
       project_id: projectId || null,
       client_id: clientId || null,
       product_id: productId || null,
@@ -796,8 +859,23 @@ function AddCostForm({ projects, products, clients, onClose }: {
       date_paid: date,
     });
 
+    if (!res.success) { setSaving(false); setError(res.error); return; }
+
+    if (receiptFiles.length > 0) {
+      const sent = await uploadReceipts(costId, receiptFiles);
+      if (sent.error) {
+        // The entry is saved and the number is right; only the file failed.
+        // Rolling back a correct expense over a failed photo would be worse,
+        // so the form stays open and says exactly what happened.
+        setSaving(false);
+        setError(`Entry saved, but the receipt didn't upload: ${sent.error}`);
+        setReceiptFiles([]);
+        router.refresh();
+        return;
+      }
+    }
+
     setSaving(false);
-    if (!res.success) { setError(res.error); return; }
     router.refresh();
     onClose();
   }
@@ -909,6 +987,10 @@ function AddCostForm({ projects, products, clients, onClose }: {
           <label htmlFor="billable" className="text-[13px] text-[var(--sa-text-secondary)]">Billable to client</label>
         </div>
       )}
+
+      <Field label="Receipt">
+        <StagedReceipts files={receiptFiles} onChange={setReceiptFiles} />
+      </Field>
 
       {error && <p className="text-[12px] text-[var(--sa-danger)]">{error}</p>}
 
@@ -1037,6 +1119,12 @@ function EditCostForm({ cost, projects, products, clients, onClose }: {
           <label htmlFor="edit-billable" className="text-[13px] text-[var(--sa-text-secondary)]">Billable to client</label>
         </div>
       )}
+
+      {/* Attached files save themselves as they are added, so they are not
+          waiting on Save Changes below. */}
+      <Field label="Receipt">
+        <CostReceipts costId={cost.id} />
+      </Field>
 
       {error && <p className="text-[12px] text-[var(--sa-danger)]">{error}</p>}
 

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getAgencySupabase } from "@/lib/supabase-agency";
+import { getAgencySupabase, getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { getAgencyContext } from "@/lib/agency-data";
 
 async function ctxOrThrow() {
@@ -83,12 +83,30 @@ export async function restoreCost(id: string): Promise<{ success: boolean; error
 }
 
 export async function purgeCost(id: string): Promise<{ success: boolean; error?: string }> {
-  await ctxOrThrow();
+  const ctx = await ctxOrThrow();
   const supabase = await getAgencySupabase();
   // Permanent hard-delete. Only callable from the trash view, on already
   // soft-deleted rows.
   const { error } = await supabase.from("costs").delete().eq("id", id).not("deleted_at", "is", null);
   if (error) return { success: false, error: error.message };
+
+  // The row is gone, so take its receipts with it. Attached files are the
+  // only record that they exist (see lib/cost-receipts.ts), and nothing
+  // would ever list them again — they would just sit in the storage bill.
+  //
+  // Deliberately after the delete and deliberately not fatal: a receipt
+  // left behind is untidy, but reporting a failed purge of a row that is
+  // already gone would be a lie.
+  try {
+    const svc = getAgencyServiceSupabase();
+    const folder = `${ctx.agency.id}/${id}`;
+    const { data } = await svc.storage.from("cost-receipts").list(folder, { limit: 100 });
+    const paths = (data ?? []).filter((f) => f.id).map((f) => `${folder}/${f.name}`);
+    if (paths.length > 0) await svc.storage.from("cost-receipts").remove(paths);
+  } catch {
+    // Nothing to tell the user: the entry is deleted either way.
+  }
+
   revalidatePath("/costs");
   return { success: true };
 }

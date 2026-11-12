@@ -49,6 +49,7 @@ const DESCRIBES: Record<string, string> = {
   "shoot-media": "Shoot and campaign references",
   "brand-assets": "Logos and portal branding",
   "brand-receipts": "Receipts from the studio tracker",
+  "cost-receipts": "Receipts attached to cost tracker entries",
   "rfq-media": "RFQ attachments",
   "rfq-assets": "RFQ attachments",
   backups: "Nightly database backups",
