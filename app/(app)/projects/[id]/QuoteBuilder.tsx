@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import type { Client, Product, Project, SavedInvoice, InvoiceLineItem, AgencySettings } from "@/lib/data";
 import { createProjectQuote, sendQuote, deleteQuote, markInvoicePaid, createBalanceInvoice } from "./actions";
 import { downloadInvoicePDF } from "@/lib/invoice-pdf";
+import { InvoiceExportDialog, InvoiceExportButton } from "@/components/invoices/InvoiceExportDialog";
 
 const SERVICE_PRESETS: string[] = [
   "Design",
@@ -76,6 +77,8 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
   const [unitPrices, setUnitPrices] = useState<Record<string, number>>({});
   const [depositPct, setDepositPct] = useState<number>(100);
   const [serviceLines, setServiceLines] = useState<ServiceLine[]>([]);
+  // Which saved invoice is being exported in another currency, if any.
+  const [exportingId, setExportingId] = useState<string | null>(null);
   const svcIdRef = useRef(0);
 
   const nextRound = savedInvoices.length > 0 ? Math.max(...savedInvoices.map((i) => i.round)) + 1 : 1;
@@ -755,6 +758,7 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                       >
                         <Download size={11} /> PDF
                       </button>
+                      <InvoiceExportButton onClick={() => setExportingId(inv.id)} />
                       <button
                         onClick={() => handleDelete(inv.id, inv.round)}
                         className="rounded p-1.5 text-[var(--sa-text-tertiary)] hover:text-red-500 hover:bg-red-50 transition-colors"
@@ -794,6 +798,8 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
           </div>
         )}
       </div>
+
+      <InvoiceExportDialog invoiceId={exportingId} onClose={() => setExportingId(null)} />
     </div>
   );
 }

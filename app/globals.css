@@ -550,6 +550,24 @@
    Each zone scrolls independently — a long activity feed must never
    push the product grid.
    ───────────────────────────────────────── */
+/* ─────────────────────────────────────────
+   The agency app shell.
+
+   100vh on a phone is not the part of the screen you can see — iOS Safari
+   measures it with the toolbars collapsed, so a 100vh app is taller than
+   the window and its last inch sits behind the address bar, out of reach
+   however hard you scroll. 100dvh is the visible height, and it follows
+   the toolbars as they come and go.
+
+   The client portal has done this since it was built (.portal-app below).
+   The backend had not, which is why the bottom of a long page was
+   unreachable on a phone.
+   ───────────────────────────────────────── */
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+}
+
 .portal-app {
   display: grid;
   grid-template-columns: 264px minmax(0, 1fr) 340px;

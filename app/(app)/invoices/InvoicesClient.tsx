@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Receipt, Send, Check, ExternalLink, ChevronDown, ChevronRight } from "lucide-react";
+import { Receipt, Send, Check, ExternalLink, ChevronDown, ChevronRight, Download } from "lucide-react";
 import { lineAmount, money } from "@/lib/invoice-total";
 import { setInvoiceStatus, draftInvoiceChase, sendInvoiceChase, archiveClient, type InvoiceRow } from "./actions";
 import { useRouter, useSearchParams } from "next/navigation";
 import { EmailDraftDialog } from "@/components/email/EmailDraftDialog";
 import { ParkInvoiceDialog } from "@/components/dashboard/ParkDialog";
 import { setInvoiceAside } from "@/app/(app)/dashboard/park-actions";
+import { InvoiceExportDialog } from "@/components/invoices/InvoiceExportDialog";
 
 const STATUS: Record<string, { label: string; bg: string; fg: string }> = {
   draft: { label: "Draft", bg: "var(--sa-hover)",       fg: "var(--sa-text-secondary)" },
@@ -26,6 +27,9 @@ export function InvoicesClient({ invoices: initial }: { invoices: InvoiceRow[] }
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Which invoice is being downloaded, if any. The dialog is the download:
+  // it opens in dollars and the other currencies are one tap away.
+  const [exportingId, setExportingId] = useState<string | null>(null);
 
   // Arriving from the dashboard opens the invoice that was clicked.
   useEffect(() => {
@@ -91,6 +95,7 @@ export function InvoicesClient({ invoices: initial }: { invoices: InvoiceRow[] }
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      <InvoiceExportDialog invoiceId={exportingId} onClose={() => setExportingId(null)} />
       {parking && (
         <ParkInvoiceDialog
           invoiceId={parking}
@@ -257,6 +262,13 @@ export function InvoicesClient({ invoices: initial }: { invoices: InvoiceRow[] }
                         )}
 
                         <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={() => { setError(null); setNotice(null); setExportingId(inv.id); }}
+                            className="flex items-center gap-1.5 rounded-md border border-[var(--sa-border)] px-3 py-1.5 text-[12.5px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]"
+                            title="Download as a PDF, in dollars or another currency"
+                          >
+                            <Download size={12} /> Download PDF
+                          </button>
                           {inv.status !== "paid" && (
                             <button
                               disabled={busy === inv.id}

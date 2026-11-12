@@ -9,6 +9,55 @@ import { esc, invoiceChaseDraft, leadReply, type Draft } from "@/lib/email/templ
 import { buildPublicUrl } from "@/lib/url";
 import { sumInvoice, money } from "@/lib/invoice-total";
 import { ageOf } from "@/lib/command-centre";
+import { getClient, getAgencySettings, type SavedInvoice, type Client, type AgencySettings } from "@/lib/data";
+
+// ─────────────────────────────────────────────────────────────
+// Everything needed to draw one invoice as a PDF.
+//
+// The export dialog could be handed the invoice it already has on screen,
+// but then the quote builder and the invoices list would be feeding it two
+// differently-shaped objects assembled at two different times. One loader,
+// read fresh, means a PDF always shows what is in the database now.
+// ─────────────────────────────────────────────────────────────
+
+export interface InvoiceExportBundle {
+  invoice: SavedInvoice | null;
+  client: Client | null;
+  agencySettings: AgencySettings | null;
+  error: string | null;
+}
+
+export async function getInvoiceForExport(invoiceId: string): Promise<InvoiceExportBundle> {
+  const empty = { invoice: null, client: null, agencySettings: null };
+
+  const ctx = await getAgencyContext();
+  if (!ctx) return { ...empty, error: "You are not signed in." };
+  // The same gate the invoices page itself uses: money is admin territory.
+  if (!can(ctx.role, ctx.permissions, "cost.view")) {
+    return { ...empty, error: "You do not have access to invoices." };
+  }
+
+  const supabase = await getAgencySupabase();
+  const { data, error } = await supabase
+    .from("sampling_invoices")
+    .select("*")
+    .eq("id", invoiceId)
+    .maybeSingle();
+
+  if (error) return { ...empty, error: error.message };
+  if (!data) return { ...empty, error: "That invoice no longer exists." };
+
+  const invoice = { ...data, line_items: data.line_items ?? [] } as SavedInvoice;
+
+  const [client, agencySettings] = await Promise.all([
+    getClient(invoice.client_id),
+    getAgencySettings(),
+  ]);
+
+  if (!client) return { ...empty, error: "The client on this invoice is missing." };
+
+  return { invoice, client, agencySettings, error: null };
+}
 
 export interface InvoiceRow {
   id: string;

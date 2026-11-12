@@ -778,8 +778,12 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
         {/* Collection header bar */}
         <div className="flex items-center justify-between gap-2 px-4 py-3 panel-border-b bg-[var(--sa-window)] shrink-0">
           <div className="flex items-center gap-1 text-[12px] text-[var(--sa-text-tertiary)] min-w-0 flex-1">
-            <span className="truncate shrink-0">{client?.name ?? "Client"}</span>
-            <ChevronRight size={11} className="shrink-0" />
+            {/* The client's name is shrink-0, so on a phone it took the whole
+                breadcrumb and squeezed the collection's own name down to
+                nothing. On a narrow screen the name of the thing you are
+                looking at wins; the client is one tap away up the tree. */}
+            <span className="hidden truncate shrink-0 sm:inline">{client?.name ?? "Client"}</span>
+            <ChevronRight size={11} className="hidden shrink-0 sm:block" />
             {editingName ? (
               <div className="flex items-center gap-1 min-w-0">
                 <input
@@ -809,7 +813,11 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
             )}
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          {/* shrink-0 keeps these four from being squeezed into nothing by a
+              long collection name. On a phone the labels go and the icons
+              stay, because 459px of buttons on a 390px screen put Add and
+              Delete off the edge entirely, with no way to scroll to them. */}
+          <div className="flex items-center gap-1.5 shrink-0 sm:gap-2">
             {/* View mode toggle */}
             <div className="flex items-center gap-0.5 rounded-lg bg-[var(--sa-bg)] p-0.5 border border-[var(--sa-border)]">
               <button onClick={() => setViewMode("dashboard")}
@@ -843,20 +851,23 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
               title="Generate an RFQ sheet for the factory"
               className="flex items-center gap-1 rounded-lg border border-[var(--sa-border)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--sa-text-secondary)] transition-colors hover:bg-[var(--sa-hover)]"
             >
-              <FileSpreadsheet size={12} /> RFQ Sheet
+              <FileSpreadsheet size={12} />
+              <span className="hidden sm:inline">RFQ Sheet</span>
             </button>
             <a
               href={`/api/projects/${project.id}/production-invoice`}
               title="Download Production Invoice .xlsx (approved products only)"
               className="flex items-center gap-1 rounded-lg border border-[var(--sa-border)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
             >
-              <FileSpreadsheet size={12} /> Production Invoice
+              <FileSpreadsheet size={12} />
+              <span className="hidden sm:inline">Production Invoice</span>
             </a>
             <button
               onClick={() => setShowAddProduct(true)}
               className="flex items-center gap-1 rounded-lg bg-[var(--sa-accent)] px-2.5 py-1.5 text-[11px] font-medium text-white hover:opacity-90 transition-opacity"
             >
-              <Plus size={12} /> Add
+              <Plus size={12} />
+              <span className="hidden sm:inline">Add</span>
             </button>
             <button onClick={handleDelete} title="Delete collection"
               className="flex items-center justify-center rounded-lg p-1.5 transition-colors hover:bg-red-50 text-[var(--sa-text-tertiary)] hover:text-red-600"

@@ -34,7 +34,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ).length;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--sa-bg)]">
+    <div className="app-shell flex overflow-hidden bg-[var(--sa-bg)]">
       <Sidebar
         clients={clients}
         overdueMilestones={overdueMilestones}

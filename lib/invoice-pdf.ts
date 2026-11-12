@@ -2,14 +2,29 @@
 // client portal and the backend quote builder.
 
 import type { Client, SavedInvoice, AgencySettings } from "./data";
+import {
+  convertedSum, exportMoney, formatAmount, isConverted, rateNote, shareOf,
+  BASE_CURRENCY, type ExportCurrency,
+} from "./invoice-currency";
 
-export function buildSavedInvoiceHTML(invoice: SavedInvoice, client: Client, agencySettings: AgencySettings): string {
+// Every figure on an invoice goes through one formatter. `exp` is the
+// currency the export is being made in — leave it out and nothing changes:
+// dollars, at par, exactly as the invoice is stored. The conversion is a
+// property of the export, never of the invoice. See lib/invoice-currency.ts.
+
+export function buildSavedInvoiceHTML(invoice: SavedInvoice, client: Client, agencySettings: AgencySettings, exp?: ExportCurrency): string {
+  const m = (usd: number) => exportMoney(usd, exp);
   const date = new Date(invoice.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-  const projectTotal = invoice.line_items.reduce((s, li) => s + li.amount_usd, 0);
   const isProduction = invoice.invoice_kind === "production";
   const deposit = invoice.deposit_percent ?? 100;
-  const dueNow = projectTotal * (deposit / 100);
-  const balanceLater = projectTotal - dueNow;
+  // Worked out in the currency being shown, from the lines as they are
+  // shown — see convertedSum. In dollars this is the same arithmetic as
+  // before, because converting at par changes nothing.
+  const code = exp?.currency ?? BASE_CURRENCY;
+  const t = (amount: number) => formatAmount(amount, code);
+  const projectTotal = convertedSum(invoice.line_items.map((li) => li.amount_usd), exp);
+  const dueNow = shareOf(projectTotal, deposit);
+  const balanceLater = Math.round((projectTotal - dueNow) * 100) / 100;
   const grandTotal = isProduction ? dueNow : projectTotal;
   const escAttr = (s: string) => s.replace(/"/g, "&quot;").replace(/&/g, "&amp;").replace(/</g, "&lt;");
 
@@ -19,7 +34,7 @@ export function buildSavedInvoiceHTML(invoice: SavedInvoice, client: Client, age
         ? `<img src="${escAttr(li.image_url)}" crossorigin="anonymous" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid #eee;display:block" />`
         : `<div style="width:56px;height:56px;border-radius:6px;border:1px dashed #ddd;background:#fafaf7;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:18px">·</div>`;
       const qty = li.qty != null ? li.qty.toLocaleString() : "—";
-      const unit = li.unit_price_usd != null ? `$${li.unit_price_usd.toFixed(2)}` : "—";
+      const unit = li.unit_price_usd != null ? m(li.unit_price_usd) : "—";
       return `
     <tr style="background:${i % 2 === 0 ? "#fff" : "#f9f9f7"}">
       <td style="padding:10px 12px;font-size:11px;color:#888;text-align:right;vertical-align:middle">${i + 1}</td>
@@ -30,7 +45,7 @@ export function buildSavedInvoiceHTML(invoice: SavedInvoice, client: Client, age
       </td>
       <td style="padding:10px 12px;font-size:12px;font-family:monospace;text-align:right;white-space:nowrap;vertical-align:middle;color:#1d1d1f">${qty}</td>
       <td style="padding:10px 12px;font-size:12px;font-family:monospace;text-align:right;white-space:nowrap;vertical-align:middle;color:#1d1d1f">${unit}</td>
-      <td style="padding:10px 12px;font-size:13px;font-weight:700;font-family:monospace;white-space:nowrap;text-align:right;vertical-align:middle">$${li.amount_usd.toFixed(2)}</td>
+      <td style="padding:10px 12px;font-size:13px;font-weight:700;font-family:monospace;white-space:nowrap;text-align:right;vertical-align:middle">${m(li.amount_usd)}</td>
     </tr>`;
     }
     return `
@@ -39,10 +54,10 @@ export function buildSavedInvoiceHTML(invoice: SavedInvoice, client: Client, age
       <td style="padding:10px 16px">
         <div style="font-size:12px;font-weight:500;color:#1d1d1f">${li.name}</div>
         <div style="font-size:10px;color:#888;margin-top:2px">${[li.category, li.project_name].filter(Boolean).join(" · ")}</div>
-        ${li.qty != null && li.unit_price_usd != null ? `<div style="font-size:10px;color:#888;margin-top:1px">${li.qty.toLocaleString()} × $${li.unit_price_usd.toFixed(2)}</div>` : ""}
+        ${li.qty != null && li.unit_price_usd != null ? `<div style="font-size:10px;color:#888;margin-top:1px">${li.qty.toLocaleString()} × ${m(li.unit_price_usd)}</div>` : ""}
       </td>
       <td style="padding:10px 16px;font-size:11px;color:#555;white-space:nowrap">${li.expected_date ? new Date(li.expected_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}</td>
-      <td style="padding:10px 16px;font-size:13px;font-weight:600;font-family:monospace;white-space:nowrap;text-align:right">$${li.amount_usd.toFixed(2)}</td>
+      <td style="padding:10px 16px;font-size:13px;font-weight:600;font-family:monospace;white-space:nowrap;text-align:right">${m(li.amount_usd)}</td>
     </tr>`;
   }).join("");
 
@@ -73,26 +88,26 @@ export function buildSavedInvoiceHTML(invoice: SavedInvoice, client: Client, age
   const totalsBreakdown = isProduction ? `
 <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid #eee;background:#fafaf7">
   <span style="font-size:12px;color:#555">Project total</span>
-  <span style="font-size:14px;font-weight:700;font-family:monospace">$${projectTotal.toFixed(2)}</span>
+  <span style="font-size:14px;font-weight:700;font-family:monospace">${t(projectTotal)}</span>
 </div>
 ${deposit < 100 ? `
 <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid #eee;background:#fff8e6">
   <span style="font-size:12px;color:#3a2900;font-weight:600">Due now (${deposit}% deposit)</span>
-  <span style="font-size:16px;font-weight:800;font-family:monospace;color:#3a2900">$${dueNow.toFixed(2)}</span>
+  <span style="font-size:16px;font-weight:800;font-family:monospace;color:#3a2900">${t(dueNow)}</span>
 </div>
 <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid #eee">
   <span style="font-size:12px;color:#555">Balance (${100 - deposit}%) — invoiced later</span>
-  <span style="font-size:14px;font-weight:600;font-family:monospace;color:#555">$${balanceLater.toFixed(2)}</span>
+  <span style="font-size:14px;font-weight:600;font-family:monospace;color:#555">${t(balanceLater)}</span>
 </div>
 ` : `
 <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-top:2px solid #eee">
   <span style="font-size:13px;font-weight:600">Total due</span>
-  <span style="font-size:16px;font-weight:800;font-family:monospace">$${projectTotal.toFixed(2)}</span>
+  <span style="font-size:16px;font-weight:800;font-family:monospace">${t(projectTotal)}</span>
 </div>
 `}` : `
 <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-top:2px solid #eee">
   <span style="font-size:13px;font-weight:600">Total</span>
-  <span style="font-size:16px;font-weight:800;font-family:monospace">$${grandTotal.toFixed(2)}</span>
+  <span style="font-size:16px;font-weight:800;font-family:monospace">${t(grandTotal)}</span>
 </div>`;
 
   // All styles are scoped to .koru-invoice so they don't leak when this HTML is
@@ -117,8 +132,8 @@ ${deposit < 100 ? `
   </div>
   <div style="text-align:right">
     <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#aaa">${dueLabel}</div>
-    <div style="font-size:28px;font-weight:800;font-family:monospace;margin-top:2px">$${grandTotal.toFixed(2)}</div>
-    ${isProduction && deposit < 100 ? `<div style="font-size:10px;color:#888;margin-top:2px">of $${projectTotal.toFixed(2)} project total</div>` : ""}
+    <div style="font-size:28px;font-weight:800;font-family:monospace;margin-top:2px">${t(grandTotal)}</div>
+    ${isProduction && deposit < 100 ? `<div style="font-size:10px;color:#888;margin-top:2px">of ${t(projectTotal)} project total</div>` : ""}
   </div>
 </div>
 ${invoice.notes ? `<p style="font-size:12px;color:#555;margin-bottom:20px;line-height:1.6">${esc(invoice.notes)}</p>` : `<div style="margin-bottom:20px"></div>`}
@@ -134,6 +149,7 @@ ${invoice.notes ? `<p style="font-size:12px;color:#555;margin-bottom:20px;line-h
 ${totalsBreakdown}
 </div>
 ${(bankBlock || termsBlock) ? `<div style="margin-top:24px;display:flex;gap:16px;align-items:flex-start">${bankBlock}${termsBlock}</div>` : ""}
+${isConverted(exp) ? `<div style="margin-top:16px;padding:10px 14px;border:1px solid #eee;border-radius:8px;background:#fafaf7;font-size:10px;color:#555">${esc(rateNote(exp) ?? "")}</div>` : ""}
 <div style="margin-top:16px;font-size:10px;color:#aaa;text-align:center">Generated by Kōru · ${date}</div>
 </div>`;
 
@@ -218,7 +234,10 @@ export function detectImageFormat(dataUrl: string): "JPEG" | "PNG" | "WEBP" {
   return "JPEG";
 }
 
-export async function downloadInvoicePDF(invoice: SavedInvoice, client: Client, agencySettings: AgencySettings): Promise<void> {
+export async function downloadInvoicePDF(invoice: SavedInvoice, client: Client, agencySettings: AgencySettings, exp?: ExportCurrency): Promise<void> {
+  // pdf: true so a symbol the built-in font cannot draw falls back to the
+  // currency code rather than printing a hollow box on an invoice.
+  const m = (usd: number) => exportMoney(usd, exp, { pdf: true });
   // Pre-fetch every line-item image as a data URL so jsPDF can embed it without
   // any cross-origin / load-timing race.
   const inlinedItems = await Promise.all(
@@ -242,10 +261,12 @@ export async function downloadInvoicePDF(invoice: SavedInvoice, client: Client, 
   const doc = new jsPDFCtor({ unit: "mm", format: "a4", orientation: "portrait" });
 
   const isProduction = invoice.invoice_kind === "production";
-  const projectTotal = inlinedItems.reduce((s, li) => s + li.amount_usd, 0);
   const deposit = invoice.deposit_percent ?? 100;
-  const dueNow = projectTotal * (deposit / 100);
-  const balanceLater = projectTotal - dueNow;
+  const code = exp?.currency ?? BASE_CURRENCY;
+  const t = (amount: number) => formatAmount(amount, code, { pdf: true });
+  const projectTotal = convertedSum(inlinedItems.map((li) => li.amount_usd), exp);
+  const dueNow = shareOf(projectTotal, deposit);
+  const balanceLater = Math.round((projectTotal - dueNow) * 100) / 100;
   const grandTotal = isProduction ? dueNow : projectTotal;
   const date = new Date(invoice.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
   const titleStr = invoice.title ?? (isProduction ? `Production Invoice` : `Sampling Invoice – Round ${invoice.round}`);
@@ -274,13 +295,13 @@ export async function downloadInvoicePDF(invoice: SavedInvoice, client: Client, 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(20);
   doc.setTextColor(29, 29, 31);
-  doc.text(`$${grandTotal.toFixed(2)}`, rightEdge, y + 3, { align: "right" });
+  doc.text(t(grandTotal), rightEdge, y + 3, { align: "right" });
 
   if (isProduction && deposit < 100) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(136, 136, 136);
-    doc.text(`of $${projectTotal.toFixed(2)} project total`, rightEdge, y + 8, { align: "right" });
+    doc.text(`of ${t(projectTotal)} project total`, rightEdge, y + 8, { align: "right" });
   }
 
   y += 18;
@@ -412,14 +433,14 @@ export async function downloadInvoicePDF(invoice: SavedInvoice, client: Client, 
     if (isProduction) {
       const midY = y + rowH / 2 + 1;
       const qtyStr = li.qty != null ? li.qty.toLocaleString() : "—";
-      const unitStr = li.unit_price_usd != null ? `$${li.unit_price_usd.toFixed(2)}` : "—";
+      const unitStr = li.unit_price_usd != null ? m(li.unit_price_usd) : "—";
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       doc.setTextColor(29, 29, 31);
       doc.text(qtyStr, cols[3].x + cols[3].w - 2, midY, { align: "right" });
       doc.text(unitStr, cols[4].x + cols[4].w - 2, midY, { align: "right" });
       doc.setFont("helvetica", "bold");
-      doc.text(`$${li.amount_usd.toFixed(2)}`, cols[5].x + cols[5].w - 2, midY, { align: "right" });
+      doc.text(m(li.amount_usd), cols[5].x + cols[5].w - 2, midY, { align: "right" });
     } else {
       const midY = y + rowH / 2 + 1;
       doc.setFont("helvetica", "normal");
@@ -429,7 +450,7 @@ export async function downloadInvoicePDF(invoice: SavedInvoice, client: Client, 
       doc.text(dateStr, cols[2].x + 2, midY);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(29, 29, 31);
-      doc.text(`$${li.amount_usd.toFixed(2)}`, cols[3].x + cols[3].w - 2, midY, { align: "right" });
+      doc.text(m(li.amount_usd), cols[3].x + cols[3].w - 2, midY, { align: "right" });
     }
 
     // Row separator
@@ -459,15 +480,26 @@ export async function downloadInvoicePDF(invoice: SavedInvoice, client: Client, 
   }
 
   if (isProduction) {
-    totalsLine("Project total", `$${projectTotal.toFixed(2)}`);
+    totalsLine("Project total", t(projectTotal));
     if (deposit < 100) {
-      totalsLine(`Due now (${deposit}% deposit)`, `$${dueNow.toFixed(2)}`, { highlight: true, bold: true });
-      totalsLine(`Balance (${100 - deposit}%) — invoiced later`, `$${balanceLater.toFixed(2)}`, { small: true });
+      totalsLine(`Due now (${deposit}% deposit)`, t(dueNow), { highlight: true, bold: true });
+      totalsLine(`Balance (${100 - deposit}%) — invoiced later`, t(balanceLater), { small: true });
     } else {
-      totalsLine("Total due", `$${projectTotal.toFixed(2)}`, { bold: true });
+      totalsLine("Total due", t(projectTotal), { bold: true });
     }
   } else {
-    totalsLine("Total", `$${grandTotal.toFixed(2)}`, { bold: true });
+    totalsLine("Total", t(grandTotal), { bold: true });
+  }
+
+  const note = rateNote(exp);
+  if (note) {
+    y += 4;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(85, 85, 85);
+    const noteLines = doc.splitTextToSize(note, CONTENT_W);
+    doc.text(noteLines, MARGIN, y);
+    y += noteLines.length * 4;
   }
 
   y += 4;
@@ -550,7 +582,8 @@ export async function downloadInvoicePDF(invoice: SavedInvoice, client: Client, 
     ? `Production-Invoice-Round-${invoice.round}`
     : `Sampling-Invoice-Round-${invoice.round}`;
   const safeClient = client.name.replace(/[^\w-]+/g, "_");
-  const filename = `${safeClient}-${baseName}.pdf`;
+  const suffix = isConverted(exp) && exp ? `-${exp.currency}` : "";
+  const filename = `${safeClient}-${baseName}${suffix}.pdf`;
 
   const blob: Blob = doc.output("blob");
   const url = URL.createObjectURL(blob);
