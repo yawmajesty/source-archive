@@ -420,7 +420,7 @@ export interface SavedInvoice {
   notes: string | null;
   status: string; // draft | sent | paid
   created_at: string;
-  invoice_kind?: "sampling" | "production" | null;
+  invoice_kind?: "sampling" | "production" | "techpack" | null;
   deposit_percent?: number | null;
   paid_at?: string | null;
   stripe_session_id?: string | null;

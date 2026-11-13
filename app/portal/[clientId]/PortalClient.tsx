@@ -1404,7 +1404,9 @@ function SamplingInvoice({
                     ? { color: "var(--portal-brand)", borderBottom: "2px solid var(--portal-brand)", marginBottom: "-1px" }
                     : { color: "var(--portal-text-secondary)" }}
                 >
-                  {inv.invoice_kind === "production" ? "Production" : `Round ${inv.round}`}
+                  {inv.invoice_kind === "production"
+                    ? "Production"
+                    : inv.invoice_kind === "techpack" ? "Tech packs" : `Round ${inv.round}`}
                 </button>
               ))}
             </div>
@@ -1415,12 +1417,15 @@ function SamplingInvoice({
             const statusCfg = STATUS_CFG[activeInvoice.status] ?? STATUS_CFG.draft;
             const invoiceDate = new Date(activeInvoice.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
             const isProduction = activeInvoice.invoice_kind === "production";
+            const isTechpack = activeInvoice.invoice_kind === "techpack";
             const deposit = activeInvoice.deposit_percent ?? 100;
             const dueNow = total * (deposit / 100);
             const balance = total - dueNow;
             const defaultTitle = isProduction
               ? `Production Invoice`
-              : `Round ${activeInvoice.round} Sampling`;
+              : isTechpack
+                ? `Tech Pack Quote`
+                : `Round ${activeInvoice.round} Sampling`;
             return (
               <>
                 <div className="flex items-start justify-between px-6 py-5" style={{ borderBottom: "1px solid var(--portal-border-subtle)", background: "var(--portal-thead)" }}>
@@ -1438,6 +1443,13 @@ function SamplingInvoice({
                           style={{ background: "var(--portal-brand)", color: "#fff" }}
                         >
                           Production
+                        </span>
+                      )}
+                      {isTechpack && (
+                        <span className="rounded-full px-2 py-0.5 text-[10px] font-medium leading-none"
+                          style={{ background: "var(--portal-brand)", color: "#fff" }}
+                        >
+                          Tech packs
                         </span>
                       )}
                     </div>

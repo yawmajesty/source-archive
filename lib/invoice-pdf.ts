@@ -6,6 +6,7 @@ import {
   convertedSum, exportMoney, formatAmount, isConverted, rateNote, shareOf,
   BASE_CURRENCY, type ExportCurrency,
 } from "./invoice-currency";
+import { isTechpackInvoice, TECHPACK_INVOICE_TITLE } from "./techpack-pricing";
 
 // Every figure on an invoice goes through one formatter. `exp` is the
 // currency the export is being made in — leave it out and nothing changes:
@@ -16,6 +17,7 @@ export function buildSavedInvoiceHTML(invoice: SavedInvoice, client: Client, age
   const m = (usd: number) => exportMoney(usd, exp);
   const date = new Date(invoice.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
   const isProduction = invoice.invoice_kind === "production";
+  const isTechpack = isTechpackInvoice(invoice.invoice_kind);
   const deposit = invoice.deposit_percent ?? 100;
   // Worked out in the currency being shown, from the lines as they are
   // shown — see convertedSum. In dollars this is the same arithmetic as
@@ -56,7 +58,7 @@ export function buildSavedInvoiceHTML(invoice: SavedInvoice, client: Client, age
         <div style="font-size:10px;color:#888;margin-top:2px">${[li.category, li.project_name].filter(Boolean).join(" · ")}</div>
         ${li.qty != null && li.unit_price_usd != null ? `<div style="font-size:10px;color:#888;margin-top:1px">${li.qty.toLocaleString()} × ${m(li.unit_price_usd)}</div>` : ""}
       </td>
-      <td style="padding:10px 16px;font-size:11px;color:#555;white-space:nowrap">${li.expected_date ? new Date(li.expected_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}</td>
+      ${isTechpack ? "" : `<td style="padding:10px 16px;font-size:11px;color:#555;white-space:nowrap">${li.expected_date ? new Date(li.expected_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}</td>`}
       <td style="padding:10px 16px;font-size:13px;font-weight:600;font-family:monospace;white-space:nowrap;text-align:right">${m(li.amount_usd)}</td>
     </tr>`;
   }).join("");
@@ -82,7 +84,9 @@ export function buildSavedInvoiceHTML(invoice: SavedInvoice, client: Client, age
   <p style="font-size:11px;color:#333;line-height:1.7">${esc(agencySettings.invoice_terms)}</p>
 </div>` : "";
 
-  const defaultTitle = isProduction ? `Production Invoice` : `Sampling Invoice – Round ${invoice.round}`;
+  const defaultTitle = isProduction
+    ? `Production Invoice`
+    : isTechpack ? TECHPACK_INVOICE_TITLE : `Sampling Invoice – Round ${invoice.round}`;
   const titleStr = invoice.title ?? defaultTitle;
   const dueLabel = isProduction && deposit < 100 ? `Due now (${deposit}% deposit)` : "Total due";
   const totalsBreakdown = isProduction ? `
@@ -142,7 +146,9 @@ ${invoice.notes ? `<p style="font-size:12px;color:#555;margin-bottom:20px;line-h
   <thead>
     ${isProduction
       ? `<tr><th style="width:2rem">#</th><th style="width:64px">Photo</th><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit price</th><th style="text-align:right">Line total</th></tr>`
-      : `<tr><th style="width:2rem">#</th><th>Item</th><th>Expected Date</th><th style="text-align:right">Amount</th></tr>`}
+      : isTechpack
+        ? `<tr><th style="width:2rem">#</th><th>Item</th><th style="text-align:right">Amount</th></tr>`
+        : `<tr><th style="width:2rem">#</th><th>Item</th><th>Expected Date</th><th style="text-align:right">Amount</th></tr>`}
   </thead>
   <tbody>${rows}</tbody>
 </table>
@@ -261,6 +267,7 @@ export async function downloadInvoicePDF(invoice: SavedInvoice, client: Client, 
   const doc = new jsPDFCtor({ unit: "mm", format: "a4", orientation: "portrait" });
 
   const isProduction = invoice.invoice_kind === "production";
+  const isTechpack = isTechpackInvoice(invoice.invoice_kind);
   const deposit = invoice.deposit_percent ?? 100;
   const code = exp?.currency ?? BASE_CURRENCY;
   const t = (amount: number) => formatAmount(amount, code, { pdf: true });
@@ -269,7 +276,9 @@ export async function downloadInvoicePDF(invoice: SavedInvoice, client: Client, 
   const balanceLater = Math.round((projectTotal - dueNow) * 100) / 100;
   const grandTotal = isProduction ? dueNow : projectTotal;
   const date = new Date(invoice.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-  const titleStr = invoice.title ?? (isProduction ? `Production Invoice` : `Sampling Invoice – Round ${invoice.round}`);
+  const titleStr = invoice.title ?? (isProduction
+    ? `Production Invoice`
+    : isTechpack ? TECHPACK_INVOICE_TITLE : `Sampling Invoice – Round ${invoice.round}`);
   const dueLabel = isProduction && deposit < 100 ? `DUE NOW (${deposit}% DEPOSIT)` : "TOTAL DUE";
 
   const rightEdge = MARGIN + CONTENT_W;
@@ -329,8 +338,12 @@ export async function downloadInvoicePDF(invoice: SavedInvoice, client: Client, 
       ]
     : [
         { label: "#",      x: MARGIN,         w: 8,   align: "left"  as const },
-        { label: "ITEM",   x: MARGIN + 8,     w: 110, align: "left"  as const },
-        { label: "DATE",   x: MARGIN + 118,   w: 32,  align: "left"  as const },
+        // A tech pack quote has no delivery dates on it, so the item
+        // name gets the room the date column would have taken. The
+        // column stays in the list at zero width so everything below
+        // can keep addressing these by position.
+        { label: "ITEM",   x: MARGIN + 8,     w: isTechpack ? 142 : 110, align: "left"  as const },
+        { label: isTechpack ? "" : "DATE", x: MARGIN + (isTechpack ? 150 : 118), w: isTechpack ? 0 : 32, align: "left" as const },
         { label: "AMOUNT", x: MARGIN + 150,   w: 30,  align: "right" as const },
       ];
 
@@ -446,8 +459,10 @@ export async function downloadInvoicePDF(invoice: SavedInvoice, client: Client, 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       doc.setTextColor(85, 85, 85);
-      const dateStr = li.expected_date ? new Date(li.expected_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
-      doc.text(dateStr, cols[2].x + 2, midY);
+      if (!isTechpack) {
+        const dateStr = li.expected_date ? new Date(li.expected_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
+        doc.text(dateStr, cols[2].x + 2, midY);
+      }
       doc.setFont("helvetica", "bold");
       doc.setTextColor(29, 29, 31);
       doc.text(m(li.amount_usd), cols[3].x + cols[3].w - 2, midY, { align: "right" });
@@ -580,7 +595,9 @@ export async function downloadInvoicePDF(invoice: SavedInvoice, client: Client, 
   // doc.save() across browsers and Safari in particular.
   const baseName = isProduction
     ? `Production-Invoice-Round-${invoice.round}`
-    : `Sampling-Invoice-Round-${invoice.round}`;
+    : isTechpack
+      ? `Tech-Pack-Quote-Round-${invoice.round}`
+      : `Sampling-Invoice-Round-${invoice.round}`;
   const safeClient = client.name.replace(/[^\w-]+/g, "_");
   const suffix = isConverted(exp) && exp ? `-${exp.currency}` : "";
   const filename = `${safeClient}-${baseName}${suffix}.pdf`;

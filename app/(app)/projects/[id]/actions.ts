@@ -18,7 +18,7 @@ export async function createProjectQuote(data: {
   project_id: string;
   round: number;
   line_items: InvoiceLineItem[];
-  invoice_kind?: "sampling" | "production";
+  invoice_kind?: "sampling" | "production" | "techpack";
   deposit_percent?: number;
   title?: string | null;
 }): Promise<void> {

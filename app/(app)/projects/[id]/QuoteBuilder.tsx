@@ -2,12 +2,16 @@
 
 import { useState, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, X, Send, CheckCircle2, FileText, Factory as FactoryIcon, Wallet, Download, Camera } from "lucide-react";
+import { Plus, Trash2, X, Send, CheckCircle2, FileText, Factory as FactoryIcon, Wallet, Download, Camera, Ruler } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Client, Product, Project, SavedInvoice, InvoiceLineItem, AgencySettings } from "@/lib/data";
 import { createProjectQuote, sendQuote, deleteQuote, markInvoicePaid, createBalanceInvoice } from "./actions";
 import { downloadInvoicePDF } from "@/lib/invoice-pdf";
 import { InvoiceExportDialog, InvoiceExportButton } from "@/components/invoices/InvoiceExportDialog";
+import {
+  TECHPACK_TIERS, DEFAULT_TECHPACK_TIER, TECHPACK_INVOICE_TITLE,
+  techpackPrice, techpackLineName, isTechpackInvoice, type TechpackTier,
+} from "@/lib/techpack-pricing";
 
 const SERVICE_PRESETS: string[] = [
   "Design",
@@ -50,7 +54,9 @@ const STATUS_CFG: Record<string, { label: string; bg: string; fg: string }> = {
   paid:  { label: "Paid",  bg: "#EAF3DE",          fg: "#27500A" },
 };
 
-type InvoiceKind = "sampling" | "production";
+// Tech packs are their own kind of quote: priced per garment at one of
+// three fixed tiers, always billed in full. See lib/techpack-pricing.ts.
+type InvoiceKind = "sampling" | "production" | "techpack";
 
 // Pick best available per-unit production price for a product.
 function defaultProductionUnitPrice(p: Product): number {
@@ -75,6 +81,8 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
   const [amounts, setAmounts] = useState<Record<string, number>>({});
   const [qtys, setQtys] = useState<Record<string, number>>({});
   const [unitPrices, setUnitPrices] = useState<Record<string, number>>({});
+  // Tech pack only: which tier each product was put in.
+  const [tiers, setTiers] = useState<Record<string, TechpackTier>>({});
   const [depositPct, setDepositPct] = useState<number>(100);
   const [serviceLines, setServiceLines] = useState<ServiceLine[]>([]);
   // Which saved invoice is being exported in another currency, if any.
@@ -108,6 +116,23 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
     setUnitPrices({});
   }
 
+  /**
+   * Products already flagged as needing a tech pack are the ones being
+   * quoted for. If nobody has flagged any, start with the whole collection
+   * ticked at the cheapest tier and let it be narrowed down — the same way
+   * sampling and production open.
+   */
+  function initTechpackState() {
+    const flagged = products.filter((p) => p.needs_techpack);
+    const start = flagged.length > 0 ? flagged : products;
+    setSelected(new Set(start.map((p) => p.id)));
+    setTiers(Object.fromEntries(products.map((p) => [p.id, DEFAULT_TECHPACK_TIER])));
+    setAmounts(Object.fromEntries(products.map((p) => [p.id, techpackPrice(DEFAULT_TECHPACK_TIER)])));
+    // One tech pack per garment unless told otherwise.
+    setQtys(Object.fromEntries(products.map((p) => [p.id, 1])));
+    setUnitPrices({});
+  }
+
   function initProductionState() {
     const withPrice = products.filter((p) => defaultProductionUnitPrice(p) > 0 && defaultProductionQty(p) > 0);
     setSelected(new Set(withPrice.map((p) => p.id)));
@@ -116,10 +141,16 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
     setUnitPrices(Object.fromEntries(products.map((p) => [p.id, defaultProductionUnitPrice(p)])));
   }
 
+  function initStateFor(k: InvoiceKind) {
+    if (k === "production") initProductionState();
+    else if (k === "techpack") initTechpackState();
+    else initSamplingState();
+  }
+
   function openBuilder(forKind: InvoiceKind = "sampling") {
     setKind(forKind);
     setDepositPct(forKind === "production" ? 50 : 100);
-    if (forKind === "production") initProductionState(); else initSamplingState();
+    initStateFor(forKind);
     setServiceLines([]);
     setShowBuilder(true);
   }
@@ -128,7 +159,18 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
     if (next === kind) return;
     setKind(next);
     setDepositPct(next === "production" ? 50 : 100);
-    if (next === "production") initProductionState(); else initSamplingState();
+    initStateFor(next);
+  }
+
+  /**
+   * Picking a tier ticks the product and fills in that tier's price. The
+   * price stays editable afterwards, so a one-off discount does not need a
+   * fourth tier inventing for it.
+   */
+  function setTier(id: string, tier: TechpackTier) {
+    setTiers((prev) => ({ ...prev, [id]: tier }));
+    setAmounts((prev) => ({ ...prev, [id]: techpackPrice(tier) }));
+    setSelected((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
   }
 
   function toggleProduct(id: string) {
@@ -199,6 +241,23 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
           image_url: firstImage,
         };
       }
+      if (kind === "techpack") {
+        const tier = tiers[id] ?? DEFAULT_TECHPACK_TIER;
+        const packs = Math.max(1, qtys[id] ?? 1);
+        const fee = amounts[id] ?? techpackPrice(tier);
+        return {
+          name: techpackLineName(p.name, tier),
+          category: p.category,
+          project_name: project.name,
+          amount_usd: packs * fee,
+          expected_date: null,
+          kind: "service",
+          // Only when there is more than one, so a single pack reads as a
+          // fee rather than as "1 × $220".
+          qty: packs > 1 ? packs : null,
+          unit_price_usd: packs > 1 ? fee : null,
+        };
+      }
       const sampleQty = Math.max(1, qtys[id] ?? 1);
       const sampleFee = amounts[id] ?? p.sample_fee_usd ?? 0;
       return {
@@ -236,7 +295,10 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
       line_items: [...productItems, ...serviceItems],
       invoice_kind: kind,
       deposit_percent: depositPct,
-      title: kind === "production" ? `Production invoice` : null,
+      title:
+        kind === "production" ? `Production invoice`
+        : kind === "techpack" ? TECHPACK_INVOICE_TITLE
+        : null,
     });
     setSaving(false);
     setShowBuilder(false);
@@ -279,12 +341,18 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
             </p>
           </div>
           {!showBuilder && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <button
                 onClick={() => openBuilder("sampling")}
                 className="flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-3 py-1.5 text-[12px] font-medium text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
               >
                 <Plus size={12} /> Sampling quote
+              </button>
+              <button
+                onClick={() => openBuilder("techpack")}
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-3 py-1.5 text-[12px] font-medium text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
+              >
+                <Ruler size={12} /> Tech packs
               </button>
               <button
                 onClick={() => openBuilder("production")}
@@ -299,15 +367,17 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
         {/* Builder panel */}
         {showBuilder && (
           <div className="rounded-xl overflow-hidden border border-[var(--sa-border)] bg-[var(--sa-window)]">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
-              <div>
+            <div className="flex flex-wrap items-start justify-between gap-2 px-5 py-3 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
+              <div className="min-w-0">
                 <p className="text-[13px] font-semibold text-[var(--sa-text-primary)]">
-                  Round {nextRound} — New {kind === "production" ? "production invoice" : "sampling quote"}
+                  Round {nextRound} — New {kind === "production" ? "production invoice" : kind === "techpack" ? "tech pack quote" : "sampling quote"}
                 </p>
                 <p className="text-[11px] mt-0.5 text-[var(--sa-text-tertiary)]">
                   {kind === "production"
                     ? "Set quantity and unit price per product, then choose how much to invoice now"
-                    : "Select products and add any services"}
+                    : kind === "techpack"
+                      ? "Tick a product, then pick Simple, Technical or Advanced"
+                      : "Select products and add any services"}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -315,16 +385,25 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                   <button
                     onClick={() => switchKind("sampling")}
                     className={cn(
-                      "px-2.5 py-1 text-[11px] font-medium transition-colors",
+                      "whitespace-nowrap px-2.5 py-1 text-[11px] font-medium transition-colors",
                       kind === "sampling" ? "bg-[var(--sa-accent)] text-white" : "text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]",
                     )}
                   >
                     Sampling
                   </button>
                   <button
+                    onClick={() => switchKind("techpack")}
+                    className={cn(
+                      "whitespace-nowrap px-2.5 py-1 text-[11px] font-medium transition-colors border-l border-[var(--sa-border)]",
+                      kind === "techpack" ? "bg-[var(--sa-accent)] text-white" : "text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]",
+                    )}
+                  >
+                    Tech packs
+                  </button>
+                  <button
                     onClick={() => switchKind("production")}
                     className={cn(
-                      "px-2.5 py-1 text-[11px] font-medium transition-colors border-l border-[var(--sa-border)]",
+                      "whitespace-nowrap px-2.5 py-1 text-[11px] font-medium transition-colors border-l border-[var(--sa-border)]",
                       kind === "production" ? "bg-[var(--sa-accent)] text-white" : "text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]",
                     )}
                   >
@@ -349,7 +428,7 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                   {products.map((p, i) => (
                     <div
                       key={p.id}
-                      className={cn("flex items-center gap-3 px-3 py-2.5 cursor-pointer",
+                      className={cn("flex flex-wrap items-center gap-3 px-3 py-2.5 cursor-pointer",
                         selected.has(p.id) && "bg-[var(--sa-accent)]/5",
                         i < products.length - 1 && "border-b border-[var(--sa-border)]"
                       )}
@@ -430,6 +509,58 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                             <span className="font-mono text-[12px] font-semibold text-[var(--sa-text-primary)] w-24 text-right whitespace-nowrap">
                               ${(qty * unit).toFixed(2)}
                             </span>
+                          </div>
+                        );
+                      })()}
+                      {selected.has(p.id) && kind === "techpack" && (() => {
+                        const tier = tiers[p.id] ?? DEFAULT_TECHPACK_TIER;
+                        const packs = Math.max(1, qtys[p.id] ?? 1);
+                        const fee = amounts[p.id] ?? techpackPrice(tier);
+                        return (
+                          <div className="flex w-full flex-wrap items-center justify-end gap-1.5 sm:w-auto sm:shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center overflow-hidden rounded-lg border border-[var(--sa-border)]">
+                              {TECHPACK_TIERS.map((t, ti) => (
+                                <button
+                                  key={t.tier}
+                                  onClick={() => setTier(p.id, t.tier)}
+                                  title={`$${t.price} per tech pack`}
+                                  className={cn(
+                                    "px-2 py-1 text-[11px] font-medium transition-colors",
+                                    ti > 0 && "border-l border-[var(--sa-border)]",
+                                    tier === t.tier
+                                      ? "bg-[var(--sa-accent)] text-white"
+                                      : "text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]",
+                                  )}
+                                >
+                                  {t.label}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={packs}
+                                onChange={(e) => setQtys((prev) => ({ ...prev, [p.id]: Math.max(1, parseInt(e.target.value) || 1) }))}
+                                className="rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[12px] font-mono outline-none w-12 text-right text-[var(--sa-text-primary)]"
+                                title="How many tech packs for this product"
+                              />
+                              <span className="text-[11px] text-[var(--sa-text-tertiary)]">× $</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={fee}
+                                onChange={(e) => setAmounts((prev) => ({ ...prev, [p.id]: parseFloat(e.target.value) || 0 }))}
+                                className="rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[12px] font-mono outline-none w-20 text-right text-[var(--sa-text-primary)]"
+                              />
+                              {packs > 1 && (
+                                <span className="font-mono text-[12px] font-semibold text-[var(--sa-text-primary)] w-20 text-right whitespace-nowrap">
+                                  ${(packs * fee).toFixed(2)}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         );
                       })()}
@@ -620,7 +751,7 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
             <div className="flex items-center justify-between px-5 py-3 bg-[var(--sa-bg)]">
               <div>
                 <span className="text-[11px] text-[var(--sa-text-tertiary)]">
-                  {selected.size} product{selected.size !== 1 ? "s" : ""}
+                  {selected.size} {kind === "techpack" ? "tech pack" : "product"}{selected.size !== 1 ? "s" : ""}
                   {serviceLines.length > 0 && ` · ${serviceLines.length} service${serviceLines.length !== 1 ? "s" : ""}`}
                 </span>
                 <span className="mx-2 text-[11px] text-[var(--sa-border)]">·</span>
@@ -662,6 +793,7 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
               const total = inv.line_items.reduce((s, li) => s + li.amount_usd, 0);
               const cfg = STATUS_CFG[inv.status] ?? STATUS_CFG.draft;
               const isProduction = inv.invoice_kind === "production";
+              const isTechpack = isTechpackInvoice(inv.invoice_kind);
               const deposit = Number(inv.deposit_percent ?? 100);
               const dueNow = total * (deposit / 100);
               const isBalance = !!inv.parent_invoice_id;
@@ -679,7 +811,11 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                         "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium leading-none",
                         isProduction ? "bg-[var(--sa-accent)]/10 text-[var(--sa-accent)]" : "bg-[var(--sa-hover)] text-[var(--sa-text-secondary)]",
                       )}>
-                        {isProduction ? <><FactoryIcon size={9} /> Production</> : <><FileText size={9} /> Sampling</>}
+                        {isProduction
+                          ? <><FactoryIcon size={9} /> Production</>
+                          : isTechpack
+                            ? <><Ruler size={9} /> Tech packs</>
+                            : <><FileText size={9} /> Sampling</>}
                       </span>
                       {isDeposit && (
                         <span className="rounded-full bg-amber-50 dark:bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 leading-none">
@@ -693,7 +829,9 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                       )}
                       <div>
                         <p className="text-[13px] font-semibold text-[var(--sa-text-primary)]">
-                          {isProduction ? (isBalance ? "Balance" : "Production") : `Round ${inv.round}`}
+                          {isProduction
+                            ? (isBalance ? "Balance" : "Production")
+                            : isTechpack ? "Tech packs" : `Round ${inv.round}`}
                         </p>
                         <p className="text-[10px] text-[var(--sa-text-tertiary)]">
                           {new Date(inv.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
