@@ -135,6 +135,56 @@ export async function changeProductStage(
 }
 
 /**
+ * "It is still here."
+ *
+ * Pressing the stage a product is already in used to do nothing, which
+ * is the one thing somebody checking in on a style would naturally do —
+ * and the daily check-in email has no date to show for a style until
+ * somebody does. This records the date without moving anything.
+ *
+ * It does not tell the client, because nothing happened to tell them
+ * about: visible_to_client defaults to true on this table and the portal
+ * timeline filters on it, so it is set false explicitly.
+ */
+export async function confirmProductStage(
+  productId: string,
+  note?: string,
+): Promise<{ success: true; stage: string } | { success: false; error: string }> {
+  const ctx = await getAgencyContext();
+  if (!ctx) return { success: false, error: "Not a member of any agency" };
+  if (!can(ctx.role, ctx.permissions, "stage.change")) {
+    return { success: false, error: "You don't have permission to move products between stages" };
+  }
+
+  const supabase = await getAgencySupabase();
+  const { data: product } = await supabase
+    .from("products")
+    .select("id, stage, agency_id")
+    .eq("id", productId)
+    .maybeSingle();
+  if (!product) return { success: false, error: "Product not found" };
+
+  const stage = (product as { stage: string | null }).stage;
+  if (!stage) return { success: false, error: "This product has no stage set yet" };
+
+  const { error } = await supabase.from("product_stage_events").insert({
+    agency_id: (product as { agency_id: string }).agency_id,
+    product_id: productId,
+    from_stage: stage,
+    to_stage: stage,
+    note: note?.trim() || "Confirmed still at this stage",
+    changed_by: ctx.currentUserId,
+    changed_by_name: ctx.agency.name ?? null,
+    visible_to_client: false,
+  });
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/products/${productId}`);
+  revalidatePath("/workshop");
+  return { success: true, stage };
+}
+
+/**
  * Email the client that their garment has moved.
  *
  * Uses the service-role client to resolve the recipients: the person who

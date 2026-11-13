@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Check, Loader2 } from "lucide-react";
-import { changeProductStage } from "./stage-actions";
+import { changeProductStage, confirmProductStage } from "./stage-actions";
 import { STAGE_LABEL, stagesForProduct } from "@/lib/stages";
 
 /**
@@ -27,9 +27,14 @@ export function StageSelector({ productId, stage, canChange, needsDesign, needsT
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [justMoved, setJustMoved] = useState(false);
+  const [justConfirmed, setJustConfirmed] = useState(false);
 
   async function move(to: string) {
-    if (to === current || busy) return;
+    if (busy) return;
+    // Pressing the stage it is already in means "it is still here", which
+    // is worth recording: until somebody does, the daily check-in email
+    // has no date to show for this style.
+    if (to === current) return confirmStillHere();
     setBusy(to); setError(null);
     const res = await changeProductStage(productId, to);
     if (!res.success) setError(res.error);
@@ -37,6 +42,18 @@ export function StageSelector({ productId, stage, canChange, needsDesign, needsT
       setCurrent(to);
       setJustMoved(true);
       setTimeout(() => setJustMoved(false), 2500);
+    }
+    setBusy(null);
+  }
+
+  /** Records today against the current stage. The client is not told. */
+  async function confirmStillHere() {
+    setBusy(current); setError(null);
+    const res = await confirmProductStage(productId);
+    if (!res.success) setError(res.error);
+    else {
+      setJustConfirmed(true);
+      setTimeout(() => setJustConfirmed(false), 2500);
     }
     setBusy(null);
   }
@@ -50,6 +67,11 @@ export function StageSelector({ productId, stage, canChange, needsDesign, needsT
         {justMoved && (
           <span className="flex items-center gap-1 text-[11px] text-emerald-600">
             <Check size={11} /> Client can see this
+          </span>
+        )}
+        {justConfirmed && (
+          <span className="flex items-center gap-1 text-[11px] text-emerald-600">
+            <Check size={11} /> Noted — still here
           </span>
         )}
       </div>
@@ -71,7 +93,7 @@ export function StageSelector({ productId, stage, canChange, needsDesign, needsT
                 key={s.id}
                 onClick={() => move(s.id)}
                 disabled={!!busy}
-                title={s.hint}
+                title={isCurrent ? `${s.hint} — press again to record that it is still here` : s.hint}
                 className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors disabled:opacity-60"
                 style={{
                   background: isCurrent ? "var(--sa-accent)" : "transparent",
