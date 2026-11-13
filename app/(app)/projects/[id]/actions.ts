@@ -39,6 +39,77 @@ export async function createProjectQuote(data: {
   revalidatePath(`/portal/${data.client_id}`);
 }
 
+/**
+ * Change what a draft says.
+ *
+ * Drafts only, and the check is made here rather than only in the UI —
+ * a page left open while somebody else pressed Send is exactly how a
+ * sent invoice gets edited. Once a quote has gone out the client holds a
+ * copy with numbers on it, and quietly changing ours would leave the two
+ * disagreeing with nothing on the record to say why. A correction after
+ * that is a new round, not an edit.
+ *
+ * The status is matched again in the update itself, so a Send landing
+ * between the read and the write loses the race rather than the edit
+ * silently overwriting a sent quote.
+ */
+export async function updateQuote(input: {
+  invoice_id: string;
+  client_id: string;
+  project_id: string;
+  line_items: InvoiceLineItem[];
+  deposit_percent?: number;
+}): Promise<{ success: true } | { success: false; error: string }> {
+  await ctxOrThrow();
+  const supabase = await getAgencySupabase();
+
+  const { data: existing } = await supabase
+    .from("sampling_invoices")
+    .select("id, status")
+    .eq("id", input.invoice_id)
+    .maybeSingle();
+  if (!existing) return { success: false, error: "That quote no longer exists." };
+
+  const status = (existing as { status: string | null }).status ?? "draft";
+  if (status !== "draft") {
+    return {
+      success: false,
+      error:
+        status === "paid"
+          ? "This invoice has been paid, so it can't be edited. Raise a new round instead."
+          : "This quote has already been sent, so it can't be edited. Raise a new round instead.",
+    };
+  }
+
+  // An empty name or a figure that is not a number would save, and then
+  // print as a blank line or as NaN on the PDF.
+  const cleaned = input.line_items
+    .map((li) => ({ ...li, name: li.name.trim() }))
+    .filter((li) => li.name && Number.isFinite(li.amount_usd));
+  if (cleaned.length === 0) {
+    return { success: false, error: "A quote needs at least one line with a name and an amount." };
+  }
+
+  const deposit =
+    input.deposit_percent == null
+      ? null
+      : Math.max(0, Math.min(100, input.deposit_percent));
+
+  const { error } = await supabase
+    .from("sampling_invoices")
+    .update({
+      line_items: cleaned,
+      ...(deposit == null ? {} : { deposit_percent: deposit }),
+    })
+    .eq("id", input.invoice_id)
+    .eq("status", "draft");
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/projects/${input.project_id}`);
+  revalidatePath(`/portal/${input.client_id}`);
+  return { success: true };
+}
+
 export async function sendQuote(invoiceId: string, clientId: string, projectId: string): Promise<void> {
   const ctx = await ctxOrThrow();
   const supabase = await getAgencySupabase();

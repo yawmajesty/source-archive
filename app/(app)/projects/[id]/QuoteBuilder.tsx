@@ -2,10 +2,10 @@
 
 import { useState, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, X, Send, CheckCircle2, FileText, Factory as FactoryIcon, Wallet, Download, Camera, Ruler } from "lucide-react";
+import { Plus, Trash2, X, Send, CheckCircle2, FileText, Factory as FactoryIcon, Wallet, Download, Camera, Ruler, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Client, Product, Project, SavedInvoice, InvoiceLineItem, AgencySettings } from "@/lib/data";
-import { createProjectQuote, sendQuote, deleteQuote, markInvoicePaid, createBalanceInvoice } from "./actions";
+import { createProjectQuote, sendQuote, deleteQuote, markInvoicePaid, createBalanceInvoice, updateQuote } from "./actions";
 import { downloadInvoicePDF } from "@/lib/invoice-pdf";
 import { InvoiceExportDialog, InvoiceExportButton } from "@/components/invoices/InvoiceExportDialog";
 import {
@@ -87,6 +87,13 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
   const [serviceLines, setServiceLines] = useState<ServiceLine[]>([]);
   // Which saved invoice is being exported in another currency, if any.
   const [exportingId, setExportingId] = useState<string | null>(null);
+  // Editing a draft in place. editLines is a copy, so cancelling leaves
+  // the saved quote exactly as it was.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLines, setEditLines] = useState<InvoiceLineItem[]>([]);
+  const [editDeposit, setEditDeposit] = useState(100);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
   const svcIdRef = useRef(0);
 
   const nextRound = savedInvoices.length > 0 ? Math.max(...savedInvoices.map((i) => i.round)) + 1 : 1;
@@ -320,6 +327,70 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
     if (!window.confirm(`Mark this invoice as paid ($${dueAmount.toFixed(2)})? Use this for payments received outside Stripe (bank transfer, cash, etc.).`)) return;
     const res = await markInvoicePaid(id, client.id, project.id);
     if (!res.success) { alert(res.error ?? "Failed to mark paid"); return; }
+    startTransition(() => router.refresh());
+  }
+
+  function startEdit(inv: SavedInvoice) {
+    setEditingId(inv.id);
+    setEditLines(inv.line_items.map((li) => ({ ...li })));
+    setEditDeposit(Number(inv.deposit_percent ?? 100));
+    setEditError(null);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditLines([]);
+    setEditError(null);
+  }
+
+  function updateEditLine(index: number, patch: Partial<InvoiceLineItem>) {
+    setEditLines((prev) =>
+      prev.map((li, i) => {
+        if (i !== index) return li;
+        const next = { ...li, ...patch };
+        // A line that shows its working — "6 × $45.00" — must never print
+        // a total that disagrees with the two numbers above it.
+        const changedWorking = "qty" in patch || "unit_price_usd" in patch;
+        if (changedWorking && next.qty != null && next.unit_price_usd != null) {
+          next.amount_usd = Math.round(next.qty * next.unit_price_usd * 100) / 100;
+        }
+        return next;
+      }),
+    );
+  }
+
+  function removeEditLine(index: number) {
+    setEditLines((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function addEditLine() {
+    setEditLines((prev) => [
+      ...prev,
+      {
+        name: "",
+        category: "Service",
+        project_name: project.name,
+        amount_usd: 0,
+        expected_date: null,
+        kind: "service",
+      },
+    ]);
+  }
+
+  async function handleSaveEdit(inv: SavedInvoice) {
+    setSavingEdit(true);
+    setEditError(null);
+    const res = await updateQuote({
+      invoice_id: inv.id,
+      client_id: client.id,
+      project_id: project.id,
+      line_items: editLines,
+      deposit_percent: inv.invoice_kind === "production" ? editDeposit : undefined,
+    });
+    setSavingEdit(false);
+    if (!res.success) { setEditError(res.error); return; }
+    setEditingId(null);
+    setEditLines([]);
     startTransition(() => router.refresh());
   }
 
@@ -790,11 +861,16 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
         ) : (
           <div className="flex flex-col gap-3">
             {savedInvoices.slice().sort((a, b) => b.round - a.round).map((inv) => {
-              const total = inv.line_items.reduce((s, li) => s + li.amount_usd, 0);
+              const isEditing = editingId === inv.id;
+              // While editing, the heading has to agree with the rows
+              // underneath it or the figure you are working towards is
+              // the one you are not looking at.
+              const lines = isEditing ? editLines : inv.line_items;
+              const total = lines.reduce((s, li) => s + li.amount_usd, 0);
               const cfg = STATUS_CFG[inv.status] ?? STATUS_CFG.draft;
               const isProduction = inv.invoice_kind === "production";
               const isTechpack = isTechpackInvoice(inv.invoice_kind);
-              const deposit = Number(inv.deposit_percent ?? 100);
+              const deposit = isEditing && isProduction ? editDeposit : Number(inv.deposit_percent ?? 100);
               const dueNow = total * (deposit / 100);
               const isBalance = !!inv.parent_invoice_id;
               const isDeposit = isProduction && !isBalance && deposit < 100;
@@ -802,8 +878,8 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
               const canGenerateBalance = isDeposit && inv.status === "paid" && !balanceForThis;
               return (
                 <div key={inv.id} className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)] overflow-hidden">
-                  <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
-                    <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-y-2 px-5 py-3 border-b border-[var(--sa-border)] bg-[var(--sa-bg)]">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
                       <span className="rounded-full px-2 py-0.5 text-[10px] font-medium leading-none" style={{ backgroundColor: cfg.bg, color: cfg.fg }}>
                         {cfg.label}
                       </span>
@@ -835,19 +911,28 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                         </p>
                         <p className="text-[10px] text-[var(--sa-text-tertiary)]">
                           {new Date(inv.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                          {" · "}{inv.line_items.length} line item{inv.line_items.length !== 1 ? "s" : ""}
+                          {" · "}{lines.length} line item{lines.length !== 1 ? "s" : ""}
                           {inv.paid_at && ` · paid ${new Date(inv.paid_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-right">
+                    <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+                      <div className="mr-auto text-right sm:mr-0">
                         <p className="font-mono text-[14px] font-bold text-[var(--sa-text-primary)]">${(isProduction ? dueNow : total).toFixed(2)}</p>
                         {isProduction && deposit < 100 && (
                           <p className="text-[10px] text-[var(--sa-text-tertiary)]">{deposit}% of ${total.toFixed(2)}</p>
                         )}
                       </div>
-                      {inv.status === "draft" && (
+                      {inv.status === "draft" && !isEditing && (
+                        <button
+                          onClick={() => startEdit(inv)}
+                          className="flex items-center gap-1 rounded-lg border border-[var(--sa-border)] px-2.5 py-1 text-[11px] font-medium text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
+                          title="Change what this draft says"
+                        >
+                          <Pencil size={11} /> Edit
+                        </button>
+                      )}
+                      {inv.status === "draft" && !isEditing && (
                         <button
                           onClick={() => handleSend(inv.id)}
                           className="flex items-center gap-1 rounded-lg bg-[var(--sa-accent)] px-2.5 py-1 text-[11px] font-medium text-white hover:opacity-90 transition-opacity"
@@ -906,30 +991,147 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                       </button>
                     </div>
                   </div>
-                  <div className="divide-y divide-[var(--sa-border)]">
-                    {inv.line_items.map((li, i) => (
-                      <div key={i} className="flex items-center justify-between px-5 py-2">
-                        <div className="min-w-0">
-                          <p className="text-[12px] font-medium text-[var(--sa-text-primary)] truncate">{li.name}</p>
-                          {(li.category || li.project_name) && (
-                            <p className="text-[10px] text-[var(--sa-text-tertiary)] mt-0.5">
-                              {[li.category, li.project_name].filter(Boolean).join(" · ")}
-                            </p>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          {li.qty != null && li.unit_price_usd != null && (
-                            <p className="text-[10px] text-[var(--sa-text-tertiary)]">
-                              {li.qty.toLocaleString()} × ${li.unit_price_usd.toFixed(2)}
-                            </p>
-                          )}
-                          <span className="font-mono text-[12px] font-semibold text-[var(--sa-text-primary)] whitespace-nowrap">
-                            ${li.amount_usd.toFixed(2)}
-                          </span>
+                  {isEditing ? (
+                    <div>
+                      <div className="divide-y divide-[var(--sa-border)]">
+                        {editLines.map((li, i) => (
+                          <div key={i} className="flex flex-wrap items-center gap-2 px-5 py-2.5">
+                            <input
+                              type="text"
+                              value={li.name}
+                              placeholder="Line description"
+                              onChange={(e) => updateEditLine(i, { name: e.target.value })}
+                              className="w-full min-w-0 rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[12px] outline-none text-[var(--sa-text-primary)] sm:flex-1"
+                            />
+                            <div className="ml-auto flex items-center gap-1.5">
+                              {li.qty != null && li.unit_price_usd != null ? (
+                                <>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value={li.qty}
+                                    onChange={(e) => updateEditLine(i, { qty: parseInt(e.target.value) || 0 })}
+                                    className="w-16 rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-right text-[12px] font-mono outline-none text-[var(--sa-text-primary)]"
+                                    title="Quantity"
+                                  />
+                                  <span className="text-[11px] text-[var(--sa-text-tertiary)]">× $</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={li.unit_price_usd}
+                                    onChange={(e) => updateEditLine(i, { unit_price_usd: parseFloat(e.target.value) || 0 })}
+                                    className="w-20 rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-right text-[12px] font-mono outline-none text-[var(--sa-text-primary)]"
+                                    title="Unit price"
+                                  />
+                                  <span className="w-20 text-right font-mono text-[12px] font-semibold text-[var(--sa-text-primary)] whitespace-nowrap">
+                                    ${li.amount_usd.toFixed(2)}
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="text-[11px] text-[var(--sa-text-tertiary)]">$</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={li.amount_usd}
+                                    onChange={(e) => updateEditLine(i, { amount_usd: parseFloat(e.target.value) || 0 })}
+                                    className="w-24 rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-right text-[12px] font-mono outline-none text-[var(--sa-text-primary)]"
+                                  />
+                                </>
+                              )}
+                              <button
+                                onClick={() => removeEditLine(i)}
+                                className="rounded p-1 text-[var(--sa-text-tertiary)] hover:text-red-500"
+                                title="Remove this line"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--sa-border)] px-5 py-3">
+                        <button
+                          onClick={addEditLine}
+                          className="flex items-center gap-1 rounded-full border border-dashed border-[var(--sa-border)] px-2.5 py-1 text-[11px] font-medium text-[var(--sa-text-tertiary)] hover:border-[var(--sa-accent)] hover:text-[var(--sa-accent)] transition-colors"
+                        >
+                          <Plus size={10} /> Add a line
+                        </button>
+                        {isProduction && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-[var(--sa-text-tertiary)]">
+                            <Wallet size={11} /> Invoice now
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={Number(editDeposit.toFixed(2))}
+                              onChange={(e) => {
+                                const v = parseFloat(e.target.value);
+                                if (Number.isFinite(v)) setEditDeposit(Math.max(0, Math.min(100, v)));
+                              }}
+                              className="w-16 rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-right text-[11px] font-mono outline-none text-[var(--sa-text-primary)]"
+                            />
+                            %
+                          </div>
+                        )}
+                      </div>
+
+                      {editError && (
+                        <p className="px-5 pb-2 text-[11.5px] text-red-600">{editError}</p>
+                      )}
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--sa-border)] bg-[var(--sa-bg)] px-5 py-3">
+                        <span className="text-[11px] text-[var(--sa-text-tertiary)]">
+                          Editing this draft. The client sees nothing until you send it.
+                        </span>
+                        <div className="ml-auto flex items-center gap-2">
+                          <button
+                            onClick={cancelEdit}
+                            className="rounded-lg border border-[var(--sa-border)] px-3 py-1.5 text-[12px] text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => handleSaveEdit(inv)}
+                            disabled={savingEdit || editLines.length === 0}
+                            className="rounded-lg bg-[var(--sa-accent)] px-4 py-1.5 text-[12px] font-medium text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+                          >
+                            {savingEdit ? "Saving…" : "Save changes"}
+                          </button>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-[var(--sa-border)]">
+                      {inv.line_items.map((li, i) => (
+                        <div key={i} className="flex items-center justify-between px-5 py-2">
+                          <div className="min-w-0">
+                            <p className="text-[12px] font-medium text-[var(--sa-text-primary)] truncate">{li.name}</p>
+                            {(li.category || li.project_name) && (
+                              <p className="text-[10px] text-[var(--sa-text-tertiary)] mt-0.5">
+                                {[li.category, li.project_name].filter(Boolean).join(" · ")}
+                              </p>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            {li.qty != null && li.unit_price_usd != null && (
+                              <p className="text-[10px] text-[var(--sa-text-tertiary)]">
+                                {li.qty.toLocaleString()} × ${li.unit_price_usd.toFixed(2)}
+                              </p>
+                            )}
+                            <span className="font-mono text-[12px] font-semibold text-[var(--sa-text-primary)] whitespace-nowrap">
+                              ${li.amount_usd.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
