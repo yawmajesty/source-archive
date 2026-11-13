@@ -42,6 +42,7 @@ export type EmailTemplate =
   | "portal_invite"
   | "approval_requested"
   | "daily_digest"
+  | "style_checkin"
   | "invoice_chase"
   | "lead_declined"
   | "techpack_studio_link"

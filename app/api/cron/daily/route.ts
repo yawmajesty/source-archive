@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { getAgencyServiceSupabase } from "@/lib/supabase-agency";
 import { sendAll, looksLikeEmail } from "@/lib/email/send";
-import { campaignItemDue, dailyDigest, type DigestQueue, type DigestInvoice } from "@/lib/email/templates";
+import {
+  campaignItemDue, dailyDigest, styleCheckIn,
+  type DigestQueue, type DigestInvoice,
+} from "@/lib/email/templates";
+import { countLate, countUndated, styleCheckinRecipients } from "@/lib/style-checkin";
+import { stylesInFlight, toGroups } from "@/lib/style-checkin-data";
 import { buildCommandCentre } from "@/lib/command-centre-build";
 import { sumInvoice, money } from "@/lib/invoice-total";
 import { ageOf } from "@/lib/command-centre";
@@ -126,6 +131,11 @@ export async function GET(request: Request) {
     }
   }
 
+  // ── The morning check-in on everything being made ──
+  // The digest below is about what needs a decision. This is about what
+  // is already underway and only goes wrong when nobody looks at it.
+  summary.styleCheckin = await sendStyleCheckin(supabase);
+
   // ── The morning digest ──
   // The dashboard already worked out what needs doing. The problem was that
   // it only existed if somebody opened it, which is exactly when they did
@@ -137,6 +147,7 @@ export async function GET(request: Request) {
       title: "Source Archive — daily run",
       fields: [
         ["Digest", String(summary.digest)],
+        ["Style check-in", String(summary.styleCheckin)],
         ["Chased", `${summary.chased} of ${summary.owners} people`],
         ["Shoots tomorrow", String(summary.shootsTomorrow)],
         ["Backup", String(summary.backup)],
@@ -164,6 +175,70 @@ const PER_QUEUE = 5;
 function greet(): string {
   const hour = new Date().getUTCHours();
   return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+}
+
+/**
+ * The check-in, one email per agency, to the people who run sourcing.
+ *
+ * Nothing in sampling and nothing in production means no email: unlike
+ * the digest, which is a standing summary somebody asked for, this one
+ * only exists to point at work, and there is none to point at.
+ */
+async function sendStyleCheckin(
+  supabase: ReturnType<typeof getAgencyServiceSupabase>,
+): Promise<string> {
+  const { data: agencies } = await supabase.from("agencies").select("id");
+  const rows = (agencies ?? []) as Array<{ id: string }>;
+  let sent = 0;
+
+  for (const agency of rows.slice(0, 20)) {
+    try {
+      const { data: settings } = await supabase
+        .from("agency_settings")
+        .select("notification_email")
+        .eq("agency_id", agency.id)
+        .maybeSingle();
+      const nominated = (settings as { notification_email: string | null } | null)?.notification_email ?? null;
+
+      const to = styleCheckinRecipients(agency.id, nominated).filter(looksLikeEmail);
+      if (to.length === 0) continue;
+
+      const styles = await stylesInFlight(supabase, agency.id);
+      if (styles.length === 0) continue;
+
+      const sampling = styles.filter((s) => s.stage === "sampling");
+      const production = styles.filter((s) => s.stage === "production");
+
+      const built = styleCheckIn({
+        greeting: greet(),
+        samplingCount: sampling.length,
+        productionCount: production.length,
+        lateCount: countLate(styles),
+        undatedCount: countUndated(styles),
+        sampling: toGroups(sampling),
+        production: toGroups(production),
+        dashboardUrl: buildPublicUrl("/dashboard"),
+      });
+
+      const results = await sendAll(
+        to.map((address) => ({
+          agencyId: agency.id,
+          to: address,
+          subject: built.subject,
+          html: built.html,
+          text: built.text,
+          template: "style_checkin" as const,
+          relatedType: null,
+          relatedId: null,
+        })),
+      );
+      sent += results.filter((r) => r.status === "sent").length;
+    } catch (err) {
+      console.error("[cron] style check-in failed for", agency.id, err);
+    }
+  }
+
+  return `${sent} sent`;
 }
 
 /**

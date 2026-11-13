@@ -1269,6 +1269,122 @@ export function dailyDigest(input: {
 }
 
 /**
+ * The morning check-in on everything being made.
+ *
+ * Deliberately not a nag: it is a list, grouped by the client you would
+ * ring about it, with the most useful true fact under each style. Where
+ * a style has no recorded date it says so, because the fix for that is
+ * one click on the product page and nothing else will prompt it.
+ */
+export interface CheckinStyleLine {
+  name: string;
+  detail: string;
+  url: string;
+  late: boolean;
+}
+
+export interface CheckinGroup {
+  clientName: string;
+  styles: CheckinStyleLine[];
+  hidden: number;
+}
+
+export function styleCheckIn(input: {
+  greeting: string;
+  samplingCount: number;
+  productionCount: number;
+  lateCount: number;
+  /** How many have never had their stage set from the product page. */
+  undatedCount: number;
+  sampling: CheckinGroup[];
+  production: CheckinGroup[];
+  dashboardUrl: string;
+}): Built {
+  const total = input.samplingCount + input.productionCount;
+
+  const groupHtml = (groups: CheckinGroup[]) =>
+    groups
+      .map(
+        (g) =>
+          `<div style="margin:0 0 14px;">` +
+          `<div style="font-size:13px;font-weight:600;color:${INK};margin-bottom:5px;">${esc(g.clientName)}</div>` +
+          g.styles
+            .map(
+              (s) =>
+                `<div style="margin:0 0 7px;padding-left:10px;border-left:2px solid ${s.late ? "#B42318" : RULE};">` +
+                `<a href="${esc(s.url)}" style="font-size:13.5px;color:${INK};text-decoration:none;font-weight:500;">${esc(s.name)}</a>` +
+                `<div style="font-size:12px;color:${s.late ? "#B42318" : MUTED};margin-top:1px;">${esc(s.detail)}</div>` +
+                `</div>`,
+            )
+            .join("") +
+          (g.hidden > 0
+            ? `<div style="font-size:12px;color:${MUTED};padding-left:10px;">and ${g.hidden} more</div>`
+            : "") +
+          `</div>`,
+      )
+      .join("");
+
+  const groupText = (groups: CheckinGroup[]) =>
+    groups
+      .map(
+        (g) =>
+          `  ${g.clientName}\n` +
+          g.styles.map((s) => `    · ${s.name} — ${s.detail}\n      ${s.url}`).join("\n") +
+          (g.hidden > 0 ? `\n    and ${g.hidden} more` : ""),
+      )
+      .join("\n");
+
+  const headline =
+    total === 0
+      ? "Nothing is in sampling or production."
+      : `<strong style="color:${INK};font-weight:600;">${total}</strong> style${total === 1 ? " is" : "s are"} being made` +
+        (input.lateCount > 0
+          ? `, and <strong style="color:#B42318;font-weight:600;">${input.lateCount}</strong> sample${input.lateCount === 1 ? " is" : "s are"} past the date you expected ${input.lateCount === 1 ? "it" : "them"}.`
+          : ".");
+
+  return {
+    subject:
+      total === 0
+        ? "Nothing in sampling or production"
+        : input.lateCount > 0
+          ? `${total} styles being made · ${input.lateCount} sample${input.lateCount === 1 ? "" : "s"} late`
+          : `${total} style${total === 1 ? "" : "s"} in sampling or production`,
+    html: shell(
+      h1(input.greeting) +
+        p(headline) +
+        section(
+          `Sampling (${input.samplingCount})`,
+          input.sampling.length ? groupHtml(input.sampling) : "",
+        ) +
+        section(
+          `Production (${input.productionCount})`,
+          input.production.length ? groupHtml(input.production) : "",
+        ) +
+        `<div style="margin-top:20px;">${button(input.dashboardUrl, "Open the dashboard")}</div>` +
+        (input.undatedCount > 0
+          ? `<div style="font-size:12px;color:${MUTED};margin-top:14px;line-height:1.6;">` +
+            `${input.undatedCount} of these ${input.undatedCount === 1 ? "has" : "have"} no date yet, because the stage was set before the product page started recording it. ` +
+            `Press the stage on the product page once and this email will track it from then on.` +
+            `</div>`
+          : ""),
+      "Your daily check-in on styles being made, from Source Archive.",
+    ),
+    text:
+      `${input.greeting}\n\n` +
+      (total === 0
+        ? "Nothing is in sampling or production.\n"
+        : `${total} style(s) being made` +
+          (input.lateCount > 0 ? `, ${input.lateCount} sample(s) past the expected date.\n` : ".\n")) +
+      (input.sampling.length ? `\nSAMPLING (${input.samplingCount})\n` + groupText(input.sampling) + "\n" : "") +
+      (input.production.length ? `\nPRODUCTION (${input.productionCount})\n` + groupText(input.production) + "\n" : "") +
+      `\nOpen the dashboard: ${input.dashboardUrl}\n` +
+      (input.undatedCount > 0
+        ? `\n${input.undatedCount} of these have no date yet. Press the stage on the product page once and this email will track it from then on.`
+        : ""),
+  };
+}
+
+/**
  * The chase itself — a draft, like every other reply we send by hand.
  *
  * Firm without being a solicitor's letter: it states the fact, gives the
