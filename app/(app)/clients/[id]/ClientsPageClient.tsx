@@ -2,6 +2,7 @@
 
 import { setClientStatus, renameClient } from "../status-actions";
 import { ClientHome } from "@/components/clients/ClientHome";
+import type { ClientMoney, ClientTechpack } from "@/lib/client-overview";
 import type { ClientOrigin } from "./origin-actions";
 import { CLIENT_STATUSES } from "@/lib/client-status";
 import { setFabricLibraryAccess } from "../status-actions";
@@ -10,7 +11,7 @@ import { addClientMember, removeClientMember, type ClientMember } from "../membe
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Activity, ArrowRight, Calendar, Check, ChevronRight, Clock, Copy, Globe, Lock, Package, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Activity, ArrowRight, Calendar, Check, ChevronRight, Clock, Copy, Globe, Home, Lock, Package, Pencil, Plus, Trash2, X } from "lucide-react";
 import { createProjectForClient, toggleClientPortal } from "../actions";
 import { buildPublicUrl } from "@/lib/url";
 import { ResizablePanel } from "@/components/layout/ResizablePanel";
@@ -37,6 +38,9 @@ interface Props {
   origin?: ClientOrigin | null;
   /** Every product photo across their collections. */
   photos?: Array<{ url: string; productName: string; productId: string }>;
+  money?: ClientMoney;
+  techpacks?: ClientTechpack[];
+  productCount?: number;
 }
 
 const PATH_LABELS: Record<string, string> = {
@@ -482,11 +486,13 @@ function AddProjectModal({ clientId, onClose }: { clientId: string; onClose: () 
   );
 }
 
-export function ClientsPageClient({ client, projectData, portalActivity, clientMembers, origin, photos }: Props) {
+export function ClientsPageClient({ client, projectData, portalActivity, clientMembers, origin, photos, money, techpacks, productCount }: Props) {
   const router = useRouter();
-  const [selectedId, setSelectedIdRaw] = useState<string | null>(
-    projectData[0]?.project.id ?? null
-  );
+  // Opens on the client's home rather than on their first collection.
+  // Auto-selecting one meant the home — where their files, tech packs and
+  // figures live — never rendered for any client who had a collection,
+  // which is every client. There was no way to reach it at all.
+  const [selectedId, setSelectedIdRaw] = useState<string | null>(null);
   const [showActivity, setShowActivity] = useState(false);
   const [showAddProject, setShowAddProject] = useState(false);
   const [portalEnabled, setPortalEnabled] = useState(!!client.portal_enabled);
@@ -575,6 +581,22 @@ export function ClientsPageClient({ client, projectData, portalActivity, clientM
 
           {/* Projects list */}
           <div className="flex-1 overflow-y-auto">
+            <button
+              onClick={() => setSelectedId(null)}
+              className={cn(
+                "flex w-full items-center gap-2 border-b border-[var(--sa-border)] px-4 py-2.5 text-left transition-colors",
+                selectedId === null ? "bg-[var(--sa-accent)]/8" : "hover:bg-[var(--sa-hover)]",
+              )}
+            >
+              <Home size={13} className={cn("shrink-0", selectedId === null ? "text-[var(--sa-accent)]" : "text-[var(--sa-text-tertiary)]")} />
+              <span className={cn(
+                "text-[12.5px] font-medium",
+                selectedId === null ? "text-[var(--sa-accent)]" : "text-[var(--sa-text-secondary)]",
+              )}>
+                Client home
+              </span>
+              <span className="ml-auto text-[11px] text-[var(--sa-text-tertiary)]">Files · tech packs · figures</span>
+            </button>
             {projectData.length === 0 ? (
               <EmptyState title="No collections yet" description="This client has no collections." />
             ) : (
@@ -653,7 +675,16 @@ export function ClientsPageClient({ client, projectData, portalActivity, clientM
           ) : (
             <div key="home" className="flex h-full flex-col overflow-y-auto">
               <div className="px-4 pt-4 sm:px-5">
-                <ClientHome clientId={client.id} origin={origin ?? null} photos={photos ?? []} />
+                <ClientHome
+                  clientId={client.id}
+                  clientName={client.name}
+                  origin={origin ?? null}
+                  photos={photos ?? []}
+                  money={money}
+                  techpacks={techpacks ?? []}
+                  collectionCount={projectData.length}
+                  productCount={productCount ?? 0}
+                />
               </div>
               <PortalActivityPanel activity={portalActivity} client={client} portalEnabled={portalEnabled} />
             </div>

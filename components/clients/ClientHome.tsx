@@ -1,10 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, ImageIcon, Inbox, ExternalLink } from "lucide-react";
+import { FileText, ImageIcon, Inbox, ExternalLink, LayoutGrid, Ruler, Download } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { imageUrl as sizedImage } from "@/lib/image-url";
 import { Lightbox } from "@/components/shared/Lightbox";
 import { ClientFiles } from "@/components/clients/ClientFiles";
+import {
+  formatUsd, formatGbp, techpackState,
+  type ClientMoney, type ClientTechpack,
+} from "@/lib/client-overview";
 import type { ClientOrigin } from "@/app/(app)/clients/[id]/origin-actions";
 
 // ─────────────────────────────────────────────────────────────
@@ -37,13 +42,23 @@ function fileName(url: string): string {
 
 export function ClientHome({
   clientId,
+  clientName,
   origin,
   photos,
+  money,
+  techpacks,
+  collectionCount,
+  productCount,
 }: {
   clientId: string;
+  clientName?: string;
   origin: ClientOrigin | null;
   /** Every product photo across the client's collections. */
   photos: Array<{ url: string; productName: string; productId: string }>;
+  money?: ClientMoney;
+  techpacks?: ClientTechpack[];
+  collectionCount?: number;
+  productCount?: number;
 }) {
   const [viewing, setViewing] = useState<number | null>(null);
   const [showAllPhotos, setShowAllPhotos] = useState(false);
@@ -61,6 +76,119 @@ export function ClientHome({
           onClose={() => setViewing(null)}
         />
       )}
+
+      {/* ── Where this client stands ── */}
+      <section className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)]">
+        <div className="flex items-center gap-2 border-b border-[var(--sa-border)] px-4 py-3">
+          <LayoutGrid size={14} className="shrink-0 text-[var(--sa-text-tertiary)]" />
+          <h3 className="min-w-0 flex-1 text-[13px] font-semibold text-[var(--sa-text-primary)]">
+            {clientName ? `${clientName} at a glance` : "At a glance"}
+          </h3>
+        </div>
+
+        <div className="grid grid-cols-2 gap-px bg-[var(--sa-border)] sm:grid-cols-4">
+          {[
+            { label: "Collections", value: String(collectionCount ?? 0) },
+            { label: "Styles", value: String(productCount ?? 0) },
+            { label: "Tech packs", value: String((techpacks ?? []).length) },
+            { label: "Photos", value: String(photos.length) },
+          ].map((stat) => (
+            <div key={stat.label} className="bg-[var(--sa-window)] px-4 py-3">
+              <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{stat.label}</p>
+              <p className="tnum mt-0.5 text-[18px] font-semibold text-[var(--sa-text-primary)]">{stat.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {money && (
+          <>
+            <div className="grid grid-cols-2 gap-px border-t border-[var(--sa-border)] bg-[var(--sa-border)] sm:grid-cols-4">
+              {[
+                { label: "Invoiced", value: formatUsd(money.invoicedUsd), hint: `${money.counts.sent + money.counts.paid} sent` },
+                { label: "Paid", value: formatUsd(money.paidUsd), hint: `${money.counts.paid} settled`, tone: "good" },
+                { label: "Outstanding", value: formatUsd(money.outstandingUsd), hint: "sent, not yet paid", tone: money.outstandingUsd > 0 ? "warn" : undefined },
+                { label: "In draft", value: formatUsd(money.draftUsd), hint: `${money.counts.draft} not sent` },
+              ].map((stat) => (
+                <div key={stat.label} className="bg-[var(--sa-window)] px-4 py-3">
+                  <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{stat.label}</p>
+                  <p className={cn(
+                    "tnum mt-0.5 text-[15px] font-semibold",
+                    stat.tone === "good" ? "text-emerald-600"
+                      : stat.tone === "warn" ? "text-amber-700 dark:text-amber-400"
+                      : "text-[var(--sa-text-primary)]",
+                  )}>
+                    {stat.value}
+                  </p>
+                  <p className="mt-0.5 text-[10.5px] text-[var(--sa-text-tertiary)]">{stat.hint}</p>
+                </div>
+              ))}
+            </div>
+            <p className="border-t border-[var(--sa-border)] px-4 py-2.5 text-[11px] text-[var(--sa-text-tertiary)]">
+              Invoices are in US dollars. Recorded spend on this client is{" "}
+              <span className="tnum font-medium text-[var(--sa-text-secondary)]">{formatGbp(money.costGbp)}</span>, in
+              pounds — the two are shown apart rather than added, because a single figure mixing them would be true in neither.
+            </p>
+          </>
+        )}
+      </section>
+
+      <ClientFiles clientId={clientId} />
+
+      {/* ── Tech packs across every collection ── */}
+      <section className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)]">
+        <div className="flex items-center gap-2 border-b border-[var(--sa-border)] px-4 py-3">
+          <Ruler size={14} className="shrink-0 text-[var(--sa-text-tertiary)]" />
+          <h3 className="min-w-0 flex-1 text-[13px] font-semibold text-[var(--sa-text-primary)]">Tech packs</h3>
+          <span className="tnum shrink-0 text-[11.5px] text-[var(--sa-text-tertiary)]">{(techpacks ?? []).length}</span>
+        </div>
+
+        {(techpacks ?? []).length === 0 ? (
+          <p className="px-4 py-4 text-[12.5px] leading-relaxed text-[var(--sa-text-tertiary)]">
+            No tech packs for this client yet. They are uploaded on a style&apos;s own page, under Tech pack.
+          </p>
+        ) : (
+          <div className="divide-y divide-[var(--sa-border)]">
+            {(techpacks ?? []).map((tp) => {
+              const state = techpackState(tp);
+              const signed = state === "Signed by both";
+              return (
+                <div key={tp.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <a
+                      href={`/products/${tp.productId}`}
+                      className="block truncate text-[12.5px] font-medium text-[var(--sa-text-primary)] hover:text-[var(--sa-accent)]"
+                    >
+                      {tp.productName ?? "A style"}
+                    </a>
+                    <p className="truncate text-[11px] text-[var(--sa-text-tertiary)]">
+                      v{tp.version}
+                      {tp.fileName ? ` · ${tp.fileName}` : tp.title ? ` · ${tp.title}` : ""}
+                    </p>
+                  </div>
+                  <span className={cn(
+                    "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium leading-none",
+                    tp.supersededAt ? "bg-[var(--sa-hover)] text-[var(--sa-text-tertiary)]"
+                      : signed ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400"
+                      : "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+                  )}>
+                    {state}
+                  </span>
+                  {tp.fileUrl && (
+                    <a
+                      href={tp.fileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex shrink-0 items-center gap-1 text-[11.5px] text-[var(--sa-accent)] hover:underline"
+                    >
+                      <Download size={11} /> Open
+                    </a>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {/* ── What they first asked for ── */}
       <section className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)]">
@@ -171,8 +299,6 @@ export function ClientHome({
           </div>
         )}
       </section>
-
-      <ClientFiles clientId={clientId} />
 
       {/* ── Everything photographed since ── */}
       <section className="rounded-xl border border-[var(--sa-border)] bg-[var(--sa-window)]">

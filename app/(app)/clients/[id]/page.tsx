@@ -1,7 +1,9 @@
 export const dynamic = 'force-dynamic';
 
 import { notFound } from "next/navigation";
-import { getClient, getProjects, getProducts, getCosts, getPortalActivity } from "@/lib/data";
+import { getClient, getProjects, getProducts, getCosts, getPortalActivity, getSamplingInvoices } from "@/lib/data";
+import { summariseClientMoney } from "@/lib/client-overview";
+import { listClientTechpacks } from "./techpack-actions";
 import { ClientsPageClient } from "./ClientsPageClient";
 import { listClientMembers, type ClientMember } from "../member-actions";
 import { getClientOrigin } from "./origin-actions";
@@ -23,7 +25,7 @@ export default async function ClientPage({ params }: Props) {
   try { members = await listClientMembers(id); } catch { members = []; }
 
   // Preload products + costs for each project, plus portal activity
-  const [projectData, portalActivity] = await Promise.all([
+  const [projectData, portalActivity, invoices, techpacks] = await Promise.all([
     Promise.all(
       projects.map(async (project) => {
         const [products, costs] = await Promise.all([
@@ -35,7 +37,18 @@ export default async function ClientPage({ params }: Props) {
       })
     ),
     getPortalActivity(id),
+    getSamplingInvoices(id).catch(() => []),
+    listClientTechpacks(id).catch(() => []),
   ]);
+
+  // Costs are held per project; the client's figure is all of them. Kept
+  // in pounds and reported apart from the dollar invoice figures — see
+  // lib/client-overview.ts for why they are never added together.
+  const money = summariseClientMoney(
+    invoices,
+    projectData.map((d) => d.totalCostGbp),
+  );
+  const productCount = projectData.reduce((n, d) => n + d.products.length, 0);
 
   // Where they came from, and every photograph taken since — both read here
   // so the client page is one request rather than a page that fills in.
@@ -58,6 +71,9 @@ export default async function ClientPage({ params }: Props) {
       portalActivity={portalActivity}
       origin={origin}
       photos={photos}
+      money={money}
+      techpacks={techpacks}
+      productCount={productCount}
     />
   );
 }
