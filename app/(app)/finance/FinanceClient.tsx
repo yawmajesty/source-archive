@@ -18,13 +18,10 @@ import type { FinanceReport } from "./actions";
 // so Cost Tracker and Invoices stay the place where things change.
 // ─────────────────────────────────────────────────────────────
 
-function gbp(value: number, decimals = 0): string {
-  return `£${value.toLocaleString("en-GB", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  })}`;
-}
-
+// Everything on this page is dollars. The ledger column is still named
+// amount_gbp for historical reasons, but it has stored US dollars since
+// the base currency changed — the cost tracker converts every entry into
+// dollars on the way in. Printing it with a pound sign was simply wrong.
 function usd(value: number, decimals = 0): string {
   return `$${value.toLocaleString("en-GB", {
     minimumFractionDigits: decimals,
@@ -266,17 +263,17 @@ export function FinanceClient({ report }: { report: FinanceReport }) {
         />
 
         <div className="grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-4">
-          <Tile label="Revenue" value={gbp(report.totalRevenue)} sub="All time, received" />
+          <Tile label="Revenue" value={usd(report.totalRevenue)} sub="All time, received" />
           <Tile
             label="Gross profit"
-            value={gbp(report.totalRevenue - report.totalCogs)}
+            value={usd(report.totalRevenue - report.totalCogs)}
             sub={grossMarginPct == null ? "No revenue yet" : `${grossMarginPct.toFixed(1)}% margin`}
             tone="success"
           />
-          <Tile label="Overheads" value={gbp(report.totalOperating)} sub="Operating costs" />
+          <Tile label="Overheads" value={usd(report.totalOperating)} sub="Operating costs" />
           <Tile
             label="Net"
-            value={gbp(net)}
+            value={usd(net)}
             tone={net >= 0 ? "success" : "danger"}
             sub={net >= 0 ? "In profit" : "At a loss"}
           />
@@ -304,18 +301,18 @@ export function FinanceClient({ report }: { report: FinanceReport }) {
                   return (
                     <tr key={m.month} className="border-b border-[var(--sa-border)] last:border-0 hover:bg-[var(--sa-hover)]">
                       <td className="whitespace-nowrap px-2.5 py-2 font-medium text-[var(--sa-text-primary)]">{m.label}</td>
-                      <td className={CELL}>{m.revenue ? gbp(m.revenue) : "—"}</td>
-                      <td className={CELL}>{m.cogs ? gbp(m.cogs) : "—"}</td>
-                      <td className={CELL}>{m.grossProfit ? gbp(m.grossProfit) : "—"}</td>
+                      <td className={CELL}>{m.revenue ? usd(m.revenue) : "—"}</td>
+                      <td className={CELL}>{m.cogs ? usd(m.cogs) : "—"}</td>
+                      <td className={CELL}>{m.grossProfit ? usd(m.grossProfit) : "—"}</td>
                       <td className={`${CELL} text-[var(--sa-text-secondary)]`}>
                         {margin == null ? "—" : `${margin.toFixed(0)}%`}
                       </td>
-                      <td className={CELL}>{m.operating ? gbp(m.operating) : "—"}</td>
+                      <td className={CELL}>{m.operating ? usd(m.operating) : "—"}</td>
                       <td
                         className={`${CELL} font-semibold`}
                         style={{ color: m.net >= 0 ? "var(--sa-success)" : "var(--sa-danger)" }}
                       >
-                        {gbp(m.net)}
+                        {usd(m.net)}
                       </td>
                     </tr>
                   );
@@ -365,13 +362,13 @@ export function FinanceClient({ report }: { report: FinanceReport }) {
                       </Link>
                       <span className="block truncate text-[10px] text-[var(--sa-text-tertiary)]">{j.clientName}</span>
                     </td>
-                    <td className={CELL}>{j.received ? gbp(j.received) : "—"}</td>
-                    <td className={CELL}>{j.cost ? gbp(j.cost) : "—"}</td>
+                    <td className={CELL}>{j.received ? usd(j.received) : "—"}</td>
+                    <td className={CELL}>{j.cost ? usd(j.cost) : "—"}</td>
                     <td
                       className={`${CELL} font-semibold`}
                       style={{ color: j.margin >= 0 ? "var(--sa-success)" : "var(--sa-danger)" }}
                     >
-                      {gbp(j.margin)}
+                      {usd(j.margin)}
                     </td>
                     <td className={`${CELL} text-[var(--sa-text-secondary)]`}>
                       {j.marginPct == null ? "—" : `${j.marginPct.toFixed(0)}%`}
@@ -394,7 +391,7 @@ export function FinanceClient({ report }: { report: FinanceReport }) {
               <strong className="font-semibold text-[var(--sa-text-primary)]">
                 These margins read low, and the data is why.
               </strong>{" "}
-              {gbp(report.unallocatedRevenue)} of income — {Math.round(unallocatedShare * 100)}% of all
+              {usd(report.unallocatedRevenue)} of income — {Math.round(unallocatedShare * 100)}% of all
               revenue — is recorded against a client but not against a project, while costs are
               tagged per project. So the spend lands on a project and the payment for it does not,
               and every row above looks worse than the work really was. Setting the project on those
@@ -402,7 +399,7 @@ export function FinanceClient({ report }: { report: FinanceReport }) {
               <Link href="/costs" className="text-[var(--sa-accent)] hover:underline">Cost Tracker</Link>{" "}
               is what turns this table into a real job-costing report.
               {report.unallocatedCost > 0 && (
-                <> A further {gbp(report.unallocatedCost)} of spend has no project either.</>
+                <> A further {usd(report.unallocatedCost)} of spend has no project either.</>
               )}
             </p>
           </div>

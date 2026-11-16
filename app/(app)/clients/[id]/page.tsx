@@ -32,8 +32,8 @@ export default async function ClientPage({ params }: Props) {
           getProducts(project.id),
           getCosts({ projectId: project.id }),
         ]);
-        const totalCostGbp = costs.reduce((s, c) => s + c.amount_gbp, 0);
-        return { project, products, totalCostGbp };
+        const totalCostUsd = costs.reduce((s, c) => s + c.amount_gbp, 0);
+        return { project, products, totalCostUsd };
       })
     ),
     getPortalActivity(id),
@@ -46,7 +46,7 @@ export default async function ClientPage({ params }: Props) {
   // lib/client-overview.ts for why they are never added together.
   const money = summariseClientMoney(
     invoices,
-    projectData.map((d) => d.totalCostGbp),
+    projectData.map((d) => d.totalCostUsd),
   );
   const productCount = projectData.reduce((n, d) => n + d.products.length, 0);
 

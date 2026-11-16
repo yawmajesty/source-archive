@@ -105,7 +105,7 @@ export interface FinanceReport {
 }
 
 const EMPTY: FinanceReport = {
-  allowed: false, ledgerCurrency: "GBP", invoiceCurrency: "USD",
+  allowed: false, ledgerCurrency: "USD", invoiceCurrency: "USD",
   owed: 0, owedOver30: 0, owedDormant: 0, oldestDays: 0, buckets: [], receivables: [],
   months: [], jobs: [], unallocatedCost: 0, unallocatedRevenue: 0,
   totalRevenue: 0, totalCogs: 0, totalOperating: 0,
@@ -291,7 +291,7 @@ export async function getFinanceReport(): Promise<FinanceReport> {
 
   return {
     allowed: true,
-    ledgerCurrency: "GBP",
+    ledgerCurrency: "USD",
     invoiceCurrency: "USD",
     owed,
     owedOver30,

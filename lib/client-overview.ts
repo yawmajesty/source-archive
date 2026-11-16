@@ -7,10 +7,10 @@
 // items — so everything is derived through sumInvoice, the same way the
 // dashboard derives it.
 //
-// Two currencies are deliberately kept apart. Invoices are in US dollars
-// because that is what factories quote; costs are recorded in pounds.
-// Adding them would produce a number that is true in neither, so they
-// are reported separately and labelled.
+// Everything here is US dollars. Invoices are priced in dollars because
+// that is what factories quote, and the cost tracker converts every entry
+// into dollars as it is saved — the ledger column is still called
+// amount_gbp, which is a leftover from when the base currency was pounds.
 //
 // Pure helpers — no "use server" here.
 // ─────────────────────────────────────────────────────────────
@@ -27,8 +27,8 @@ export interface ClientMoney {
   outstandingUsd: number;
   /** Built but not sent, so not owed by anybody yet. */
   draftUsd: number;
-  /** Recorded spend, in pounds — not comparable with the figures above. */
-  costGbp: number;
+  /** Recorded spend against this client, in dollars like everything else. */
+  costUsd: number;
   /** How many invoices make up each of the figures. */
   counts: { all: number; draft: number; sent: number; paid: number };
 }
@@ -53,7 +53,7 @@ function round2(n: number): number {
 
 export function summariseClientMoney(
   invoices: SavedInvoice[],
-  costsGbp: number[],
+  costsUsd: number[],
 ): ClientMoney {
   let invoicedUsd = 0;
   let paidUsd = 0;
@@ -82,17 +82,13 @@ export function summariseClientMoney(
     paidUsd: round2(paidUsd),
     outstandingUsd: round2(invoicedUsd - paidUsd),
     draftUsd: round2(draftUsd),
-    costGbp: round2(costsGbp.reduce((s, n) => s + (Number.isFinite(n) ? n : 0), 0)),
+    costUsd: round2(costsUsd.reduce((s, n) => s + (Number.isFinite(n) ? n : 0), 0)),
     counts,
   };
 }
 
 export function formatUsd(value: number): string {
   return `$${value.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-export function formatGbp(value: number): string {
-  return `£${value.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 // ── Tech packs ───────────────────────────────────────────────

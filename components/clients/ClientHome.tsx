@@ -7,7 +7,7 @@ import { imageUrl as sizedImage } from "@/lib/image-url";
 import { Lightbox } from "@/components/shared/Lightbox";
 import { ClientFiles } from "@/components/clients/ClientFiles";
 import {
-  formatUsd, formatGbp, techpackState,
+  formatUsd, techpackState,
   type ClientMoney, type ClientTechpack,
 } from "@/lib/client-overview";
 import type { ClientOrigin } from "@/app/(app)/clients/[id]/origin-actions";
@@ -107,7 +107,7 @@ export function ClientHome({
                 { label: "Invoiced", value: formatUsd(money.invoicedUsd), hint: `${money.counts.sent + money.counts.paid} sent` },
                 { label: "Paid", value: formatUsd(money.paidUsd), hint: `${money.counts.paid} settled`, tone: "good" },
                 { label: "Outstanding", value: formatUsd(money.outstandingUsd), hint: "sent, not yet paid", tone: money.outstandingUsd > 0 ? "warn" : undefined },
-                { label: "In draft", value: formatUsd(money.draftUsd), hint: `${money.counts.draft} not sent` },
+                { label: "Spent", value: formatUsd(money.costUsd), hint: "recorded against them" },
               ].map((stat) => (
                 <div key={stat.label} className="bg-[var(--sa-window)] px-4 py-3">
                   <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{stat.label}</p>
@@ -124,9 +124,11 @@ export function ClientHome({
               ))}
             </div>
             <p className="border-t border-[var(--sa-border)] px-4 py-2.5 text-[11px] text-[var(--sa-text-tertiary)]">
-              Invoices are in US dollars. Recorded spend on this client is{" "}
-              <span className="tnum font-medium text-[var(--sa-text-secondary)]">{formatGbp(money.costGbp)}</span>, in
-              pounds — the two are shown apart rather than added, because a single figure mixing them would be true in neither.
+              Every figure is in US dollars.
+              {money.draftUsd > 0 && (
+                <> A further <span className="tnum font-medium text-[var(--sa-text-secondary)]">{formatUsd(money.draftUsd)}</span>
+                {" "}is sitting in {money.counts.draft} draft quote{money.counts.draft === 1 ? "" : "s"}, not yet sent.</>
+              )}
             </p>
           </>
         )}

@@ -26,7 +26,7 @@ import type { PortalActivity } from "@/lib/data";
 interface ProjectData {
   project: Project;
   products: Product[];
-  totalCostGbp: number;
+  totalCostUsd: number;
 }
 
 interface Props {
@@ -255,7 +255,7 @@ function formatDate(d: string) {
 }
 
 function ProjectDetailPanel({ data, portalEnabled, onNavigate, onBack, onShowActivity }: { data: ProjectData; portalEnabled: boolean; onNavigate: () => void; onBack: () => void; onShowActivity: () => void }) {
-  const { project, products, totalCostGbp } = data;
+  const { project, products, totalCostUsd } = data;
   const progress = stageProgress(products);
 
   return (
@@ -334,7 +334,7 @@ function ProjectDetailPanel({ data, portalEnabled, onNavigate, onBack, onShowAct
           {[
             { label: "Products", value: products.length },
             { label: "Progress", value: `${progress}%` },
-            { label: "Cost (USD)", value: `$${totalCostGbp.toLocaleString("en-US", { maximumFractionDigits: 0 })}` },
+            { label: "Cost (USD)", value: `$${totalCostUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })}` },
           ].map(({ label, value }) => (
             <div key={label} className="rounded-lg border border-[var(--sa-border)] p-3 bg-[var(--sa-window)]">
               <p className="text-[10px] uppercase tracking-wide text-[var(--sa-text-tertiary)]">{label}</p>
