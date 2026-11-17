@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronRight, Package, ArrowRight, Plus, X, Pencil, Trash2, Check,
   LayoutList, Table2, GitBranch, Copy, Receipt, LayoutGrid, FileSpreadsheet,
+  Upload,
 } from "lucide-react";
 import { QuoteBuilder } from "./QuoteBuilder";
 import { CollectionDashboard } from "./CollectionDashboard";
@@ -15,6 +16,7 @@ import { StageTrack } from "@/components/shared/StageTrack";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { cn } from "@/lib/utils";
 import { RfqSheetDialog } from "@/components/projects/RfqSheetDialog";
+import { ImportProductsDialog } from "@/components/projects/ImportProductsDialog";
 import { forkProductsToRound, createProductInProject, renameProject, deleteProject } from "./actions";
 import type { Client, Project, Product, Factory, Stage, PriceTier } from "@/lib/mock-data";
 import type { SavedInvoice, AgencySettings } from "@/lib/data";
@@ -690,6 +692,7 @@ function CollectionTable({
 export function ProjectsPageClient({ project, client, productsWithFactory, factories, products, savedInvoices, agencySettings }: Props) {
   const router = useRouter();
   const [showRfq, setShowRfq] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(
     productsWithFactory[0]?.product.id ?? null
   );
@@ -772,6 +775,13 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
           projectName={projectName}
           styleCount={products.length}
           onClose={() => setShowRfq(false)}
+        />
+      )}
+      {showImport && (
+        <ImportProductsDialog
+          projectId={project.id}
+          existing={products.map((p) => ({ name: p.name, style_no: p.style_no ?? null }))}
+          onClose={() => setShowImport(false)}
         />
       )}
       <div className="flex h-full overflow-hidden flex-col">
@@ -862,6 +872,14 @@ export function ProjectsPageClient({ project, client, productsWithFactory, facto
               <FileSpreadsheet size={12} />
               <span className="hidden sm:inline">Production Invoice</span>
             </a>
+            <button
+              onClick={() => setShowImport(true)}
+              title="Import styles from a spreadsheet"
+              className="flex items-center gap-1 rounded-lg border border-[var(--sa-border)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)] transition-colors"
+            >
+              <Upload size={12} />
+              <span className="hidden sm:inline">Import</span>
+            </button>
             <button
               onClick={() => setShowAddProduct(true)}
               className="flex items-center gap-1 rounded-lg bg-[var(--sa-accent)] px-2.5 py-1.5 text-[11px] font-medium text-white hover:opacity-90 transition-opacity"
