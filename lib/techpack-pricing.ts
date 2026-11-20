@@ -67,3 +67,16 @@ export function isTechpackInvoice(kind: string | null | undefined): boolean {
 export function techpackLineName(productName: string, tier: TechpackTier): string {
   return `${productName} — Tech pack (${techpackTierMeta(tier).label})`;
 }
+
+/**
+ * Whether a line item on an invoice is a tech pack.
+ *
+ * Read back off the name, because a line item has nowhere else to record
+ * what it is. Matches only the shape techpackLineName writes, so a
+ * garment someone called "Tech pack hoodie" is not mistaken for one.
+ */
+export function isTechpackLine(name: string | null | undefined): boolean {
+  if (!name) return false;
+  const labels = TECHPACK_TIERS.map((t) => t.label).join("|");
+  return new RegExp(` — Tech pack \\((${labels})\\)$`).test(name);
+}

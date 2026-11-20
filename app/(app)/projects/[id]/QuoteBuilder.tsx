@@ -10,7 +10,8 @@ import { downloadInvoicePDF } from "@/lib/invoice-pdf";
 import { InvoiceExportDialog, InvoiceExportButton } from "@/components/invoices/InvoiceExportDialog";
 import {
   TECHPACK_TIERS, DEFAULT_TECHPACK_TIER, TECHPACK_INVOICE_TITLE,
-  techpackPrice, techpackLineName, isTechpackInvoice, type TechpackTier,
+  techpackPrice, techpackLineName, isTechpackInvoice, isTechpackLine,
+  type TechpackTier,
 } from "@/lib/techpack-pricing";
 
 const SERVICE_PRESETS: string[] = [
@@ -83,6 +84,12 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
   const [unitPrices, setUnitPrices] = useState<Record<string, number>>({});
   // Tech pack only: which tier each product was put in.
   const [tiers, setTiers] = useState<Record<string, TechpackTier>>({});
+  // A sampling quote can carry tech pack fees too: a client being sent
+  // samples is usually being charged for the packs they were cut from,
+  // and splitting that across two invoices is two things to chase.
+  // These are the products on this quote that also get a tech pack.
+  const [packs, setPacks] = useState<Set<string>>(new Set());
+  const [packAmounts, setPackAmounts] = useState<Record<string, number>>({});
   const [depositPct, setDepositPct] = useState<number>(100);
   const [serviceLines, setServiceLines] = useState<ServiceLine[]>([]);
   // Which saved invoice is being exported in another currency, if any.
@@ -94,6 +101,9 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
   const [editDeposit, setEditDeposit] = useState(100);
   const [editError, setEditError] = useState<string | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  // Why a save did nothing. A quote of styles all priced at zero
+  // would otherwise look like a button that does not work.
+  const [builderError, setBuilderError] = useState<string | null>(null);
   const svcIdRef = useRef(0);
 
   const nextRound = savedInvoices.length > 0 ? Math.max(...savedInvoices.map((i) => i.round)) + 1 : 1;
@@ -108,10 +118,41 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
     // Two of a sample costs twice one of it.
     return s + (amounts[id] ?? 0) * (qtys[id] ?? 1);
   }, 0);
+  // Tech pack fees added to a sampling quote, which are per garment and
+  // have nothing to do with how many samples are being made.
+  const packsTotal = kind === "sampling"
+    ? Array.from(packs).reduce((s, id) => s + packFeeFor(id), 0)
+    : 0;
   const servicesTotal = serviceLines.reduce((s, l) => s + (l.amount || 0), 0);
-  const projectTotal = productsTotal + servicesTotal;
+  const projectTotal = productsTotal + packsTotal + servicesTotal;
   const amountDueNow = projectTotal * (depositPct / 100);
   const balanceRemaining = projectTotal - amountDueNow;
+
+  /** The tech pack fee on a sampling quote, tier price unless edited. */
+  function packFeeFor(id: string): number {
+    return packAmounts[id] ?? techpackPrice(tiers[id] ?? DEFAULT_TECHPACK_TIER);
+  }
+
+  /**
+   * Add or remove a tech pack on a style already on the quote. Adding one
+   * starts it at the cheapest tier, the same as the tech pack builder.
+   */
+  function togglePack(id: string) {
+    setPacks((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else {
+        next.add(id);
+        setTiers((t) => (t[id] ? t : { ...t, [id]: DEFAULT_TECHPACK_TIER }));
+      }
+      return next;
+    });
+  }
+
+  function setPackTier(id: string, tier: TechpackTier) {
+    setTiers((prev) => ({ ...prev, [id]: tier }));
+    setPackAmounts((prev) => ({ ...prev, [id]: techpackPrice(tier) }));
+  }
 
   function initSamplingState() {
     const withFees = products.filter((p) => (p.sample_fee_usd ?? 0) > 0);
@@ -121,6 +162,10 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
     // anybody who never touches the quantity.
     setQtys(Object.fromEntries(products.map((p) => [p.id, 1])));
     setUnitPrices({});
+    // Nothing is charged for a tech pack unless it is asked for. Adding
+    // them automatically would put a fee on an invoice nobody chose.
+    setPacks(new Set());
+    setPackAmounts({});
   }
 
   /**
@@ -149,6 +194,7 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
   }
 
   function initStateFor(k: InvoiceKind) {
+    if (k !== "sampling") { setPacks(new Set()); setPackAmounts({}); }
     if (k === "production") initProductionState();
     else if (k === "techpack") initTechpackState();
     else initSamplingState();
@@ -183,7 +229,17 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
   function toggleProduct(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+        // A tech pack belongs to a style on the quote. Leaving it behind
+        // would bill for a pack on a garment that is no longer listed.
+        setPacks((p) => {
+          if (!p.has(id)) return p;
+          const q = new Set(p);
+          q.delete(id);
+          return q;
+        });
+      } else next.add(id);
       return next;
     });
   }
@@ -242,7 +298,7 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
           project_name: project.name,
           amount_usd: qty * unit,
           expected_date: null,
-          kind: "product",
+          kind: "product" as const,
           qty,
           unit_price_usd: unit,
           image_url: firstImage,
@@ -258,7 +314,7 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
           project_name: project.name,
           amount_usd: packs * fee,
           expected_date: null,
-          kind: "service",
+          kind: "service" as const,
           // Only when there is more than one, so a single pack reads as a
           // fee rather than as "1 × $220".
           qty: packs > 1 ? packs : null,
@@ -273,13 +329,38 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
         project_name: project.name,
         amount_usd: sampleQty * sampleFee,
         expected_date: p.expected_sample_date ?? null,
-        kind: "product",
+        kind: "product" as const,
         // Only when there is more than one, so a single sample reads as a
         // fee rather than as "1 × $150".
         qty: sampleQty > 1 ? sampleQty : null,
         unit_price_usd: sampleQty > 1 ? sampleFee : null,
       };
-    });
+    })
+      // A style can be on the quote for its tech pack alone: set the
+      // sample fee to zero and it bills the pack and nothing else,
+      // rather than printing a £0.00 sample line on the invoice.
+      .filter((li) => kind !== "sampling" || li.amount_usd > 0);
+
+    // Tech pack lines on a sampling quote, written exactly as the tech
+    // pack builder writes them so both read the same on an invoice.
+    const packItems: InvoiceLineItem[] = kind === "sampling"
+      ? Array.from(packs)
+        .filter((id) => selected.has(id))
+        .map((id) => {
+          const p = products.find((p) => p.id === id)!;
+          const tier = tiers[id] ?? DEFAULT_TECHPACK_TIER;
+          return {
+            name: techpackLineName(p.name, tier),
+            category: p.category,
+            project_name: project.name,
+            amount_usd: packFeeFor(id),
+            expected_date: null,
+            kind: "service" as const,
+            qty: null,
+            unit_price_usd: null,
+          };
+        })
+      : [];
     const serviceItems: InvoiceLineItem[] = serviceLines
       .filter((l) => l.name.trim() && l.amount > 0)
       .map((l) => ({
@@ -293,19 +374,38 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
         qty: l.unitPrice != null && (l.qty ?? 0) > 1 ? l.qty : null,
         unit_price_usd: l.unitPrice != null && (l.qty ?? 0) > 1 ? l.unitPrice : null,
       }));
-    if (productItems.length === 0 && serviceItems.length === 0) return;
+    if (productItems.length === 0 && packItems.length === 0 && serviceItems.length === 0) {
+      setBuilderError(
+        kind === "sampling"
+          ? "Nothing to invoice yet — every style is priced at zero and none has a tech pack."
+          : "Nothing to invoice yet — give at least one line an amount.",
+      );
+      return;
+    }
+    setBuilderError(null);
+
+    // What this invoice actually turned out to be, rather than which tab
+    // it was built on. A sampling quote carrying only tech packs is a
+    // tech pack quote, and one carrying both says so on its face.
+    const hasSamples = productItems.length > 0;
+    const hasPacks = packItems.length > 0;
+    const resolvedKind: InvoiceKind =
+      kind === "sampling" && hasPacks && !hasSamples ? "techpack" : kind;
+    const resolvedTitle =
+      kind === "production" ? `Production invoice`
+      : resolvedKind === "techpack" ? TECHPACK_INVOICE_TITLE
+      : hasPacks ? `Sampling & tech packs`
+      : null;
+
     setSaving(true);
     await createProjectQuote({
       client_id: client.id,
       project_id: project.id,
       round: nextRound,
-      line_items: [...productItems, ...serviceItems],
-      invoice_kind: kind,
+      line_items: [...productItems, ...packItems, ...serviceItems],
+      invoice_kind: resolvedKind,
       deposit_percent: depositPct,
-      title:
-        kind === "production" ? `Production invoice`
-        : kind === "techpack" ? TECHPACK_INVOICE_TITLE
-        : null,
+      title: resolvedTitle,
     });
     setSaving(false);
     setShowBuilder(false);
@@ -448,7 +548,7 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                     ? "Set quantity and unit price per product, then choose how much to invoice now"
                     : kind === "techpack"
                       ? "Tick a product, then pick Simple, Technical or Advanced"
-                      : "Select products and add any services"}
+                      : "Select products, add a tech pack to any of them, and add any services"}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -540,12 +640,74 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                               step="0.01"
                               value={fee}
                               onChange={(e) => setAmounts((prev) => ({ ...prev, [p.id]: parseFloat(e.target.value) || 0 }))}
+                              title="Sample fee — set it to zero to charge only for the tech pack"
                               className="rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-[12px] font-mono outline-none w-20 text-right text-[var(--sa-text-primary)]"
                             />
                             {sampleQty > 1 && (
                               <span className="font-mono text-[12px] font-semibold text-[var(--sa-text-primary)] w-20 text-right whitespace-nowrap">
                                 ${(sampleQty * fee).toFixed(2)}
                               </span>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {selected.has(p.id) && kind === "sampling" && (() => {
+                        const on = packs.has(p.id);
+                        const tier = tiers[p.id] ?? DEFAULT_TECHPACK_TIER;
+                        return (
+                          <div
+                            className="flex w-full flex-wrap items-center justify-end gap-1.5"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {!on ? (
+                              <button
+                                onClick={() => togglePack(p.id)}
+                                title="Charge for a tech pack on this style too"
+                                className="flex items-center gap-1 rounded-full border border-dashed border-[var(--sa-border)] px-2.5 py-1 text-[11px] font-medium text-[var(--sa-text-tertiary)] transition-colors hover:border-[var(--sa-accent)] hover:text-[var(--sa-accent)]"
+                              >
+                                <Plus size={10} /> Tech pack
+                              </button>
+                            ) : (
+                              <>
+                                <span className="flex items-center gap-1 text-[11px] text-[var(--sa-text-tertiary)]">
+                                  <Ruler size={11} /> Tech pack
+                                </span>
+                                <div className="flex items-center overflow-hidden rounded-lg border border-[var(--sa-border)]">
+                                  {TECHPACK_TIERS.map((t, ti) => (
+                                    <button
+                                      key={t.tier}
+                                      onClick={() => setPackTier(p.id, t.tier)}
+                                      title={`$${t.price} per tech pack`}
+                                      className={cn(
+                                        "whitespace-nowrap px-2 py-1 text-[11px] font-medium transition-colors",
+                                        ti > 0 && "border-l border-[var(--sa-border)]",
+                                        tier === t.tier
+                                          ? "bg-[var(--sa-accent)] text-white"
+                                          : "text-[var(--sa-text-secondary)] hover:bg-[var(--sa-hover)]",
+                                      )}
+                                    >
+                                      {t.label}
+                                    </button>
+                                  ))}
+                                </div>
+                                <span className="text-[11px] text-[var(--sa-text-tertiary)]">$</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={packFeeFor(p.id)}
+                                  onChange={(e) => setPackAmounts((prev) => ({ ...prev, [p.id]: parseFloat(e.target.value) || 0 }))}
+                                  title="Tech pack fee"
+                                  className="w-20 rounded border border-[var(--sa-border)] bg-[var(--sa-bg)] px-2 py-1 text-right text-[12px] font-mono outline-none text-[var(--sa-text-primary)]"
+                                />
+                                <button
+                                  onClick={() => togglePack(p.id)}
+                                  title="Take the tech pack off this style"
+                                  className="rounded p-1 text-[var(--sa-text-tertiary)] hover:text-red-500"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </>
                             )}
                           </div>
                         );
@@ -819,10 +981,14 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
             )}
 
             {/* Footer */}
+            {builderError && (
+              <p className="px-5 pt-3 text-[11.5px] text-red-600">{builderError}</p>
+            )}
             <div className="flex items-center justify-between px-5 py-3 bg-[var(--sa-bg)]">
               <div>
                 <span className="text-[11px] text-[var(--sa-text-tertiary)]">
                   {selected.size} {kind === "techpack" ? "tech pack" : "product"}{selected.size !== 1 ? "s" : ""}
+                  {kind === "sampling" && packs.size > 0 && ` · ${packs.size} tech pack${packs.size !== 1 ? "s" : ""}`}
                   {serviceLines.length > 0 && ` · ${serviceLines.length} service${serviceLines.length !== 1 ? "s" : ""}`}
                 </span>
                 <span className="mx-2 text-[11px] text-[var(--sa-border)]">·</span>
@@ -870,6 +1036,10 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
               const cfg = STATUS_CFG[inv.status] ?? STATUS_CFG.draft;
               const isProduction = inv.invoice_kind === "production";
               const isTechpack = isTechpackInvoice(inv.invoice_kind);
+              // A sampling quote can carry tech pack lines. The badge says
+              // so, because "Sampling" alone would not explain the total.
+              const carriesPacks = !isTechpack && !isProduction
+                && inv.line_items.some((li) => isTechpackLine(li.name));
               const deposit = isEditing && isProduction ? editDeposit : Number(inv.deposit_percent ?? 100);
               const dueNow = total * (deposit / 100);
               const isBalance = !!inv.parent_invoice_id;
@@ -893,6 +1063,11 @@ export function QuoteBuilder({ project, client, products: allProducts, savedInvo
                             ? <><Ruler size={9} /> Tech packs</>
                             : <><FileText size={9} /> Sampling</>}
                       </span>
+                      {carriesPacks && (
+                        <span className="flex items-center gap-1 rounded-full bg-[var(--sa-hover)] px-2 py-0.5 text-[10px] font-medium leading-none text-[var(--sa-text-secondary)]">
+                          <Ruler size={9} /> + tech packs
+                        </span>
+                      )}
                       {isDeposit && (
                         <span className="rounded-full bg-amber-50 dark:bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 leading-none">
                           Deposit ({deposit.toFixed(deposit % 1 === 0 ? 0 : 2)}%)
