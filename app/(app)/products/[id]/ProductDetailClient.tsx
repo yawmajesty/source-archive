@@ -14,6 +14,7 @@ import { StageTrack } from "@/components/shared/StageTrack";
 import { StatusBadge, SampleStatusBadge } from "@/components/shared/StatusBadge";
 import { UpdateItem } from "@/components/shared/UpdateItem";
 import { addProductUpdate, setUpdateVisibility } from "./update-actions";
+import { ProductHero } from "@/components/products/ProductHero";
 import { TrafficDot } from "@/components/shared/TrafficLight";
 import { cn } from "@/lib/utils";
 import { createTask } from "../../tasks/actions";
@@ -311,9 +312,19 @@ function ExcludeProductModal({
   );
 }
 
-function MediaSection({ productId, initialImages }: { productId: string; initialImages: string[] }) {
+/**
+ * The uploader. The list itself lives on the page now, because the hero
+ * gallery at the top shows the same images and an upload has to appear
+ * in both — two copies of the state meant uploading a photo left the
+ * gallery showing the old set until a reload.
+ */
+function MediaSection({ productId, images, onChange }: {
+  productId: string;
+  images: string[];
+  onChange: (next: string[]) => void;
+}) {
   const [viewing, setViewing] = useState<number | null>(null);
-  const [images, setImages] = useState<string[]>(initialImages ?? []);
+  const setImages = onChange;
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -1871,6 +1882,25 @@ export function ProductDetailClient({
   const [newUpdate, setNewUpdate] = useState("");
   const [postingUpdate, setPostingUpdate] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [productImages, setProductImages] = useState<string[]>(
+    () => ((initialProduct as unknown as { images?: string[] }).images ?? []),
+  );
+
+  /**
+   * Saves the description, and says something useful when the column is
+   * not there yet rather than passing on Postgres's own wording.
+   */
+  async function saveDescription(text: string): Promise<string | null> {
+    const res = await updateProductFields(product.id, { description: text });
+    if (res.success) {
+      setProduct((prev) => ({ ...prev, description: text } as typeof prev));
+      return null;
+    }
+    const missing = /description/i.test(res.error) && /column|schema cache/i.test(res.error);
+    return missing
+      ? "Descriptions need a one-time database step — run migrations/054_product_description.sql in Supabase."
+      : res.error;
+  }
   const [localSamples, setLocalSamples] = useState(samples);
   const [showAddSample, setShowAddSample] = useState(false);
   const [localBom, setLocalBom] = useState<BomItem[]>(() => (product as any).bom_data ?? product.bom ?? []);
@@ -2052,10 +2082,23 @@ export function ProductDetailClient({
         <StageTrack currentStage={product.stage} animated showLabels size="md" />
       </motion.div>
 
-      {/* Body — two-column on desktop, single-column scroll on mobile */}
-      <div className="flex-1 overflow-y-auto md:overflow-hidden md:flex">
+      {/* Body — the hero across the top, then two columns under it.
+          One scroll for the whole page: the columns used to scroll
+          separately, which cannot work with something full width above
+          them, and a page read like a shop scrolls as one thing. */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-4 pt-5 md:px-6">
+          <ProductHero
+            product={product}
+            images={productImages}
+            description={(product as unknown as { description?: string | null }).description ?? null}
+            onSaveDescription={saveDescription}
+          />
+        </div>
+
+        <div className="md:flex">
         {/* Left column */}
-        <div className="px-4 md:px-6 py-5 space-y-4 md:flex-[7] md:overflow-y-auto">
+        <div className="px-4 md:px-6 py-5 space-y-4 md:flex-[7] md:min-w-0">
 
           {/* Details */}
           <CollapsibleSection title="Details">
@@ -2120,7 +2163,7 @@ export function ProductDetailClient({
 
           {/* Media */}
           <CollapsibleSection title="Images & Video">
-            <MediaSection productId={product.id} initialImages={(product as any).images ?? []} />
+            <MediaSection productId={product.id} images={productImages} onChange={setProductImages} />
           </CollapsibleSection>
 
           {/* Auto tags */}
@@ -2325,7 +2368,7 @@ export function ProductDetailClient({
         </div>
 
         {/* Right column — below on mobile, sidebar on desktop */}
-        <div className="px-4 py-5 space-y-4 bg-[var(--sa-window)] border-t md:border-t-0 md:border-l border-[var(--sa-border)] md:flex-[3] md:min-w-64 md:max-w-80 md:overflow-y-auto">
+        <div className="px-4 py-5 space-y-4 bg-[var(--sa-window)] border-t md:border-t-0 md:border-l border-[var(--sa-border)] md:flex-[3] md:min-w-64 md:max-w-80">
 
           {stageSelector}
 
@@ -2433,6 +2476,7 @@ export function ProductDetailClient({
               <p className="text-[13px] text-[var(--sa-text-secondary)] leading-relaxed">{product.notes}</p>
             </div>
           )}
+        </div>
         </div>
       </div>
 

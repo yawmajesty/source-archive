@@ -17,6 +17,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { cn } from "@/lib/utils";
 import { RfqSheetDialog } from "@/components/projects/RfqSheetDialog";
 import { ImportProductsDialog } from "@/components/projects/ImportProductsDialog";
+import { PRODUCT_CATEGORY_GROUPS } from "@/lib/product-categories";
 import { forkProductsToRound, createProductInProject, renameProject, deleteProject } from "./actions";
 import type { Client, Project, Product, Factory, Stage, PriceTier } from "@/lib/mock-data";
 import type { SavedInvoice, AgencySettings } from "@/lib/data";
@@ -149,10 +150,18 @@ function AddProductModal({ projectId, factories, onClose }: {
           </div>
           <div>
             <label className="block text-[11px] font-medium text-[var(--sa-text-secondary)] mb-1">Category</label>
-            <input ref={categoryRef}
+            {/* A list, not a constraint: a collection ships hang tags,
+                poly bags and labels as well as garments, and the field
+                still takes anything typed into it. */}
+            <input ref={categoryRef} list="product-category-options"
               className="w-full rounded-lg border border-[var(--sa-border)] bg-[var(--sa-bg)] px-3 py-2 text-[13px] text-[var(--sa-text-primary)] outline-none focus:border-[var(--sa-accent)] transition-colors"
-              placeholder="e.g. Drinkware"
+              placeholder="e.g. Hoodies & sweats, Hang tags, Packaging"
             />
+            <datalist id="product-category-options">
+              {PRODUCT_CATEGORY_GROUPS.map((g) =>
+                g.options.map((o) => <option key={o} value={o}>{g.label}</option>),
+              )}
+            </datalist>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
