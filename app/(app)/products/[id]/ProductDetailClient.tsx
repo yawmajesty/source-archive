@@ -13,6 +13,7 @@ import {
 import { StageTrack } from "@/components/shared/StageTrack";
 import { StatusBadge, SampleStatusBadge } from "@/components/shared/StatusBadge";
 import { UpdateItem } from "@/components/shared/UpdateItem";
+import { addProductUpdate, setUpdateVisibility } from "./update-actions";
 import { TrafficDot } from "@/components/shared/TrafficLight";
 import { cn } from "@/lib/utils";
 import { createTask } from "../../tasks/actions";
@@ -1868,6 +1869,8 @@ export function ProductDetailClient({
   }
   const [localUpdates, setLocalUpdates] = useState(updates);
   const [newUpdate, setNewUpdate] = useState("");
+  const [postingUpdate, setPostingUpdate] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
   const [localSamples, setLocalSamples] = useState(samples);
   const [showAddSample, setShowAddSample] = useState(false);
   const [localBom, setLocalBom] = useState<BomItem[]>(() => (product as any).bom_data ?? product.bom ?? []);
@@ -1894,19 +1897,38 @@ export function ProductDetailClient({
     setFactory(newFactory ?? null);
   }
 
-  function addUpdate() {
-    if (!newUpdate.trim()) return;
-    const u: Update = {
-      id: `upd-new-${Date.now()}`,
-      product_id: product.id,
-      author: "You",
-      author_initials: "YO",
-      text: newUpdate.trim(),
-      visible_to_client: false,
-      created_at: new Date().toISOString(),
-    };
-    setLocalUpdates((prev) => [u, ...prev]);
+  /**
+   * Waits for the write before showing the update.
+   *
+   * Showing it first and saving after is the nicer animation, and it is
+   * exactly what made the old bug invisible: the update appeared whether
+   * or not anything had been written. A post is one short sentence, so
+   * the wait costs nothing and what is on screen is what is in the
+   * database.
+   */
+  async function addUpdate() {
+    const text = newUpdate.trim();
+    if (!text || postingUpdate) return;
+    setPostingUpdate(true);
+    setUpdateError(null);
+    const res = await addProductUpdate({ product_id: product.id, text });
+    setPostingUpdate(false);
+    if (!res.success) { setUpdateError(res.error); return; }
+    setLocalUpdates((prev) => [res.update, ...prev]);
     setNewUpdate("");
+  }
+
+  /** The eye beside an update. Also never saved before this. */
+  async function toggleUpdateVisibility(id: string, visible: boolean) {
+    setUpdateError(null);
+    const before = localUpdates;
+    setLocalUpdates((prev) => prev.map((u) => (u.id === id ? { ...u, visible_to_client: visible } : u)));
+    const res = await setUpdateVisibility({ id, product_id: product.id, visible });
+    if (!res.success) {
+      // Put it back, or the icon claims something that did not happen.
+      setLocalUpdates(before);
+      setUpdateError(res.error);
+    }
   }
 
   return (
@@ -2373,25 +2395,32 @@ export function ProductDetailClient({
                 <input
                   value={newUpdate}
                   onChange={(e) => setNewUpdate(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addUpdate()}
+                  onKeyDown={(e) => { if (e.key === "Enter") addUpdate(); }}
+                  disabled={postingUpdate}
                   placeholder="Add an update…"
-                  className="flex-1 rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-3 py-1.5 text-[12px] text-[var(--sa-text-primary)] placeholder:text-[var(--sa-text-tertiary)] outline-none focus:border-[var(--sa-accent)] transition-colors"
+                  className="flex-1 rounded-lg border border-[var(--sa-border)] bg-[var(--sa-window)] px-3 py-1.5 text-[12px] text-[var(--sa-text-primary)] placeholder:text-[var(--sa-text-tertiary)] outline-none focus:border-[var(--sa-accent)] transition-colors disabled:opacity-60"
                 />
                 <button
                   onClick={addUpdate}
-                  disabled={!newUpdate.trim()}
+                  disabled={!newUpdate.trim() || postingUpdate}
+                  title="Post this update"
                   className="rounded-lg bg-[var(--sa-accent)] px-2.5 py-1.5 text-white hover:opacity-90 disabled:opacity-40 transition-opacity"
                 >
                   <Plus size={12} strokeWidth={2.5} />
                 </button>
               </div>
+              {updateError && (
+                <p className="pt-1.5 text-[11.5px] text-red-600">{updateError}</p>
+              )}
             </div>
 
             <div className="px-4 py-1 max-h-96 overflow-y-auto">
               {localUpdates.length === 0 ? (
                 <p className="py-4 text-[12px] text-center text-[var(--sa-text-tertiary)]">No updates yet</p>
               ) : (
-                localUpdates.map((u) => <UpdateItem key={u.id} update={u} />)
+                localUpdates.map((u) => (
+                  <UpdateItem key={u.id} update={u} onToggleVisibility={toggleUpdateVisibility} />
+                ))
               )}
             </div>
           </section>
